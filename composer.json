@@ -1,0 +1,64 @@
+{
+    "name": "pxp/pdf",
+    "description": "PDF library for PHP",
+    "license": "MIT",
+    "type": "library",
+    "authors": [
+        {
+            "name": "PXP",
+            "homepage": "https://github.com/pxp-sh"
+        }
+    ],
+    "require": {
+        "php": "^8.4"
+    },
+    "require-dev": {
+        "ergebnis/composer-normalize": "^2.48",
+        "ergebnis/license": "^2.7",
+        "friendsofphp/php-cs-fixer": "^3.92",
+        "infection/infection": "^0.32.0",
+        "phpbench/phpbench": "^1.4",
+        "phpstan/phpstan": "^2.1",
+        "phpunit/phpunit": "^12.5"
+    },
+    "minimum-stability": "dev",
+    "prefer-stable": true,
+    "autoload": {
+        "psr-4": {
+            "PXP\\": "src/"
+        }
+    },
+    "autoload-dev": {
+        "psr-4": {
+            "Test\\": "tests/"
+        }
+    },
+    "config": {
+        "allow-plugins": {
+            "ergebnis/composer-normalize": true,
+            "infection/extension-installer": true
+        }
+    },
+    "scripts": {
+        "cs:check": "@php vendor/bin/php-cs-fixer fix --dry-run --diff",
+        "cs:fix": "@php vendor/bin/php-cs-fixer fix",
+        "phpstan": "@php vendor/bin/phpstan analyse",
+        "test": "@php vendor/bin/phpunit --testdox",
+        "test:all": "@php vendor/bin/phpunit --testdox",
+        "test:coverage": "@php vendor/bin/phpunit --testdox --coverage-text",
+        "test:feature": "@php vendor/bin/phpunit --testdox --testsuite Feature",
+        "test:integration": "@php vendor/bin/phpunit --testdox --testsuite Integration",
+        "test:unit": "@php vendor/bin/phpunit --testdox --testsuite Unit"
+    },
+    "scripts-descriptions": {
+        "cs:check": "Check the code style",
+        "cs:fix": "Fix the code style",
+        "phpstan": "Run PHPStan",
+        "test": "Run the test suite",
+        "test:all": "Run all test suites",
+        "test:coverage": "Run the test suite with coverage",
+        "test:feature": "Run the feature test suite",
+        "test:integration": "Run the integration test suite",
+        "test:unit": "Run the unit test suite"
+    }
+}

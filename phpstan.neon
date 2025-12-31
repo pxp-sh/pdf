@@ -1,0 +1,9 @@
+# PHPStan configuration
+parameters:
+  level: 5
+  paths:
+    - src/
+    - tests/
+  # ignoreErrors:
+  #   - "#Call to an undefined method#"
+  #   - "#Call to an undefined method#"

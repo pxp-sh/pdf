@@ -1,0 +1,16 @@
+# Composer
+composer.lock
+/vendor
+
+# PHPUnit
+.phpunit.cache
+
+# PHPStan
+.phpstan.neon
+
+# PHP_CodeSniffer
+.phpcs.xml
+
+# PHP_CodeSniffer
+.phpcs.xml
+.php-cs-fixer.cache
