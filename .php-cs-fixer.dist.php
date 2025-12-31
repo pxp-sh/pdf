@@ -31,8 +31,7 @@ $license->save();
 $finder = Finder::create()
     ->in(__DIR__)
     ->append(glob(__DIR__ . '/*.php'))
-    ->append(glob(__DIR__ . '/.*.php'))
-    ->contains('*.php');
+    ->append(glob(__DIR__ . '/.*.php'));
 
 return (new Config())
     ->setFinder($finder)
