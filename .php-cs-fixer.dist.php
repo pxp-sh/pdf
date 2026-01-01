@@ -33,6 +33,7 @@ $finder = Finder::create()
     ->append(glob(__DIR__ . '/*.php'))
     ->exclude('vendor')
     ->exclude('var')
+    ->exclude('ref')
     ->append(glob(__DIR__ . '/.*.php'));
 
 return (new Config())
