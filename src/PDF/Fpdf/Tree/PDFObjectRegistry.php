@@ -119,7 +119,7 @@ final class PDFObjectRegistry
         }
 
         // Cache the object
-        $cacheKey = 'pxp_pdf_object_' . $objectNumber;
+        $cacheKey = $this->getCacheKey($objectNumber);
         $cacheItem = $this->cache->getItem($cacheKey);
         $cacheItem->set($node);
         $this->cache->save($cacheItem);
@@ -146,7 +146,7 @@ final class PDFObjectRegistry
         }
 
         // Check external cache
-        $cacheKey = 'pxp_pdf_object_' . $objectNumber;
+        $cacheKey = $this->getCacheKey($objectNumber);
         $cacheItem = $this->cache->getItem($cacheKey);
         if ($cacheItem->isHit()) {
             $node = $cacheItem->get();
@@ -239,6 +239,17 @@ final class PDFObjectRegistry
     }
 
     /**
+     * Get only already-loaded objects without forcing lazy loading.
+     * This is useful for type-based searches without memory explosion.
+     *
+     * @return array<int, PDFObjectNode>
+     */
+    public function getLoadedObjects(): array
+    {
+        return $this->objects;
+    }
+
+    /**
      * Check if an object exists.
      * If lazy loading is enabled, checks xref table as well.
      */
@@ -264,11 +275,30 @@ final class PDFObjectRegistry
     public function remove(int $objectNumber): void
     {
         unset($this->objects[$objectNumber]);
-        $cacheKey = 'pxp_pdf_object_' . $objectNumber;
+        $cacheKey = $this->getCacheKey($objectNumber);
         $this->cache->deleteItem($cacheKey);
         $this->logger->debug('Object removed', [
             'object_number' => $objectNumber,
         ]);
+    }
+
+    /**
+     * Get cache key for an object, including file path hash to make it unique per PDF.
+     */
+    private function getCacheKey(int $objectNumber): string
+    {
+        // Include file path hash in cache key to make it unique per PDF file
+        // This prevents objects from different PDFs with same object number from colliding
+        $fileHash = '';
+        if ($this->filePath !== null) {
+            // Use absolute path for consistency (relative paths may vary)
+            $absolutePath = realpath($this->filePath) ?: $this->filePath;
+            $fileHash = '_' . md5($absolutePath);
+        } elseif ($this->rawContent !== null) {
+            // For memory-based, use hash of content (first 1KB should be enough for uniqueness)
+            $fileHash = '_' . md5(substr($this->rawContent, 0, 1024));
+        }
+        return 'pxp_pdf_object_' . $objectNumber . $fileHash;
     }
 
     /**
@@ -280,7 +310,8 @@ final class PDFObjectRegistry
     {
         $count = count($this->objects);
         $this->objects = [];
-        $this->cache->clear();
+        // Note: We can't clear the entire cache as it may contain objects from other PDFs
+        // Instead, we only clear memory cache. External cache entries will expire naturally.
         $this->logger->debug('Cache cleared', [
             'objects_cleared' => $count,
         ]);

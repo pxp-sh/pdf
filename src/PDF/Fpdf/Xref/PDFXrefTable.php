@@ -82,33 +82,76 @@ final class PDFXrefTable
     }
 
     /**
-     * Parse xref table from PDF content.
+     * Parse xref table from PDF content using regex-based parsing.
+     * Supports various whitespace formats and handles subsections properly.
      */
     public function parseFromString(string $xrefContent): void
     {
         $this->entries = [];
-        $lines = preg_split('/\r?\n/', trim($xrefContent));
 
-        $i = 0;
-        while ($i < count($lines)) {
-            $line = trim($lines[$i]);
-            if (preg_match('/^(\d+)\s+(\d+)$/', $line, $matches)) {
-                $startObj = (int) $matches[1];
-                $count = (int) $matches[2];
-                $i++;
+        // Skip initial whitespace
+        $offset = strspn($xrefContent, " \t\r\n\f\0");
+        $objNum = 0;
 
-                for ($j = 0; $j < $count && $i < count($lines); $j++, $i++) {
-                    $offsetLine = trim($lines[$i]);
-                    if (preg_match('/^(\d{10})\s+(\d{5})\s+([nf])$/', $offsetLine, $offsetMatches)) {
-                        $offset = (int) $offsetMatches[1];
-                        $gen = (int) $offsetMatches[2];
-                        $flag = $offsetMatches[3];
+        // PDF whitespace characters: space, tab, CR, LF, FF, null
+        $whitespaceChars = " \t\r\n\f\0";
 
-                        $this->addEntry($startObj + $j, $offset, $gen, $flag === 'f');
-                    }
+        // Search for cross-reference entries or subsection headers
+        // Pattern: ([0-9]+)[\x20]([0-9]+)[\x20]?([nf]?)(\r\n|[\x20]?[\r\n])
+        while (preg_match(
+            '/([0-9]+)[\x20]([0-9]+)[\x20]?([nf]?)(\r\n|[\x20]?[\r\n])/',
+            $xrefContent,
+            $matches,
+            \PREG_OFFSET_CAPTURE,
+            $offset
+        ) > 0) {
+            if ($matches[0][1] != $offset) {
+                // We are on another section (trailer or end)
+                break;
+            }
+
+            $offset += \strlen($matches[0][0]);
+
+            $firstNum = (int) $matches[1][0];
+            $secondNum = (int) $matches[2][0];
+            $flag = $matches[3][0] ?? '';
+
+            if ('n' === $flag) {
+                // In-use entry: offset generation n
+                // $firstNum is the offset, $secondNum is the generation
+                if (!isset($this->entries[$objNum])) {
+                    $this->addEntry($objNum, $firstNum, $secondNum, false);
                 }
+                ++$objNum;
+            } elseif ('f' === $flag) {
+                // Free entry: next_free_object generation f
+                // $firstNum is the next free object, $secondNum is the generation
+                if (!isset($this->entries[$objNum])) {
+                    $this->addEntry($objNum, $firstNum, $secondNum, true);
+                }
+                ++$objNum;
             } else {
-                $i++;
+                // Subsection header: start_object number_of_entries
+                // $firstNum is the starting object number, $secondNum is the count
+                $objNum = $firstNum;
+                // The next entries will be for objects starting at $objNum
+            }
+        }
+    }
+
+    /**
+     * Merge entries from another xref table.
+     * Only adds entries that don't already exist (for handling Prev references).
+     * This ensures newer entries (current) are preserved and older entries (prev) are only added if missing.
+     *
+     * @param PDFXrefTable $otherTable The xref table to merge from (older entries from Prev reference)
+     */
+    public function mergeEntries(PDFXrefTable $otherTable): void
+    {
+        foreach ($otherTable->getAllEntries() as $objectNumber => $entry) {
+            // Only add entries that don't already exist (newer entries override older ones)
+            if (!isset($this->entries[$objectNumber])) {
+                $this->entries[$objectNumber] = $entry;
             }
         }
     }

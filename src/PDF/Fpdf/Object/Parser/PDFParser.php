@@ -36,6 +36,7 @@ use PXP\PDF\Fpdf\Tree\PDFDocument;
 use PXP\PDF\Fpdf\Tree\PDFHeader;
 use PXP\PDF\Fpdf\Tree\PDFObjectNode;
 use PXP\PDF\Fpdf\Xref\PDFXrefTable;
+use PXP\PDF\Fpdf\Xref\XrefStreamParser;
 
 /**
  * Main parser for reading PDFs into tree structure.
@@ -105,6 +106,72 @@ final class PDFParser
         $readSize = min(131072, $fileSize - $xrefPos); // Read up to 128KB from xref
         $xrefAndTrailer = $fileIO->readFileChunk($filePath, $readSize, $xrefPos);
 
+        // Check if it's a traditional xref table or xref stream
+        $isTraditionalXref = strpos($xrefAndTrailer, 'xref') === 0;
+
+        if (!$isTraditionalXref) {
+            // This is an xref stream
+            $xrefTable = $this->parseXrefStreamFromFile($filePath, $fileIO, $fileSize, $xrefPos, $absolutePath);
+
+            $xrefEntryCount = count($xrefTable->getAllEntries());
+            $this->logger->debug('Xref stream parsed (with Prev references)', [
+                'file_path' => $absolutePath,
+                'entry_count' => $xrefEntryCount,
+            ]);
+
+            // Create registry with file-based lazy loading context
+            $registry = new \PXP\PDF\Fpdf\Tree\PDFObjectRegistry(null, $this, $xrefTable, $filePath, $fileIO, $this->cache, $this->logger);
+
+            // Create document with lazy-loading enabled registry
+            $document = new PDFDocument($version, $registry);
+
+            // Set header version
+            if ($header !== null) {
+                $document->getHeader()->setVersion($header->getVersion());
+            }
+
+            // Parse trailer from xref stream (trailer info is in stream dictionary)
+            // We already parsed the stream in parseXrefStreamFromFile, so we can extract it from there
+            // For now, the trailer info will be set during xref stream parsing
+            // We'll parse it again to get trailer info
+            $readSize = min(100, $fileSize - $xrefPos);
+            $chunk = $fileIO->readFileChunk($filePath, $readSize, $xrefPos);
+            if (preg_match('/(\d+)\s+(\d+)\s+obj/', $chunk, $matches)) {
+                $objectNumber = (int) $matches[1];
+                $generation = (int) $matches[2];
+                $objectContent = $this->extractObjectContentFromFile($filePath, $fileIO, $xrefPos, $objectNumber, $generation);
+                if ($objectContent !== null) {
+                    $stream = $this->parseObject($objectContent, $objectNumber);
+                    if ($stream instanceof \PXP\PDF\Fpdf\Stream\PDFStream) {
+                        $this->parseTrailerFromStreamDict($stream->getDictionary(), $document);
+                    }
+                }
+            }
+
+            // Only parse root object immediately (needed for document structure)
+            $rootRef = $document->getTrailer()->getRoot();
+            if ($rootRef !== null) {
+                $this->logger->debug('Loading root object', [
+                    'file_path' => $absolutePath,
+                    'object_number' => $rootRef->getObjectNumber(),
+                ]);
+                $rootNode = $registry->get($rootRef->getObjectNumber());
+                if ($rootNode !== null) {
+                    $document->setRoot($rootNode);
+                }
+            }
+
+            $duration = (microtime(true) - $startTime) * 1000;
+            $this->logger->info('PDF file parsing completed', [
+                'file_path' => $absolutePath,
+                'duration_ms' => round($duration, 2),
+                'version' => $version,
+                'object_count' => $xrefEntryCount,
+            ]);
+
+            return $document;
+        }
+
         $xrefEnd = strpos($xrefAndTrailer, 'trailer');
         if ($xrefEnd === false) {
             // If trailer not found in chunk, read more
@@ -119,12 +186,11 @@ final class PDFParser
             }
         }
 
-        $xrefContent = substr($xrefAndTrailer, 4, $xrefEnd - 4);
-        $xrefTable = new PDFXrefTable();
-        $xrefTable->parseFromString($xrefContent);
+        // Parse xref table and handle Prev references recursively
+        $xrefTable = $this->parseXrefTableFromFile($filePath, $fileIO, $fileSize, $xrefPos, $absolutePath);
 
         $xrefEntryCount = count($xrefTable->getAllEntries());
-        $this->logger->debug('Xref table parsed', [
+        $this->logger->debug('Xref table parsed (with Prev references)', [
             'file_path' => $absolutePath,
             'entry_count' => $xrefEntryCount,
         ]);
@@ -140,9 +206,19 @@ final class PDFParser
             $document->getHeader()->setVersion($header->getVersion());
         }
 
-        // Parse trailer
-        $trailerSection = substr($xrefAndTrailer, $xrefEnd);
-        $this->parseTrailer($trailerSection, $document);
+        // Parse trailer (we already parsed it during xref parsing, but need to set it on document)
+        $readSize = min(131072, $fileSize - $xrefPos);
+        $xrefAndTrailer = $fileIO->readFileChunk($filePath, $readSize, $xrefPos);
+        $xrefEnd = strpos($xrefAndTrailer, 'trailer');
+        if ($xrefEnd === false) {
+            $readSize = $fileSize - $xrefPos;
+            $xrefAndTrailer = $fileIO->readFileChunk($filePath, $readSize, $xrefPos);
+            $xrefEnd = strpos($xrefAndTrailer, 'trailer');
+        }
+        if ($xrefEnd !== false) {
+            $trailerSection = substr($xrefAndTrailer, $xrefEnd);
+            $this->parseTrailer($trailerSection, $document);
+        }
 
         $this->logger->debug('Trailer parsed', [
             'file_path' => $absolutePath,
@@ -175,7 +251,7 @@ final class PDFParser
     }
 
     /**
-     * Find xref table position in file by searching from the end.
+     * Find xref table position in file by searching for startxref keyword.
      *
      * @param string $filePath PDF file path
      * @param FileIOInterface $fileIO File IO interface
@@ -185,12 +261,11 @@ final class PDFParser
     private function findXrefTableInFile(string $filePath, FileIOInterface $fileIO, int $fileSize): int|false
     {
         $absolutePath = realpath($filePath) ?: $filePath;
-        // Search backwards from end of file
-        // Read chunks from the end and search for "xref"
+        // Search backwards from end of file for startxref keyword
+        // Read chunks from the end
         $chunkSize = 65536; // 64KB chunks
         $searchStart = max(0, $fileSize - $chunkSize);
         $chunkCount = 0;
-        $previousSearchStart = $searchStart + 1; // Initialize to ensure first iteration is different
         $maxIterations = 1000; // Safety limit to prevent infinite loops
 
         while ($searchStart >= 0 && $chunkCount < $maxIterations) {
@@ -198,64 +273,35 @@ final class PDFParser
             $readSize = min($chunkSize, $fileSize - $searchStart);
             $chunk = $fileIO->readFileChunk($filePath, $readSize, $searchStart);
 
-            // Search for "xref" in this chunk - must be standalone (not part of "startxref")
-            // First try: search for "\nxref\n" or "\rxref\n" (xref on its own line)
-            $pos = false;
-            $patterns = ["\nxref\n", "\rxref\n", "\nxref\r\n", "\rxref\r"];
-            foreach ($patterns as $pattern) {
-                $foundPos = strrpos($chunk, $pattern);
-                if ($foundPos !== false) {
-                    $afterXref = substr($chunk, $foundPos + strlen($pattern), 20);
-                    if (preg_match('/^\s*\d+\s+\d+\s*\r?\n/', $afterXref)) {
-                        $pos = $foundPos + 1; // +1 to point to 'x' not '\n' or '\r'
-                        break;
-                    }
-                }
-            }
+            // Search for startxref pattern: startxref[\s]*[\r\n]+([0-9]+)[\s]*[\r\n]+%%EOF
+            $startxrefMatches = [];
+            if (
+                preg_match_all(
+                    '/(?<=[\r\n])startxref[\s]*[\r\n]+([0-9]+)[\s]*[\r\n]+%%EOF/i',
+                    $chunk,
+                    $startxrefMatches,
+                    \PREG_SET_ORDER | \PREG_OFFSET_CAPTURE
+                ) > 0
+            ) {
+                // Use the last match (most recent xref)
+                $lastMatch = $startxrefMatches[\count($startxrefMatches) - 1];
+                $startxrefOffset = (int) $lastMatch[1][0];
+                $matchPosition = $lastMatch[0][1];
 
-            // Fallback: search for "xref" and verify it's not part of "startxref"
-            if ($pos === false) {
-                $chunkLen = strlen($chunk);
-                $searchEnd = $chunkLen; // Start searching from the end
-
-                while ($searchEnd > 0) {
-                    // Search in the substring up to searchEnd
-                    $searchChunk = substr($chunk, 0, $searchEnd);
-                    $foundPos = strrpos($searchChunk, 'xref');
-
-                    if ($foundPos === false) {
-                        // No more matches
-                        break;
-                    }
-
-                    // Check if it's not part of "startxref"
-                    $beforeXref = $foundPos > 0 ? substr($chunk, max(0, $foundPos - 5), 5) : '';
-                    if ($beforeXref !== 'start') {
-                        $afterXref = substr($chunk, $foundPos + 4, 20);
-                        // Verify it's a valid xref table (should be followed by whitespace/newline and numbers)
-                        if (preg_match('/^\s*\r?\n\s*\d+\s+\d+\s*\r?\n/', $afterXref)) {
-                            $pos = $foundPos;
-                            break;
-                        }
-                    }
-
-                    // Continue searching backwards from before this position
-                    $searchEnd = $foundPos;
-                }
-            }
-
-            if ($pos !== false) {
-                $this->logger->debug('Xref table found in chunk', [
+                $this->logger->debug('Startxref found in chunk', [
                     'file_path' => $absolutePath,
                     'chunk_number' => $chunkCount,
-                    'position' => $searchStart + $pos,
+                    'startxref_offset' => $startxrefOffset,
+                    'match_position' => $searchStart + $matchPosition,
                 ]);
-                return $searchStart + $pos;
+
+                // Return the offset from startxref (absolute position in file)
+                return $startxrefOffset;
             }
 
-            // Don't search too far back (xref should be in last 1MB)
+            // Don't search too far back (startxref should be in last 1MB)
             if ($fileSize - $searchStart > 1048576) {
-                $this->logger->debug('Xref search limit reached', [
+                $this->logger->debug('Startxref search limit reached', [
                     'file_path' => $absolutePath,
                     'chunks_searched' => $chunkCount,
                 ]);
@@ -263,11 +309,11 @@ final class PDFParser
             }
 
             // Move search window backwards
-            $newSearchStart = max(0, $searchStart - $chunkSize + 100); // Overlap by 100 bytes to catch xref at boundary
+            $newSearchStart = max(0, $searchStart - $chunkSize + 100); // Overlap by 100 bytes
 
-            // Break if we're not making progress (stuck at position 0 or same position)
+            // Break if we're not making progress
             if ($newSearchStart >= $searchStart) {
-                $this->logger->debug('Xref search stopped making progress', [
+                $this->logger->debug('Startxref search stopped making progress', [
                     'file_path' => $absolutePath,
                     'chunks_searched' => $chunkCount,
                     'final_position' => $searchStart,
@@ -275,18 +321,156 @@ final class PDFParser
                 break;
             }
 
-            $previousSearchStart = $searchStart;
             $searchStart = $newSearchStart;
         }
 
         if ($chunkCount >= $maxIterations) {
-            $this->logger->warning('Xref search hit maximum iteration limit', [
+            $this->logger->warning('Startxref search hit maximum iteration limit', [
                 'file_path' => $absolutePath,
                 'chunks_searched' => $chunkCount,
             ]);
         }
 
         return false;
+    }
+
+    /**
+     * Parse xref table from file at given offset, handling Prev references recursively.
+     *
+     * @param string $filePath PDF file path
+     * @param FileIOInterface $fileIO File IO interface
+     * @param int $fileSize File size in bytes
+     * @param int $xrefPos Xref position
+     * @param string $absolutePath Absolute file path for logging
+     * @param array<int> $visitedPositions Track visited positions to prevent cycles
+     * @return PDFXrefTable Merged xref table including all Prev references
+     */
+    private function parseXrefTableFromFile(
+        string $filePath,
+        FileIOInterface $fileIO,
+        int $fileSize,
+        int $xrefPos,
+        string $absolutePath,
+        array &$visitedPositions = []
+    ): PDFXrefTable {
+        // Check for cycles
+        if (in_array($xrefPos, $visitedPositions, true)) {
+            $this->logger->warning('Circular Prev reference detected, breaking cycle', [
+                'file_path' => $absolutePath,
+                'xref_position' => $xrefPos,
+                'visited_positions' => $visitedPositions,
+            ]);
+            // Return empty table to break the cycle
+            return new PDFXrefTable();
+        }
+
+        $visitedPositions[] = $xrefPos;
+
+        // Read xref table and trailer
+        $readSize = min(131072, $fileSize - $xrefPos);
+        $xrefAndTrailer = $fileIO->readFileChunk($filePath, $readSize, $xrefPos);
+
+        // Check if it's a traditional xref table or xref stream
+        $isTraditionalXref = strpos($xrefAndTrailer, 'xref') === 0;
+
+        if (!$isTraditionalXref) {
+            // This is an xref stream
+            return $this->parseXrefStreamFromFile($filePath, $fileIO, $fileSize, $xrefPos, $absolutePath, $visitedPositions);
+        }
+
+        $xrefEnd = strpos($xrefAndTrailer, 'trailer');
+        if ($xrefEnd === false) {
+            // If trailer not found in chunk, read more
+            $readSize = $fileSize - $xrefPos;
+            $xrefAndTrailer = $fileIO->readFileChunk($filePath, $readSize, $xrefPos);
+            $xrefEnd = strpos($xrefAndTrailer, 'trailer');
+            if ($xrefEnd === false) {
+                throw new FpdfException('Invalid PDF: trailer not found');
+            }
+        }
+
+        // Parse this xref table
+        $xrefContent = substr($xrefAndTrailer, 4, $xrefEnd - 4); // Skip "xref" keyword
+        $xrefTable = new PDFXrefTable();
+        $xrefTable->parseFromString($xrefContent);
+
+        // Parse trailer to get Prev offset
+        $trailerSection = substr($xrefAndTrailer, $xrefEnd);
+        $tempDocument = new PDFDocument();
+        $prevOffset = $this->parseTrailer($trailerSection, $tempDocument);
+
+        // If there's a Prev reference, parse it recursively and merge
+        if ($prevOffset !== null && $prevOffset > 0) {
+            $this->logger->debug('Found Prev reference, parsing previous xref table', [
+                'file_path' => $absolutePath,
+                'prev_offset' => $prevOffset,
+            ]);
+
+            $prevXrefTable = $this->parseXrefTableFromFile($filePath, $fileIO, $fileSize, $prevOffset, $absolutePath, $visitedPositions);
+            // Merge entries: merge previous into current, so newer entries (current) override older ones (prev)
+            $xrefTable->mergeEntries($prevXrefTable);
+        }
+
+        return $xrefTable;
+    }
+
+    /**
+     * Parse xref table from content at given offset, handling Prev references recursively.
+     *
+     * @param string $content PDF content
+     * @param int $xrefPos Xref position
+     * @param array<int> $visitedPositions Track visited positions to prevent cycles
+     * @return PDFXrefTable Merged xref table including all Prev references
+     */
+    private function parseXrefTable(string $content, int $xrefPos, array &$visitedPositions = []): PDFXrefTable
+    {
+        // Check for cycles
+        if (in_array($xrefPos, $visitedPositions, true)) {
+            $this->logger->warning('Circular Prev reference detected, breaking cycle', [
+                'xref_position' => $xrefPos,
+                'visited_positions' => $visitedPositions,
+            ]);
+            // Return empty table to break the cycle
+            return new PDFXrefTable();
+        }
+
+        $visitedPositions[] = $xrefPos;
+        // Check if it's a traditional xref table or xref stream
+        $isTraditionalXref = strpos($content, 'xref', $xrefPos) === $xrefPos;
+
+        if (!$isTraditionalXref) {
+            // This is an xref stream
+            $visitedPositions = [];
+            return $this->parseXrefStream($content, $xrefPos, $visitedPositions);
+        }
+
+        $xrefEnd = strpos($content, 'trailer', $xrefPos);
+        if ($xrefEnd === false) {
+            throw new FpdfException('Invalid PDF: trailer not found');
+        }
+
+        // Parse this xref table
+        $xrefContent = substr($content, $xrefPos + 4, $xrefEnd - $xrefPos - 4); // Skip "xref" keyword
+        $xrefTable = new PDFXrefTable();
+        $xrefTable->parseFromString($xrefContent);
+
+        // Parse trailer to get Prev offset
+        $trailerSection = substr($content, $xrefEnd);
+        $tempDocument = new PDFDocument();
+        $prevOffset = $this->parseTrailer($trailerSection, $tempDocument);
+
+        // If there's a Prev reference, parse it recursively and merge
+        if ($prevOffset !== null && $prevOffset > 0) {
+            $this->logger->debug('Found Prev reference, parsing previous xref table', [
+                'prev_offset' => $prevOffset,
+            ]);
+
+            $prevXrefTable = $this->parseXrefTable($content, $prevOffset);
+            // Merge entries: merge previous into current, so newer entries (current) override older ones (prev)
+            $xrefTable->mergeEntries($prevXrefTable);
+        }
+
+        return $xrefTable;
     }
 
     /**
@@ -321,15 +505,18 @@ final class PDFParser
             'xref_position' => $xrefPos,
         ]);
 
-        $xrefEnd = strpos($content, 'trailer', $xrefPos);
-        if ($xrefEnd === false) {
-            $this->logger->error('Trailer not found in content');
-            throw new FpdfException('Invalid PDF: trailer not found');
-        }
+        // Check if it's a traditional xref table or xref stream
+        $isTraditionalXref = strpos($content, 'xref', $xrefPos) === $xrefPos;
 
-        $xrefContent = substr($content, $xrefPos + 4, $xrefEnd - $xrefPos - 4);
-        $xrefTable = new \PXP\PDF\Fpdf\Xref\PDFXrefTable();
-        $xrefTable->parseFromString($xrefContent);
+        if (!$isTraditionalXref) {
+            // This is an xref stream
+            $visitedPositions = [];
+            $xrefTable = $this->parseXrefStream($content, $xrefPos, $visitedPositions);
+        } else {
+            // Parse xref table and handle Prev references recursively
+            $visitedPositions = [];
+            $xrefTable = $this->parseXrefTable($content, $xrefPos, $visitedPositions);
+        }
 
         $xrefEntryCount = count($xrefTable->getAllEntries());
         $this->logger->debug('Xref table parsed', [
@@ -352,9 +539,28 @@ final class PDFParser
         // The document's xref table will be rebuilt during serialization if needed.
         // Copying all entries (potentially 20,000+ for large PDFs) causes memory issues.
 
-        // Parse trailer
-        $trailerSection = substr($content, $xrefEnd);
-        $this->parseTrailer($trailerSection, $document);
+        // Parse trailer (for traditional xref) or extract from stream dictionary (for xref stream)
+        if ($isTraditionalXref) {
+            $xrefEnd = strpos($content, 'trailer', $xrefPos);
+            if ($xrefEnd !== false) {
+                $trailerSection = substr($content, $xrefEnd);
+                $this->parseTrailer($trailerSection, $document);
+            }
+        } else {
+            // For xref stream, trailer info is in the stream dictionary
+            $chunk = substr($content, $xrefPos, 100);
+            if (preg_match('/(\d+)\s+(\d+)\s+obj/', $chunk, $matches)) {
+                $objectNumber = (int) $matches[1];
+                $generation = (int) $matches[2];
+                $objectContent = $this->extractObjectContent($content, $xrefPos, $objectNumber, $generation);
+                if ($objectContent !== null) {
+                    $stream = $this->parseObject($objectContent, $objectNumber);
+                    if ($stream instanceof \PXP\PDF\Fpdf\Stream\PDFStream) {
+                        $this->parseTrailerFromStreamDict($stream->getDictionary(), $document);
+                    }
+                }
+            }
+        }
 
         $this->logger->debug('Trailer parsed', [
             'root_object' => $document->getTrailer()->getRoot()?->getObjectNumber(),
@@ -384,26 +590,45 @@ final class PDFParser
     }
 
     /**
-     * Find xref table position.
+     * Find xref table position by searching for startxref keyword.
+     *
+     * @param string $content PDF content
+     * @return int|false Xref position or false if not found
      */
     private function findXrefTable(string $content): int|false
     {
-        $pos = 0;
-        while (($pos = strpos($content, 'xref', $pos)) !== false) {
-            $afterXref = substr($content, $pos + 4, 20);
-            if (preg_match('/^\s*\r?\n\s*\d+\s+\d+\s*\r?\n/', $afterXref)) {
-                return $pos;
-            }
-            $pos += 4;
+        // Search for startxref pattern: startxref[\s]*[\r\n]+([0-9]+)[\s]*[\r\n]+%%EOF
+        $startxrefMatches = [];
+        if (
+            preg_match_all(
+                '/(?<=[\r\n])startxref[\s]*[\r\n]+([0-9]+)[\s]*[\r\n]+%%EOF/i',
+                $content,
+                $startxrefMatches,
+                \PREG_SET_ORDER
+            ) > 0
+        ) {
+            // Use the last match (most recent xref)
+            $lastMatch = $startxrefMatches[\count($startxrefMatches) - 1];
+            $startxrefOffset = (int) $lastMatch[1];
+
+            $this->logger->debug('Startxref found in content', [
+                'startxref_offset' => $startxrefOffset,
+            ]);
+
+            return $startxrefOffset;
         }
 
         return false;
     }
 
     /**
-     * Parse trailer section.
+     * Parse trailer section and extract all relevant fields including Prev offset.
+     *
+     * @param string $trailerSection The trailer section content
+     * @param PDFDocument $document The document to update
+     * @return int|null Previous xref offset if found, null otherwise
      */
-    private function parseTrailer(string $trailerSection, PDFDocument $document): void
+    private function parseTrailer(string $trailerSection, PDFDocument $document): ?int
     {
         $rootMatch = [];
         if (preg_match('/\/Root\s+(\d+)\s+(\d+)\s+R/', $trailerSection, $rootMatch)) {
@@ -419,6 +644,27 @@ final class PDFParser
         if (preg_match('/\/Size\s+(\d+)/', $trailerSection, $sizeMatch)) {
             $document->getTrailer()->setSize((int) $sizeMatch[1]);
         }
+
+        $encryptMatch = [];
+        if (preg_match('/\/Encrypt\s+(\d+)\s+(\d+)\s+R/', $trailerSection, $encryptMatch)) {
+            $document->getTrailer()->setEncrypt(new PDFReference((int) $encryptMatch[1], (int) $encryptMatch[2]));
+        }
+
+        $idMatch = [];
+        if (preg_match('/\/ID\s*\[\s*<\s*([^>]*)\s*>\s*<\s*([^>]*)\s*>\s*\]/i', $trailerSection, $idMatch)) {
+            $document->getTrailer()->setId([$idMatch[1], $idMatch[2]]);
+        }
+
+        // Extract Prev offset for incremental updates
+        $prevMatch = [];
+        if (preg_match('/\/Prev\s+(\d+)/i', $trailerSection, $prevMatch)) {
+            $prevOffset = (int) $prevMatch[1];
+            if ($prevOffset > 0) {
+                return $prevOffset;
+            }
+        }
+
+        return null;
     }
 
     /**
@@ -541,7 +787,8 @@ final class PDFParser
             }
 
             $keyEnd = $pos + 1;
-            while ($keyEnd < $length && !preg_match('/\s/', $content[$keyEnd]) && $content[$keyEnd] !== '/') {
+            // Stop at whitespace, '/', or '[' (start of array value)
+            while ($keyEnd < $length && !preg_match('/\s/', $content[$keyEnd]) && $content[$keyEnd] !== '/' && $content[$keyEnd] !== '[') {
                 $keyEnd++;
             }
 
@@ -892,5 +1139,259 @@ final class PDFParser
         // Otherwise read exact content
         $objectContent = $fileIO->readFileChunk($filePath, $objectLength, $objStartAbsolute);
         return $objectContent;
+    }
+
+    /**
+     * Parse xref stream from file at given offset, handling Prev references recursively.
+     *
+     * @param string $filePath PDF file path
+     * @param FileIOInterface $fileIO File IO interface
+     * @param int $fileSize File size in bytes
+     * @param int $xrefPos Xref stream object position
+     * @param string $absolutePath Absolute file path for logging
+     * @param array<int> $visitedPositions Track visited positions to prevent cycles
+     * @return PDFXrefTable Merged xref table including all Prev references
+     */
+    private function parseXrefStreamFromFile(
+        string $filePath,
+        FileIOInterface $fileIO,
+        int $fileSize,
+        int $xrefPos,
+        string $absolutePath,
+        array &$visitedPositions = []
+    ): PDFXrefTable {
+        // Check for cycles
+        if (in_array($xrefPos, $visitedPositions, true)) {
+            $this->logger->warning('Circular Prev reference detected in xref stream, breaking cycle', [
+                'file_path' => $absolutePath,
+                'xref_position' => $xrefPos,
+                'visited_positions' => $visitedPositions,
+            ]);
+            // Return empty table to break the cycle
+            return new PDFXrefTable();
+        }
+
+        $visitedPositions[] = $xrefPos;
+        // Read chunk to find object number
+        $readSize = min(100, $fileSize - $xrefPos);
+        $chunk = $fileIO->readFileChunk($filePath, $readSize, $xrefPos);
+
+        // Extract object number from "obj" marker
+        if (preg_match('/(\d+)\s+(\d+)\s+obj/', $chunk, $matches)) {
+            $objectNumber = (int) $matches[1];
+            $generation = (int) $matches[2];
+        } else {
+            // Fallback: try to find object number
+            $objectNumber = 0;
+            $generation = 0;
+        }
+
+        // Read object content
+        $objectContent = $this->extractObjectContentFromFile($filePath, $fileIO, $xrefPos, $objectNumber, $generation);
+        if ($objectContent === null) {
+            throw new FpdfException('Unable to extract xref stream object');
+        }
+
+        // Parse the stream object
+        $stream = $this->parseObject($objectContent, $objectNumber);
+        if (!($stream instanceof \PXP\PDF\Fpdf\Stream\PDFStream)) {
+            throw new FpdfException('Xref stream object is not a stream');
+        }
+
+        // Get decoded stream data
+        $streamData = $stream->getDecodedData();
+        $dict = $stream->getDictionary();
+
+        // Convert dictionary to format expected by XrefStreamParser
+        $streamDict = $this->convertDictionaryToArray($dict);
+
+        // Parse the stream
+        $xrefTable = new PDFXrefTable();
+        $xrefStreamParser = new XrefStreamParser();
+        $prevOffset = $xrefStreamParser->parseStream($streamData, $streamDict, $xrefTable);
+
+        // If there's a Prev reference, parse it recursively and merge
+        if ($prevOffset !== null && $prevOffset > 0) {
+            $this->logger->debug('Found Prev reference in xref stream, parsing previous xref', [
+                'file_path' => $absolutePath,
+                'prev_offset' => $prevOffset,
+            ]);
+
+            // Check if previous is traditional or stream
+            $readSize = min(100, $fileSize - $prevOffset);
+            $prevChunk = $fileIO->readFileChunk($filePath, $readSize, $prevOffset);
+            $isPrevTraditional = strpos($prevChunk, 'xref') === 0;
+
+            if ($isPrevTraditional) {
+                $prevXrefTable = $this->parseXrefTableFromFile($filePath, $fileIO, $fileSize, $prevOffset, $absolutePath, $visitedPositions);
+            } else {
+                $prevXrefTable = $this->parseXrefStreamFromFile($filePath, $fileIO, $fileSize, $prevOffset, $absolutePath, $visitedPositions);
+            }
+
+            // Merge entries: merge previous into current, so newer entries (current) override older ones (prev)
+            $xrefTable->mergeEntries($prevXrefTable);
+        }
+
+        return $xrefTable;
+    }
+
+    /**
+     * Parse xref stream from content at given offset, handling Prev references recursively.
+     *
+     * @param string $content PDF content
+     * @param int $xrefPos Xref stream object position
+     * @param array<int> $visitedPositions Track visited positions to prevent cycles
+     * @return PDFXrefTable Merged xref table including all Prev references
+     */
+    private function parseXrefStream(string $content, int $xrefPos, array &$visitedPositions = []): PDFXrefTable
+    {
+        // Check for cycles
+        if (in_array($xrefPos, $visitedPositions, true)) {
+            $this->logger->warning('Circular Prev reference detected in xref stream, breaking cycle', [
+                'xref_position' => $xrefPos,
+                'visited_positions' => $visitedPositions,
+            ]);
+            // Return empty table to break the cycle
+            return new PDFXrefTable();
+        }
+
+        $visitedPositions[] = $xrefPos;
+        // Extract object number from content at position
+        $chunk = substr($content, $xrefPos, 100);
+        if (preg_match('/(\d+)\s+(\d+)\s+obj/', $chunk, $matches)) {
+            $objectNumber = (int) $matches[1];
+            $generation = (int) $matches[2];
+        } else {
+            // Fallback
+            $objectNumber = 0;
+            $generation = 0;
+        }
+
+        // Extract object content
+        $objectContent = $this->extractObjectContent($content, $xrefPos, $objectNumber, $generation);
+        if ($objectContent === null) {
+            throw new FpdfException('Unable to extract xref stream object');
+        }
+
+        // Parse the stream object
+        $stream = $this->parseObject($objectContent, $objectNumber);
+        if (!($stream instanceof \PXP\PDF\Fpdf\Stream\PDFStream)) {
+            throw new FpdfException('Xref stream object is not a stream');
+        }
+
+        // Get decoded stream data
+        $streamData = $stream->getDecodedData();
+        $dict = $stream->getDictionary();
+
+        // Convert dictionary to format expected by XrefStreamParser
+        $streamDict = $this->convertDictionaryToArray($dict);
+
+        // Parse the stream
+        $xrefTable = new PDFXrefTable();
+        $xrefStreamParser = new XrefStreamParser();
+        $prevOffset = $xrefStreamParser->parseStream($streamData, $streamDict, $xrefTable);
+
+        // If there's a Prev reference, parse it recursively and merge
+        if ($prevOffset !== null && $prevOffset > 0) {
+            $this->logger->debug('Found Prev reference in xref stream, parsing previous xref', [
+                'prev_offset' => $prevOffset,
+            ]);
+
+            // Check if previous is traditional or stream
+            $isPrevTraditional = strpos($content, 'xref', $prevOffset) === $prevOffset;
+
+            if ($isPrevTraditional) {
+                $prevXrefTable = $this->parseXrefTable($content, $prevOffset, $visitedPositions);
+            } else {
+                $prevXrefTable = $this->parseXrefStream($content, $prevOffset, $visitedPositions);
+            }
+
+            // Merge entries: merge previous into current, so newer entries (current) override older ones (prev)
+            $xrefTable->mergeEntries($prevXrefTable);
+        }
+
+        return $xrefTable;
+    }
+
+    /**
+     * Convert PDFDictionary to array format expected by XrefStreamParser.
+     *
+     * @param \PXP\PDF\Fpdf\Object\Base\PDFDictionary $dict Dictionary to convert
+     * @return array Dictionary in array format
+     */
+    private function convertDictionaryToArray(\PXP\PDF\Fpdf\Object\Base\PDFDictionary $dict): array
+    {
+        $result = [];
+        $entries = $dict->getAllEntries();
+
+        foreach ($entries as $key => $value) {
+            // Keys in getAllEntries() don't have leading '/', so add it
+            $keyWithSlash = '/' . ltrim($key, '/');
+            $result[] = ['/', $keyWithSlash];
+
+            if ($value instanceof PDFName) {
+                $result[] = ['/', '/' . $value->getName()];
+            } elseif ($value instanceof PDFNumber) {
+                $result[] = ['numeric', (string) $value->getValue()];
+            } elseif ($value instanceof PDFReference) {
+                $result[] = ['objref', (string) $value->getObjectNumber() . '_' . (string) $value->getGenerationNumber()];
+            } elseif ($value instanceof \PXP\PDF\Fpdf\Object\Base\PDFArray) {
+                $arrayItems = [];
+                foreach ($value->getAll() as $item) {
+                    if ($item instanceof PDFNumber) {
+                        $arrayItems[] = ['numeric', (string) $item->getValue()];
+                    } elseif ($item instanceof PDFName) {
+                        $arrayItems[] = ['/', '/' . $item->getName()];
+                    }
+                }
+                $result[] = ['[', $arrayItems];
+            } elseif ($value instanceof \PXP\PDF\Fpdf\Object\Base\PDFDictionary) {
+                $nestedDict = [];
+                $nestedEntries = $value->getAllEntries();
+                foreach ($nestedEntries as $nestedKey => $nestedValue) {
+                    $nestedKeyWithSlash = '/' . ltrim($nestedKey, '/');
+                    $nestedDict[] = ['/', $nestedKeyWithSlash];
+                    if ($nestedValue instanceof PDFNumber) {
+                        $nestedDict[] = ['numeric', (string) $nestedValue->getValue()];
+                    } elseif ($nestedValue instanceof PDFName) {
+                        $nestedDict[] = ['/', '/' . $nestedValue->getName()];
+                    }
+                }
+                $result[] = ['<<', $nestedDict];
+            } else {
+                $result[] = ['null', null];
+            }
+        }
+
+        return $result;
+    }
+
+    /**
+     * Parse trailer information from xref stream dictionary.
+     *
+     * @param \PXP\PDF\Fpdf\Object\Base\PDFDictionary $dict Stream dictionary
+     * @param PDFDocument $document Document to update
+     */
+    private function parseTrailerFromStreamDict(\PXP\PDF\Fpdf\Object\Base\PDFDictionary $dict, PDFDocument $document): void
+    {
+        $sizeEntry = $dict->getEntry('/Size');
+        if ($sizeEntry instanceof PDFNumber) {
+            $document->getTrailer()->setSize((int) $sizeEntry->getValue());
+        }
+
+        $rootEntry = $dict->getEntry('/Root');
+        if ($rootEntry instanceof PDFReference) {
+            $document->getTrailer()->setRoot($rootEntry);
+        }
+
+        $infoEntry = $dict->getEntry('/Info');
+        if ($infoEntry instanceof PDFReference) {
+            $document->getTrailer()->setInfo($infoEntry);
+        }
+
+        $encryptEntry = $dict->getEntry('/Encrypt');
+        if ($encryptEntry instanceof PDFReference) {
+            $document->getTrailer()->setEncrypt($encryptEntry);
+        }
     }
 }

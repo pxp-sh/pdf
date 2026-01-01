@@ -51,6 +51,7 @@ class TestCase extends \PHPUnit\Framework\TestCase
 
     /**
      * Get the shared cache instance for tests.
+     * Note: Cache is cleared before each test run to ensure consistent results.
      */
     public static function getCache(): CacheItemPoolInterface
     {
@@ -60,6 +61,8 @@ class TestCase extends \PHPUnit\Framework\TestCase
                 mkdir($cacheDir, 0777, true);
             }
             self::$cache = new FilesystemAdapter('', 0, $cacheDir);
+            // Clear cache to ensure consistent test results across runs
+            self::$cache->clear();
         }
 
         return self::$cache;

@@ -197,30 +197,54 @@ final class PDFSplitter
     {
         $this->logger->debug('Determining page count');
 
-        $pagesNode = $this->document->getPages();
-        if ($pagesNode === null) {
-            $this->logger->warning('Pages node not found');
+        try {
+            // Use getAllPages() to count actual pages (handles nested Pages trees)
+            $allPages = $this->document->getAllPages(true);
+            $count = count($allPages);
+            $this->logger->debug('Page count determined', [
+                'page_count' => $count,
+            ]);
+            return $count;
+        } catch (FpdfException $e) {
+            // Fallback: Try to read /Count field from Pages dictionary
+            $this->logger->warning('Failed to get pages recursively, falling back to /Count field', [
+                'error' => $e->getMessage(),
+            ]);
+
+            $pagesNode = $this->document->getPages();
+            if ($pagesNode === null) {
+                $this->logger->warning('Pages node not found');
+                return 0;
+            }
+
+            $pagesDict = $pagesNode->getValue();
+            if (!$pagesDict instanceof PDFDictionary) {
+                $this->logger->warning('Pages dictionary not found');
+                return 0;
+            }
+
+            $countEntry = $pagesDict->getEntry('/Count');
+            if ($countEntry instanceof \PXP\PDF\Fpdf\Object\Base\PDFNumber) {
+                $count = (int) $countEntry->getValue();
+                $this->logger->debug('Page count determined from /Count field', [
+                    'page_count' => $count,
+                ]);
+                return $count;
+            }
+
+            // Last fallback: count direct kids (non-recursive)
+            $kids = $pagesDict->getEntry('/Kids');
+            if ($kids instanceof \PXP\PDF\Fpdf\Object\Base\PDFArray) {
+                $count = $kids->count();
+                $this->logger->debug('Page count determined from Kids array count', [
+                    'page_count' => $count,
+                ]);
+                return $count;
+            }
+
+            $this->logger->warning('Could not determine page count');
             return 0;
         }
-
-        $pagesDict = $pagesNode->getValue();
-        if (!$pagesDict instanceof PDFDictionary) {
-            $this->logger->warning('Pages dictionary not found');
-            return 0;
-        }
-
-        $kids = $pagesDict->getEntry('/Kids');
-        if (!$kids instanceof \PXP\PDF\Fpdf\Object\Base\PDFArray) {
-            $this->logger->warning('Kids array not found');
-            return 0;
-        }
-
-        $count = $kids->count();
-        $this->logger->debug('Page count determined', [
-            'page_count' => $count,
-        ]);
-
-        return $count;
     }
 
     /**
