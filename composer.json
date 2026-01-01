@@ -17,9 +17,13 @@
         "ergebnis/license": "^2.7",
         "friendsofphp/php-cs-fixer": "^3.92",
         "infection/infection": "^0.32.0",
+        "monolog/monolog": "^3.0",
         "phpbench/phpbench": "^1.4",
         "phpstan/phpstan": "^2.1",
-        "phpunit/phpunit": "^12.5"
+        "phpunit/phpunit": "^12.5",
+        "fakerphp/faker": "^1.24",
+        "symfony/cache": "^7.0",
+        "symfony/event-dispatcher": "^7.0"
     },
     "minimum-stability": "dev",
     "prefer-stable": true,
@@ -43,12 +47,12 @@
         "cs:check": "@php vendor/bin/php-cs-fixer fix --dry-run --diff",
         "cs:fix": "@php vendor/bin/php-cs-fixer fix",
         "phpstan": "@php vendor/bin/phpstan analyse",
-        "test": "@php vendor/bin/phpunit --testdox",
-        "test:all": "@php vendor/bin/phpunit --testdox",
-        "test:coverage": "@php vendor/bin/phpunit --testdox --coverage-text",
-        "test:feature": "@php vendor/bin/phpunit --testdox --testsuite Feature",
-        "test:integration": "@php vendor/bin/phpunit --testdox --testsuite Integration",
-        "test:unit": "@php vendor/bin/phpunit --testdox --testsuite Unit"
+        "test": "@php vendor/bin/phpunit --testdox --colors=always",
+        "test:all": "@php vendor/bin/phpunit --testdox --colors=always",
+        "test:coverage": "@php vendor/bin/phpunit --testdox --colors=always --coverage-text",
+        "test:feature": "@php vendor/bin/phpunit --testdox --colors=always --testsuite Feature",
+        "test:integration": "@php vendor/bin/phpunit --testdox --colors=always --testsuite Integration",
+        "test:unit": "@php vendor/bin/phpunit --testdox --colors=always --testsuite Unit"
     },
     "scripts-descriptions": {
         "cs:check": "Check the code style",
