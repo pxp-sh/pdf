@@ -3,7 +3,7 @@
 declare(strict_types=1);
 
 /**
- * Copyright (c) 2025 PXP
+ * Copyright (c) 2025-2026 PXP
  *
  * For the full copyright and license information, please view
  * the LICENSE file that was distributed with this source code.
@@ -31,6 +31,8 @@ $license->save();
 $finder = Finder::create()
     ->in(__DIR__)
     ->append(glob(__DIR__ . '/*.php'))
+    ->exclude('vendor')
+    ->exclude('var')
     ->append(glob(__DIR__ . '/.*.php'));
 
 return (new Config())
