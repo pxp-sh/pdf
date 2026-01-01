@@ -3,7 +3,7 @@
 declare(strict_types=1);
 
 /**
- * Copyright (c) 2025 PXP
+ * Copyright (c) 2025-2026 PXP
  *
  * For the full copyright and license information, please view
  * the LICENSE file that was distributed with this source code.
@@ -14,7 +14,7 @@ declare(strict_types=1);
 
 namespace Test\Unit\PDF\Fpdf\Font;
 
-use PHPUnit\Framework\TestCase;
+use Test\TestCase;
 use PXP\PDF\Fpdf\Exception\FpdfException;
 use PXP\PDF\Fpdf\Font\FontManager;
 
@@ -84,6 +84,35 @@ final class FontManagerTest extends TestCase
         $this->assertArrayHasKey('test', $fonts);
     }
 
+    public function testDefaultCharWidthIsConfigurable(): void
+    {
+        $fontFile = $this->tempDir . '/test2.php';
+        file_put_contents($fontFile, '<?php $name="TestFont2"; $type="Core";');
+
+        $fontManager = new FontManager($this->tempDir, 300);
+        $fontManager->addFont('test2', '', 'test2.php');
+
+        $fonts = $fontManager->getAllFonts();
+        $this->assertArrayHasKey('test2', $fonts);
+        $this->assertSame(300, $fontManager->getDefaultCharWidth());
+        $this->assertSame(300, $fonts['test2']['cw']['A']);
+    }
+
+    public function testPartialCwFillsWithAverage(): void
+    {
+        $fontFile = $this->tempDir . '/test3.php';
+
+        file_put_contents($fontFile, '<?php $name="TestFont3"; $type="Core"; $cw=[\'a\'=>400,\'b\'=>600];');
+
+        $fontManager = new FontManager($this->tempDir);
+        $fontManager->addFont('test3', '', 'test3.php');
+
+        $fonts = $fontManager->getAllFonts();
+        $this->assertArrayHasKey('test3', $fonts);
+
+        $this->assertSame(500, $fonts['test3']['cw']['C']);
+    }
+
     public function testAddFontNormalizesStyleIB(): void
     {
         $fontFile = $this->tempDir . '/testbi.php';
@@ -139,8 +168,8 @@ final class FontManagerTest extends TestCase
 
     public function testGetFontNormalizesStyleIB(): void
     {
-        // This test verifies that IB style is normalized to BI
-        // Since helvetica is a core font, it will try to load it
+
+
         $fontManager = new FontManager($this->tempDir);
         $this->expectException(FpdfException::class);
         $this->expectExceptionMessage('Could not include font definition file:');
@@ -149,7 +178,7 @@ final class FontManagerTest extends TestCase
 
     public function testGetFontWithSymbolRemovesStyle(): void
     {
-        // Symbol font removes style, so it will try to load symbol.php
+
         $fontManager = new FontManager($this->tempDir);
         $this->expectException(FpdfException::class);
         $this->expectExceptionMessage('Could not include font definition file:');

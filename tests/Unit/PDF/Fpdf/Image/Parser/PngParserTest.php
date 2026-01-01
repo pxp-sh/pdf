@@ -3,7 +3,7 @@
 declare(strict_types=1);
 
 /**
- * Copyright (c) 2025 PXP
+ * Copyright (c) 2025-2026 PXP
  *
  * For the full copyright and license information, please view
  * the LICENSE file that was distributed with this source code.
@@ -14,9 +14,10 @@ declare(strict_types=1);
 
 namespace Test\Unit\PDF\Fpdf\Image\Parser;
 
-use PHPUnit\Framework\TestCase;
+use Test\TestCase;
 use PXP\PDF\Fpdf\Exception\FpdfException;
 use PXP\PDF\Fpdf\Image\Parser\PngParser;
+use PXP\PDF\Fpdf\IO\FileIO;
 
 /**
  * @covers \PXP\PDF\Fpdf\Image\Parser\PngParser
@@ -27,7 +28,8 @@ final class PngParserTest extends TestCase
 
     protected function setUp(): void
     {
-        $this->parser = new PngParser();
+        $fileIO = self::createFileIO();
+        $this->parser = new PngParser($fileIO, $fileIO);
     }
 
     public function testSupportsPng(): void
@@ -47,7 +49,7 @@ final class PngParserTest extends TestCase
     public function testParseThrowsExceptionForNonExistentFile(): void
     {
         $this->expectException(FpdfException::class);
-        $this->expectExceptionMessage('Can\'t open image file:');
+        $this->expectExceptionMessage('File not found or not readable:');
         $this->parser->parse('/nonexistent/file.png');
     }
 

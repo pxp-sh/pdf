@@ -3,7 +3,7 @@
 declare(strict_types=1);
 
 /**
- * Copyright (c) 2025 PXP
+ * Copyright (c) 2025-2026 PXP
  *
  * For the full copyright and license information, please view
  * the LICENSE file that was distributed with this source code.
@@ -14,9 +14,10 @@ declare(strict_types=1);
 
 namespace Test\Unit\PDF\Fpdf\Image;
 
-use PHPUnit\Framework\TestCase;
+use Test\TestCase;
 use PXP\PDF\Fpdf\Exception\FpdfException;
 use PXP\PDF\Fpdf\Image\ImageHandler;
+use PXP\PDF\Fpdf\IO\FileIO;
 
 /**
  * @covers \PXP\PDF\Fpdf\Image\ImageHandler
@@ -27,7 +28,13 @@ final class ImageHandlerTest extends TestCase
 
     protected function setUp(): void
     {
-        $this->imageHandler = new ImageHandler();
+        $fileIO = self::createFileIO();
+        $this->imageHandler = new ImageHandler(
+            $fileIO,
+            $fileIO,
+            self::getLogger(),
+            self::getCache()
+        );
     }
 
     public function testAddImageThrowsExceptionForEmptyFileName(): void
@@ -53,8 +60,8 @@ final class ImageHandlerTest extends TestCase
 
     public function testAddImageNormalizesJpegToJpg(): void
     {
-        // This will fail because file doesn't exist, but we can test the normalization
-        // The error message will contain 'jpeg' in the filename, but the type is normalized to 'jpg'
+
+
         $this->expectException(FpdfException::class);
         $this->expectExceptionMessage('Missing or incorrect image file:');
         $this->imageHandler->addImage('test.jpeg', 'jpeg');
@@ -72,8 +79,8 @@ final class ImageHandlerTest extends TestCase
 
     public function testAddImageReturnsSameInfoForSameFile(): void
     {
-        // This test would require actual image files
-        // For now, we test the structure
+
+
         $this->assertTrue(true);
     }
 }

@@ -3,7 +3,7 @@
 declare(strict_types=1);
 
 /**
- * Copyright (c) 2025 PXP
+ * Copyright (c) 2025-2026 PXP
  *
  * For the full copyright and license information, please view
  * the LICENSE file that was distributed with this source code.
@@ -16,12 +16,14 @@ namespace PXP\PDF\Fpdf\Output;
 
 use PXP\PDF\Fpdf\Enum\OutputDestination;
 use PXP\PDF\Fpdf\Exception\FpdfException;
+use PXP\PDF\Fpdf\IO\FileWriterInterface;
 use PXP\PDF\Fpdf\Text\TextRenderer;
 
 final class OutputHandler
 {
     public function __construct(
         private TextRenderer $textRenderer,
+        private FileWriterInterface $fileWriter,
     ) {
     }
 
@@ -64,19 +66,7 @@ final class OutputHandler
 
     private function outputFile(string $buffer, string $name): string
     {
-        $handle = fopen($name, 'wb');
-        if ($handle === false) {
-            throw new FpdfException('Unable to create output file: ' . $name);
-        }
-
-        try {
-            $written = fwrite($handle, $buffer);
-            if ($written === false || $written !== strlen($buffer)) {
-                throw new FpdfException('Unable to write to output file: ' . $name);
-            }
-        } finally {
-            fclose($handle);
-        }
+        $this->fileWriter->writeFile($name, $buffer);
 
         return '';
     }

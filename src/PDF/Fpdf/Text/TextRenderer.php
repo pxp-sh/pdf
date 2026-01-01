@@ -3,7 +3,7 @@
 declare(strict_types=1);
 
 /**
- * Copyright (c) 2025 PXP
+ * Copyright (c) 2025-2026 PXP
  *
  * For the full copyright and license information, please view
  * the LICENSE file that was distributed with this source code.
@@ -60,18 +60,18 @@ final class TextRenderer
         while ($i < $nb) {
             $c1 = ord($s[$i++]);
             if ($c1 >= 224) {
-                // 3-byte character
+
                 $c2 = ord($s[$i++]);
                 $c3 = ord($s[$i++]);
                 $res .= chr((($c1 & 0x0F) << 4) + (($c2 & 0x3C) >> 2));
                 $res .= chr((($c2 & 0x03) << 6) + ($c3 & 0x3F));
             } elseif ($c1 >= 192) {
-                // 2-byte character
+
                 $c2 = ord($s[$i++]);
                 $res .= chr(($c1 & 0x1C) >> 2);
                 $res .= chr((($c1 & 0x03) << 6) + ($c2 & 0x3F));
             } else {
-                // Single-byte character
+
                 $res .= "\0" . chr($c1);
             }
         }

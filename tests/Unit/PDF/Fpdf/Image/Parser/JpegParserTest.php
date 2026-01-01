@@ -3,7 +3,7 @@
 declare(strict_types=1);
 
 /**
- * Copyright (c) 2025 PXP
+ * Copyright (c) 2025-2026 PXP
  *
  * For the full copyright and license information, please view
  * the LICENSE file that was distributed with this source code.
@@ -14,9 +14,10 @@ declare(strict_types=1);
 
 namespace Test\Unit\PDF\Fpdf\Image\Parser;
 
-use PHPUnit\Framework\TestCase;
+use Test\TestCase;
 use PXP\PDF\Fpdf\Exception\FpdfException;
 use PXP\PDF\Fpdf\Image\Parser\JpegParser;
+use PXP\PDF\Fpdf\IO\FileIO;
 
 /**
  * @covers \PXP\PDF\Fpdf\Image\Parser\JpegParser
@@ -27,7 +28,7 @@ final class JpegParserTest extends TestCase
 
     protected function setUp(): void
     {
-        $this->parser = new JpegParser();
+        $this->parser = new JpegParser(self::createFileIO());
     }
 
     public function testSupportsJpg(): void
@@ -59,8 +60,8 @@ final class JpegParserTest extends TestCase
 
     public function testParseThrowsExceptionForNonJpegFile(): void
     {
-        // Create a temporary file that's not a JPEG
-        // getimagesize will return false for invalid image, which triggers "Missing or incorrect" error first
+
+
         $tempFile = sys_get_temp_dir() . '/test_' . uniqid() . '.jpg';
         file_put_contents($tempFile, 'not a jpeg');
 

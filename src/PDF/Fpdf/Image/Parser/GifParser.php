@@ -3,7 +3,7 @@
 declare(strict_types=1);
 
 /**
- * Copyright (c) 2025 PXP
+ * Copyright (c) 2025-2026 PXP
  *
  * For the full copyright and license information, please view
  * the LICENSE file that was distributed with this source code.
@@ -15,11 +15,13 @@ declare(strict_types=1);
 namespace PXP\PDF\Fpdf\Image\Parser;
 
 use PXP\PDF\Fpdf\Exception\FpdfException;
+use PXP\PDF\Fpdf\IO\StreamFactoryInterface;
 
 final class GifParser implements ImageParserInterface
 {
     public function __construct(
         private PngParser $pngParser,
+        private StreamFactoryInterface $streamFactory,
     ) {
     }
 
@@ -33,7 +35,11 @@ final class GifParser implements ImageParserInterface
             throw new FpdfException('GD has no GIF read support');
         }
 
-        $im = imagecreatefromgif($file);
+        if (!is_file($file) || !is_readable($file)) {
+            throw new FpdfException('Missing or incorrect image file: ' . $file);
+        }
+
+        $im = @imagecreatefromgif($file);
         if (!$im) {
             throw new FpdfException('Missing or incorrect image file: ' . $file);
         }
@@ -44,11 +50,8 @@ final class GifParser implements ImageParserInterface
         $data = ob_get_clean();
         imagedestroy($im);
 
-        // Use a memory stream instead of a temporary file
-        $tempStream = fopen('php://temp', 'rb+');
-        if ($tempStream === false) {
-            throw new FpdfException('Unable to create memory stream');
-        }
+
+        $tempStream = $this->streamFactory->createTempStream('rb+');
 
         try {
             fwrite($tempStream, $data);

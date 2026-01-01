@@ -3,7 +3,7 @@
 declare(strict_types=1);
 
 /**
- * Copyright (c) 2025 PXP
+ * Copyright (c) 2025-2026 PXP
  *
  * For the full copyright and license information, please view
  * the LICENSE file that was distributed with this source code.
@@ -14,7 +14,7 @@ declare(strict_types=1);
 
 namespace Test\Unit\PDF\Fpdf\Structure;
 
-use PHPUnit\Framework\TestCase;
+use Test\TestCase;
 use PXP\PDF\Fpdf\Buffer\Buffer;
 use PXP\PDF\Fpdf\Color\ColorManager;
 use PXP\PDF\Fpdf\Enum\LayoutMode;
@@ -22,6 +22,7 @@ use PXP\PDF\Fpdf\Enum\PageOrientation;
 use PXP\PDF\Fpdf\Enum\ZoomMode;
 use PXP\PDF\Fpdf\Font\FontManager;
 use PXP\PDF\Fpdf\Image\ImageHandler;
+use PXP\PDF\Fpdf\IO\FileIO;
 use PXP\PDF\Fpdf\Link\LinkManager;
 use PXP\PDF\Fpdf\Metadata\Metadata;
 use PXP\PDF\Fpdf\Page\PageManager;
@@ -45,10 +46,25 @@ final class PDFStructureTest extends TestCase
 
     protected function setUp(): void
     {
+        $fileIO = self::createFileIO();
         $this->buffer = new Buffer();
-        $this->pageManager = new PageManager();
-        $this->fontManager = new FontManager(sys_get_temp_dir());
-        $this->imageHandler = new ImageHandler();
+        $this->pageManager = new PageManager(
+            $fileIO,
+            self::getLogger(),
+            self::getEventDispatcher()
+        );
+        $this->fontManager = new FontManager(
+            sys_get_temp_dir(),
+            500,
+            self::getLogger(),
+            self::getCache()
+        );
+        $this->imageHandler = new ImageHandler(
+            $fileIO,
+            $fileIO,
+            self::getLogger(),
+            self::getCache()
+        );
         $this->linkManager = new LinkManager();
         $this->metadata = new Metadata('Test Producer');
         $this->textRenderer = new TextRenderer();
@@ -60,9 +76,12 @@ final class PDFStructureTest extends TestCase
             $this->linkManager,
             $this->metadata,
             $this->textRenderer,
+            $fileIO,
             compress: false,
             withAlpha: false,
-            pdfVersion: '1.3'
+            pdfVersion: '1.3',
+            logger: self::getLogger(),
+            dispatcher: self::getEventDispatcher()
         );
     }
 

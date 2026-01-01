@@ -3,7 +3,7 @@
 declare(strict_types=1);
 
 /**
- * Copyright (c) 2025 PXP
+ * Copyright (c) 2025-2026 PXP
  *
  * For the full copyright and license information, please view
  * the LICENSE file that was distributed with this source code.
@@ -15,7 +15,7 @@ declare(strict_types=1);
 namespace Test\Unit\PDF\Fpdf\ValueObject;
 
 use InvalidArgumentException;
-use PHPUnit\Framework\TestCase;
+use Test\TestCase;
 use PXP\PDF\Fpdf\ValueObject\PageSize;
 
 /**
@@ -23,7 +23,7 @@ use PXP\PDF\Fpdf\ValueObject\PageSize;
  */
 final class PageSizeTest extends TestCase
 {
-    private const SCALE_FACTOR = 72.0 / 25.4; // mm to points
+    private const SCALE_FACTOR = 72.0 / 25.4;
 
     public function testPageSizeIsReadonly(): void
     {
@@ -125,7 +125,7 @@ final class PageSizeTest extends TestCase
     public function testFromArrayWithWidthGreaterThanHeight(): void
     {
         $pageSize = PageSize::fromArray([200.0, 100.0], self::SCALE_FACTOR);
-        // Should swap to ensure width <= height
+
         $this->assertSame(100.0 / self::SCALE_FACTOR, $pageSize->getWidth());
         $this->assertSame(200.0 / self::SCALE_FACTOR, $pageSize->getHeight());
     }

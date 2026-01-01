@@ -3,7 +3,7 @@
 declare(strict_types=1);
 
 /**
- * Copyright (c) 2025 PXP
+ * Copyright (c) 2025-2026 PXP
  *
  * For the full copyright and license information, please view
  * the LICENSE file that was distributed with this source code.
@@ -14,7 +14,7 @@ declare(strict_types=1);
 
 namespace Test\Unit\PDF\Fpdf\Buffer;
 
-use PHPUnit\Framework\TestCase;
+use Test\TestCase;
 use PXP\PDF\Fpdf\Buffer\Buffer;
 
 /**
@@ -60,7 +60,7 @@ final class BufferTest extends TestCase
     {
         $buffer = new Buffer();
         $buffer->append('test');
-        $this->assertSame(5, $buffer->getLength()); // "test\n" = 5 characters
+        $this->assertSame(5, $buffer->getLength());
     }
 
     public function testGetLengthWithMultipleLines(): void
@@ -68,7 +68,7 @@ final class BufferTest extends TestCase
         $buffer = new Buffer();
         $buffer->append('line 1');
         $buffer->append('line 2');
-        $this->assertSame(14, $buffer->getLength()); // "line 1\nline 2\n" = 14 characters
+        $this->assertSame(14, $buffer->getLength());
     }
 
     public function testClearResetsContent(): void

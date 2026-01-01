@@ -3,7 +3,7 @@
 declare(strict_types=1);
 
 /**
- * Copyright (c) 2025 PXP
+ * Copyright (c) 2025-2026 PXP
  *
  * For the full copyright and license information, please view
  * the LICENSE file that was distributed with this source code.
@@ -15,12 +15,22 @@ declare(strict_types=1);
 namespace PXP\PDF\Fpdf\Image\Parser;
 
 use PXP\PDF\Fpdf\Exception\FpdfException;
+use PXP\PDF\Fpdf\IO\FileReaderInterface;
 
 final class JpegParser implements ImageParserInterface
 {
+    public function __construct(
+        private FileReaderInterface $fileReader,
+    ) {
+    }
+
     public function parse(string $file): array
     {
-        $a = getimagesize($file);
+        if (!is_file($file) || !is_readable($file)) {
+            throw new FpdfException('Missing or incorrect image file: ' . $file);
+        }
+
+        $a = @getimagesize($file);
         if (!$a) {
             throw new FpdfException('Missing or incorrect image file: ' . $file);
         }
@@ -38,9 +48,10 @@ final class JpegParser implements ImageParserInterface
         }
 
         $bpc = $a['bits'] ?? 8;
-        $data = $this->readFile($file);
-        if ($data === null) {
-            throw new FpdfException('Could not read image file: ' . $file);
+        try {
+            $data = $this->fileReader->readFile($file);
+        } catch (FpdfException $e) {
+            throw new FpdfException('Could not read image file: ' . $file, 0, $e);
         }
 
         return [
@@ -56,20 +67,5 @@ final class JpegParser implements ImageParserInterface
     public function supports(string $type): bool
     {
         return in_array(strtolower($type), ['jpg', 'jpeg'], true);
-    }
-
-    private function readFile(string $file): ?string
-    {
-        $handle = fopen($file, 'rb');
-        if ($handle === false) {
-            return null;
-        }
-
-        try {
-            $contents = stream_get_contents($handle);
-            return $contents !== false ? $contents : null;
-        } finally {
-            fclose($handle);
-        }
     }
 }

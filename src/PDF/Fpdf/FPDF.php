@@ -3,7 +3,7 @@
 declare(strict_types=1);
 
 /**
- * Copyright (c) 2025 PXP
+ * Copyright (c) 2025-2026 PXP
  *
  * For the full copyright and license information, please view
  * the LICENSE file that was distributed with this source code.
@@ -15,22 +15,31 @@ declare(strict_types=1);
 namespace PXP\PDF\Fpdf;
 
 use PXP\PDF\Fpdf\Buffer\Buffer;
+use PXP\PDF\Fpdf\Cache\NullCache;
 use PXP\PDF\Fpdf\Color\ColorManager;
 use PXP\PDF\Fpdf\Enum\LayoutMode;
 use PXP\PDF\Fpdf\Enum\OutputDestination;
 use PXP\PDF\Fpdf\Enum\PageOrientation;
 use PXP\PDF\Fpdf\Enum\Unit;
 use PXP\PDF\Fpdf\Enum\ZoomMode;
+use PXP\PDF\Fpdf\Event\NullDispatcher;
 use PXP\PDF\Fpdf\Exception\FpdfException;
 use PXP\PDF\Fpdf\Font\FontManager;
 use PXP\PDF\Fpdf\Image\ImageHandler;
+use PXP\PDF\Fpdf\IO\FileIO;
+use PXP\PDF\Fpdf\IO\FileIOInterface;
 use PXP\PDF\Fpdf\Link\LinkManager;
+use PXP\PDF\Fpdf\Log\NullLogger;
 use PXP\PDF\Fpdf\Metadata\Metadata;
 use PXP\PDF\Fpdf\Output\OutputHandler;
 use PXP\PDF\Fpdf\Page\PageManager;
+use PXP\PDF\Fpdf\Splitter\PDFSplitter;
 use PXP\PDF\Fpdf\Structure\PDFStructure;
 use PXP\PDF\Fpdf\Text\TextRenderer;
 use PXP\PDF\Fpdf\ValueObject\PageSize;
+use Psr\Cache\CacheItemPoolInterface;
+use Psr\EventDispatcher\EventDispatcherInterface;
+use Psr\Log\LoggerInterface;
 
 class FPDF
 {
@@ -89,27 +98,44 @@ class FPDF
         string|PageOrientation $orientation = 'P',
         string|Unit $unit = 'mm',
         string|array|PageSize $size = 'A4',
+        ?FileIOInterface $fileIO = null,
+        ?LoggerInterface $logger = null,
+        ?CacheItemPoolInterface $cache = null,
+        ?EventDispatcherInterface $dispatcher = null,
     ) {
-        // Initialize components
+        $this->logger = $logger ?? new NullLogger();
+        $this->cache = $cache ?? new NullCache();
+        $this->dispatcher = $dispatcher ?? new NullDispatcher();
+
+        if ($fileIO === null) {
+            $fileIO = new FileIO($this->logger);
+        }
+
+        $this->logger->debug('FPDF initialization started', [
+            'orientation' => is_string($orientation) ? $orientation : $orientation->value,
+            'unit' => is_string($unit) ? $unit : $unit->value,
+            'size' => is_string($size) ? $size : (is_array($size) ? 'array' : 'PageSize'),
+        ]);
+
         $this->buffer = new Buffer();
         $this->textRenderer = new TextRenderer();
         $this->colorManager = new ColorManager();
         $this->linkManager = new LinkManager();
-        $this->imageHandler = new ImageHandler();
-        $this->pageManager = new PageManager();
+        $this->imageHandler = new ImageHandler($fileIO, $fileIO, $this->logger, $this->cache);
+        $this->pageManager = new PageManager($fileIO, $this->logger, $this->dispatcher);
 
-        // Font path
-        $fontPath = defined('FPDF_FONTPATH') ? FPDF_FONTPATH : dirname(__DIR__, 3) . '/font/';
-        $this->fontManager = new FontManager($fontPath);
 
-        // Unit and scale factor
+        $fontPath = defined('FPDF_FONTPATH') ? FPDF_FONTPATH : __DIR__ . '/resources/font/';
+        $this->fontManager = new FontManager($fontPath, 500, $this->logger, $this->cache);
+
+
         if (is_string($unit)) {
             $unit = Unit::fromString($unit);
         }
 
         $this->k = $unit->getScaleFactor();
 
-        // Page size
+
         if (is_string($size)) {
             $pageSize = PageSize::fromString($size, $this->k);
         } elseif (is_array($size)) {
@@ -121,7 +147,7 @@ class FPDF
         $this->defPageSize = $pageSize;
         $this->curPageSize = $pageSize;
 
-        // Orientation
+
         if (is_string($orientation)) {
             $orientation = PageOrientation::fromString($orientation);
         }
@@ -140,32 +166,32 @@ class FPDF
         $this->wPt = $this->w * $this->k;
         $this->hPt = $this->h * $this->k;
 
-        // Page rotation
+
         $this->curRotation = 0;
 
-        // Margins (1 cm)
+
         $margin = 28.35 / $this->k;
         $this->setMargins($margin, $margin);
 
-        // Cell margin (1 mm)
+
         $this->cMargin = $margin / 10;
 
-        // Line width (0.2 mm)
+
         $this->lineWidth = 0.567 / $this->k;
 
-        // Automatic page break
+
         $this->setAutoPageBreak(true, 2 * $margin);
 
-        // Default display mode
+
         $this->setDisplayMode('default');
 
-        // Compression
+
         $this->setCompression(true);
 
-        // Metadata
+
         $this->metadata = new Metadata('FPDF ' . self::VERSION);
 
-        // Initialize PDF structure
+
         $this->pdfStructure = new PDFStructure(
             $this->buffer,
             $this->pageManager,
@@ -174,13 +200,28 @@ class FPDF
             $this->linkManager,
             $this->metadata,
             $this->textRenderer,
+            $fileIO,
             $this->compress,
             $this->withAlpha,
             $this->pdfVersion,
+            $this->logger,
+            $this->dispatcher,
         );
 
-        $this->outputHandler = new OutputHandler($this->textRenderer);
+        $this->outputHandler = new OutputHandler($this->textRenderer, $fileIO);
+
+        $this->logger->info('FPDF initialized', [
+            'orientation' => $this->defOrientation->value,
+            'page_size' => ['width' => $this->w, 'height' => $this->h],
+            'unit' => $unit instanceof Unit ? $unit->value : Unit::fromString($unit)->value,
+            'compress' => $this->compress,
+            'pdf_version' => $this->pdfVersion,
+        ]);
     }
+
+    private LoggerInterface $logger;
+    private CacheItemPoolInterface $cache;
+    private EventDispatcherInterface $dispatcher;
 
     public function setMargins(float $left, float $top, ?float $right = null): void
     {
@@ -267,23 +308,29 @@ class FPDF
     public function close(): void
     {
         if ($this->state === 3) {
+            $this->logger->debug('Document already closed');
             return;
         }
+
+        $this->logger->info('Closing PDF document', [
+            'current_page' => $this->pageManager->getCurrentPage(),
+        ]);
 
         if ($this->pageManager->getCurrentPage() === 0) {
             $this->addPage();
         }
 
-        // Page footer
         $this->inFooter = true;
         $this->footer();
         $this->inFooter = false;
 
-        // Close page
         $this->endPage();
 
-        // Close document
         $this->endDoc();
+
+        $this->logger->info('PDF document closed', [
+            'total_pages' => $this->pageManager->getCurrentPage(),
+        ]);
     }
 
     public function addPage(
@@ -295,6 +342,13 @@ class FPDF
             $this->error('The document is closed');
         }
 
+        $this->logger->debug('Adding page', [
+            'current_page' => $this->pageManager->getCurrentPage(),
+            'orientation' => is_string($orientation) ? $orientation : ($orientation === '' ? 'default' : $orientation->value),
+            'size' => is_string($size) ? $size : (is_array($size) ? 'array' : ($size === '' ? 'default' : 'PageSize')),
+            'rotation' => $rotation,
+        ]);
+
         $family = $this->fontFamily;
         $style = $this->fontStyle . ($this->underline ? 'U' : '');
         $fontSize = $this->fontSizePt;
@@ -305,31 +359,31 @@ class FPDF
         $cf = $this->colorManager->hasColorFlag();
 
         if ($this->pageManager->getCurrentPage() > 0) {
-            // Page footer
+
             $this->inFooter = true;
             $this->footer();
             $this->inFooter = false;
 
-            // Close page
+
             $this->endPage();
         }
 
-        // Start new page
+
         $this->beginPage($orientation, $size, $rotation);
 
-        // Set line cap style to square
+
         $this->out('2 J');
 
-        // Set line width
+
         $this->lineWidth = $lw;
         $this->out(sprintf('%.2F w', $lw * $this->k));
 
-        // Set font
+
         if ($family) {
             $this->setFont($family, $style, $fontSize);
         }
 
-        // Set colors
+
         $this->colorManager->setDrawColor(0, null, null);
         if ($dc !== '0 G') {
             $this->out($dc);
@@ -342,23 +396,23 @@ class FPDF
 
         $this->colorManager->setTextColor(0, null, null);
 
-        // Page header
+
         $this->inHeader = true;
         $this->header();
         $this->inHeader = false;
 
-        // Restore line width
+
         if ($this->lineWidth !== $lw) {
             $this->lineWidth = $lw;
             $this->out(sprintf('%.2F w', $lw * $this->k));
         }
 
-        // Restore font
+
         if ($family) {
             $this->setFont($family, $style, $fontSize);
         }
 
-        // Restore colors
+
         if ($this->colorManager->getDrawColor() !== $dc) {
             $this->colorManager->setDrawColor(0, null, null);
             $this->out($dc);
@@ -374,12 +428,12 @@ class FPDF
 
     public function header(): void
     {
-        // To be implemented in your own inherited class
+
     }
 
     public function footer(): void
     {
-        // To be implemented in your own inherited class
+
     }
 
     public function pageNo(): int
@@ -456,6 +510,12 @@ class FPDF
 
     public function addFont(string $family, string $style = '', string $file = '', string $dir = ''): void
     {
+        $this->logger->debug('Adding font', [
+            'family' => $family,
+            'style' => $style,
+            'file' => $file,
+            'dir' => $dir,
+        ]);
         $this->fontManager->addFont($family, $style, $file, $dir);
     }
 
@@ -483,23 +543,38 @@ class FPDF
             $size = $this->fontSizePt;
         }
 
-        // Test if font is already selected
+        $this->logger->debug('Setting font', [
+            'family' => $family,
+            'style' => $style,
+            'size' => $size,
+        ]);
+
         if ($this->fontFamily === $family && $this->fontStyle === $style && $this->fontSizePt === $size) {
+            $this->logger->debug('Font unchanged, skipping', [
+                'family' => $family,
+                'style' => $style,
+                'size' => $size,
+            ]);
             return;
         }
 
-        // Get or load font
         $font = $this->fontManager->getFont($family, $style);
         if ($font === null) {
             $this->error('Undefined font: ' . $family . ' ' . $style);
         }
 
-        // Select it
         $this->fontFamily = $family;
         $this->fontStyle = $style;
         $this->fontSizePt = $size;
         $this->fontSize = $size / $this->k;
         $this->currentFont = $font;
+
+        $this->logger->debug('Font set', [
+            'family' => $family,
+            'style' => $style,
+            'size' => $size,
+            'font_index' => $font['i'] ?? 0,
+        ]);
 
         if ($this->pageManager->getCurrentPage() > 0) {
             $this->out(sprintf('BT /F%d %.2F Tf ET', $this->currentFont['i'], $this->fontSizePt));
@@ -919,9 +994,16 @@ class FPDF
         string $type = '',
         int|string $link = '',
     ): void {
+        $this->logger->debug('Adding image', [
+            'file' => $file,
+            'type' => $type ?: 'auto-detect',
+            'position' => ['x' => $x, 'y' => $y],
+            'size' => ['w' => $w, 'h' => $h],
+        ]);
+
         $info = $this->imageHandler->addImage($file, $type);
 
-        // Automatic width and height calculation
+
         if ($w <= 0.0 && $h <= 0.0) {
             $w = -96.0;
             $h = -96.0;
@@ -943,7 +1025,7 @@ class FPDF
             $h = $w * $info['h'] / $info['w'];
         }
 
-        // Flowing mode
+
         if ($y === null) {
             if ($this->y + $h > $this->pageBreakTrigger && !$this->inHeader && !$this->inFooter && $this->acceptPageBreak()) {
                 $x2 = $this->x;
@@ -1017,6 +1099,12 @@ class FPDF
         string $name = '',
         bool $isUTF8 = false,
     ): string {
+        $this->logger->info('PDF output started', [
+            'destination' => $dest ?: 'I',
+            'name' => $name ?: 'doc.pdf',
+            'is_utf8' => $isUTF8,
+        ]);
+
         $this->close();
 
         if (strlen($name) === 1 && strlen($dest) !== 1) {
@@ -1034,7 +1122,89 @@ class FPDF
         }
 
         $destination = OutputDestination::fromString($dest);
-        return $this->outputHandler->output($this->buffer->getContent(), $destination, $name, $isUTF8);
+        $result = $this->outputHandler->output($this->buffer->getContent(), $destination, $name, $isUTF8);
+
+        $this->logger->info('PDF output completed', [
+            'destination' => $dest,
+            'name' => $name,
+            'result_length' => strlen($result),
+        ]);
+
+        // Clean up temporary page files after PDF generation
+        $this->pageManager->cleanup();
+
+        return $result;
+    }
+
+    /**
+     * Split a PDF file into individual page files
+     *
+     * @param string $pdfFilePath Path to the PDF file to split
+     * @param string $outputDir Directory where split PDFs will be saved
+     * @param string|null $filenamePattern Pattern for output filenames (use %d for page number, default: "page_%d.pdf")
+     * @param LoggerInterface|null $logger Optional logger instance
+     * @param CacheItemPoolInterface|null $cache Optional cache instance
+     * @param EventDispatcherInterface|null $dispatcher Optional event dispatcher instance
+     * @return array<string> Array of generated file paths
+     * @throws FpdfException
+     */
+    public static function splitPdf(
+        string $pdfFilePath,
+        string $outputDir,
+        ?string $filenamePattern = null,
+        ?LoggerInterface $logger = null,
+        ?CacheItemPoolInterface $cache = null,
+        ?EventDispatcherInterface $dispatcher = null,
+    ): array {
+        $fileIO = new FileIO($logger);
+        $splitter = new PDFSplitter($pdfFilePath, $fileIO, $logger, $dispatcher, $cache);
+        return $splitter->splitByPage($outputDir, $filenamePattern);
+    }
+
+    /**
+     * Extract a single page from a PDF file
+     *
+     * @param string $pdfFilePath Path to the PDF file
+     * @param int $pageNumber Page number to extract (1-based)
+     * @param string $outputPath Path where the single-page PDF will be saved
+     * @param LoggerInterface|null $logger Optional logger instance
+     * @param CacheItemPoolInterface|null $cache Optional cache instance
+     * @param EventDispatcherInterface|null $dispatcher Optional event dispatcher instance
+     * @throws FpdfException
+     */
+    public static function extractPage(
+        string $pdfFilePath,
+        int $pageNumber,
+        string $outputPath,
+        ?LoggerInterface $logger = null,
+        ?CacheItemPoolInterface $cache = null,
+        ?EventDispatcherInterface $dispatcher = null,
+    ): void {
+        $fileIO = new FileIO($logger);
+        $splitter = new PDFSplitter($pdfFilePath, $fileIO, $logger, $dispatcher, $cache);
+        $splitter->extractPage($pageNumber, $outputPath);
+    }
+
+    /**
+     * Merge multiple PDF files into a single PDF
+     *
+     * @param array<string> $pdfFilePaths Array of paths to PDF files to merge
+     * @param string $outputPath Path where the merged PDF will be saved
+     * @param LoggerInterface|null $logger Optional logger instance
+     * @param CacheItemPoolInterface|null $cache Optional cache instance
+     * @param EventDispatcherInterface|null $dispatcher Optional event dispatcher instance
+     * @throws FpdfException
+     */
+    public static function mergePdf(
+        array $pdfFilePaths,
+        string $outputPath,
+        ?LoggerInterface $logger = null,
+        ?CacheItemPoolInterface $cache = null,
+        ?EventDispatcherInterface $dispatcher = null,
+    ): void {
+        $fileIO = new FileIO($logger);
+        $merger = new \PXP\PDF\Fpdf\Splitter\PDFMerger($fileIO, $logger, $dispatcher, $cache);
+        $merger->merge($pdfFilePaths, $outputPath);
     }
 
     private function beginPage(string|PageOrientation $orientation, string|array|PageSize $size, int $rotation): void
@@ -1045,7 +1215,7 @@ class FPDF
         $this->y = $this->tMargin;
         $this->fontFamily = '';
 
-        // Check page size and orientation
+
         if ($orientation === '') {
             $orientation = $this->defOrientation;
         } elseif (is_string($orientation)) {
@@ -1097,6 +1267,8 @@ class FPDF
 
     private function endPage(): void
     {
+        // Finalize current page to write it to temp file and free memory
+        $this->pageManager->finalizeCurrentPage();
         $this->state = 1;
     }
 
@@ -1104,7 +1276,7 @@ class FPDF
     {
         $this->metadata->setCreationDate(time());
 
-        // Replace alias in all pages
+
         if (!empty($this->aliasNbPages)) {
             $totalPages = $this->pageManager->getCurrentPage();
             for ($i = 1; $i <= $totalPages; $i++) {

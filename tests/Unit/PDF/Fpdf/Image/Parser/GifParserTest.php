@@ -3,7 +3,7 @@
 declare(strict_types=1);
 
 /**
- * Copyright (c) 2025 PXP
+ * Copyright (c) 2025-2026 PXP
  *
  * For the full copyright and license information, please view
  * the LICENSE file that was distributed with this source code.
@@ -14,10 +14,11 @@ declare(strict_types=1);
 
 namespace Test\Unit\PDF\Fpdf\Image\Parser;
 
-use PHPUnit\Framework\TestCase;
+use Test\TestCase;
 use PXP\PDF\Fpdf\Exception\FpdfException;
 use PXP\PDF\Fpdf\Image\Parser\GifParser;
 use PXP\PDF\Fpdf\Image\Parser\PngParser;
+use PXP\PDF\Fpdf\IO\FileIO;
 
 /**
  * @covers \PXP\PDF\Fpdf\Image\Parser\GifParser
@@ -28,7 +29,9 @@ final class GifParserTest extends TestCase
 
     protected function setUp(): void
     {
-        $this->parser = new GifParser(new PngParser());
+        $fileIO = self::createFileIO();
+        $pngParser = new PngParser($fileIO, $fileIO);
+        $this->parser = new GifParser($pngParser, $fileIO);
     }
 
     public function testSupportsGif(): void

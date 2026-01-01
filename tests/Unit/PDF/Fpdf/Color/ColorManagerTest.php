@@ -3,7 +3,7 @@
 declare(strict_types=1);
 
 /**
- * Copyright (c) 2025 PXP
+ * Copyright (c) 2025-2026 PXP
  *
  * For the full copyright and license information, please view
  * the LICENSE file that was distributed with this source code.
@@ -14,7 +14,7 @@ declare(strict_types=1);
 
 namespace Test\Unit\PDF\Fpdf\Color;
 
-use PHPUnit\Framework\TestCase;
+use Test\TestCase;
 use PXP\PDF\Fpdf\Color\ColorManager;
 
 /**
@@ -66,7 +66,7 @@ final class ColorManagerTest extends TestCase
     public function testSetDrawColorRgbBlack(): void
     {
         $result = $this->colorManager->setDrawColor(0, 0, 0);
-        $this->assertSame('0.000 G', $result); // Black defaults to grayscale
+        $this->assertSame('0.000 G', $result);
     }
 
     public function testSetFillColorGrayscale(): void
@@ -87,7 +87,7 @@ final class ColorManagerTest extends TestCase
     public function testSetFillColorRgbBlack(): void
     {
         $result = $this->colorManager->setFillColor(0, 0, 0);
-        $this->assertSame('0.000 g', $result); // Black defaults to grayscale
+        $this->assertSame('0.000 g', $result);
     }
 
     public function testSetTextColorGrayscale(): void

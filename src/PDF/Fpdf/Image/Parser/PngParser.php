@@ -3,7 +3,7 @@
 declare(strict_types=1);
 
 /**
- * Copyright (c) 2025 PXP
+ * Copyright (c) 2025-2026 PXP
  *
  * For the full copyright and license information, please view
  * the LICENSE file that was distributed with this source code.
@@ -15,15 +15,83 @@ declare(strict_types=1);
 namespace PXP\PDF\Fpdf\Image\Parser;
 
 use PXP\PDF\Fpdf\Exception\FpdfException;
+use PXP\PDF\Fpdf\IO\FileReaderInterface;
+use PXP\PDF\Fpdf\IO\StreamFactoryInterface;
 
 final class PngParser implements ImageParserInterface
 {
+    public function __construct(
+        private FileReaderInterface $fileReader,
+        private StreamFactoryInterface $streamFactory,
+    ) {
+    }
+
     public function parse(string $file): array
     {
-        $f = fopen($file, 'rb');
-        if (!$f) {
-            throw new FpdfException('Can\'t open image file: ' . $file);
+
+
+        if (function_exists('imagecreatefrompng')) {
+            $im = @imagecreatefrompng($file);
+            if ($im !== false) {
+                $w = imagesx($im);
+                $h = imagesy($im);
+                $trueColor = function_exists('imageistruecolor') ? imageistruecolor($im) : true;
+                $colors = $trueColor ? 3 : 1;
+                $bpc = 8;
+
+                $raw = '';
+                $alphaRaw = '';
+                $hasAlpha = false;
+                for ($y = 0; $y < $h; $y++) {
+
+                    $raw .= chr(0);
+                    $alphaRaw .= chr(0);
+                    for ($x = 0; $x < $w; $x++) {
+                        $rgba = imagecolorat($im, $x, $y);
+                        $r = ($rgba >> 16) & 0xFF;
+                        $g = ($rgba >> 8) & 0xFF;
+                        $b = $rgba & 0xFF;
+                        if ($trueColor) {
+                            $raw .= chr($r) . chr($g) . chr($b);
+                        } else {
+                            $raw .= chr($r);
+                        }
+
+
+                        $a7 = ($rgba >> 24) & 0x7F;
+                        $a8 = (int) round((127 - $a7) * 255 / 127);
+                        $alphaRaw .= chr($a8);
+                        if ($a8 !== 255) {
+                            $hasAlpha = true;
+                        }
+                    }
+                }
+
+                imagedestroy($im);
+
+
+                if ($hasAlpha) {
+                    $data = gzcompress($raw);
+                    $info = [
+                        'w' => $w,
+                        'h' => $h,
+                        'cs' => $trueColor ? 'DeviceRGB' : 'DeviceGray',
+                        'bpc' => $bpc,
+                        'f' => 'FlateDecode',
+                        'dp' => '/Predictor 15 /Colors ' . $colors . ' /BitsPerComponent ' . $bpc . ' /Columns ' . $w,
+                        'data' => $data,
+                        'smask' => gzcompress($alphaRaw),
+                    ];
+
+                    return $info;
+                }
+
+
+
+            }
         }
+
+        $f = $this->fileReader->openReadStream($file);
 
         try {
             $info = $this->parseStream($f, $file);
@@ -53,12 +121,12 @@ final class PngParser implements ImageParserInterface
 
     private function parsePngStream($f, string $file): array
     {
-        // Check signature
+
         if ($this->readStream($f, 8) !== chr(137) . 'PNG' . chr(13) . chr(10) . chr(26) . chr(10)) {
             throw new FpdfException('Not a PNG file: ' . $file);
         }
 
-        // Read header chunk
+
         $this->readStream($f, 4);
         $headerType = $this->readStream($f, 4);
         if ($headerType !== 'IHDR') {
@@ -101,7 +169,7 @@ final class PngParser implements ImageParserInterface
         $this->readStream($f, 4);
         $dp = '/Predictor 15 /Colors ' . ($colspace === 'DeviceRGB' ? 3 : 1) . ' /BitsPerComponent ' . $bpc . ' /Columns ' . $w;
 
-        // Scan chunks looking for palette, transparency and image data
+
         $pal = '';
         $trns = null;
         $data = '';

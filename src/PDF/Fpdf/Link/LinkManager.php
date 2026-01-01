@@ -3,7 +3,7 @@
 declare(strict_types=1);
 
 /**
- * Copyright (c) 2025 PXP
+ * Copyright (c) 2025-2026 PXP
  *
  * For the full copyright and license information, please view
  * the LICENSE file that was distributed with this source code.
@@ -30,11 +30,11 @@ final class LinkManager
     public function setLink(int $link, float $y = 0, int $page = -1): void
     {
         if ($y < 0) {
-            $y = 0; // Will be set by caller
+            $y = 0;
         }
 
         if ($page < 0) {
-            $page = 0; // Will be set by caller
+            $page = 0;
         }
 
         $this->links[$link] = [$page, $y];

@@ -3,7 +3,7 @@
 declare(strict_types=1);
 
 /**
- * Copyright (c) 2025 PXP
+ * Copyright (c) 2025-2026 PXP
  *
  * For the full copyright and license information, please view
  * the LICENSE file that was distributed with this source code.
@@ -14,7 +14,7 @@ declare(strict_types=1);
 
 namespace Test\Unit\PDF\Fpdf\Metadata;
 
-use PHPUnit\Framework\TestCase;
+use Test\TestCase;
 use PXP\PDF\Fpdf\Metadata\Metadata;
 
 /**
@@ -109,7 +109,7 @@ final class MetadataTest extends TestCase
 
     public function testSetCreationDate(): void
     {
-        $timestamp = 1640995200; // 2022-01-01 00:00:00 UTC
+        $timestamp = 1640995200;
         $this->metadata->setCreationDate($timestamp);
         $data = $this->metadata->getAll();
         $this->assertArrayHasKey('CreationDate', $data);
@@ -137,7 +137,7 @@ final class MetadataTest extends TestCase
 
     public function testEncodeUtf8WithNonAsciiCharacters(): void
     {
-        // Test with ISO-8859-1 characters that need encoding
+
         $this->metadata->setTitle('Café');
         $data = $this->metadata->getAll();
         $this->assertArrayHasKey('Title', $data);

@@ -3,7 +3,7 @@
 declare(strict_types=1);
 
 /**
- * Copyright (c) 2025 PXP
+ * Copyright (c) 2025-2026 PXP
  *
  * For the full copyright and license information, please view
  * the LICENSE file that was distributed with this source code.
@@ -14,9 +14,10 @@ declare(strict_types=1);
 
 namespace Test\Unit\PDF\Fpdf\Output;
 
-use PHPUnit\Framework\TestCase;
+use Test\TestCase;
 use PXP\PDF\Fpdf\Enum\OutputDestination;
 use PXP\PDF\Fpdf\Exception\FpdfException;
+use PXP\PDF\Fpdf\IO\FileIO;
 use PXP\PDF\Fpdf\Output\OutputHandler;
 use PXP\PDF\Fpdf\Text\TextRenderer;
 
@@ -29,7 +30,7 @@ final class OutputHandlerTest extends TestCase
 
     protected function setUp(): void
     {
-        $this->outputHandler = new OutputHandler(new TextRenderer());
+        $this->outputHandler = new OutputHandler(new TextRenderer(), self::createFileIO());
     }
 
     public function testOutputWithStringDestination(): void
@@ -63,14 +64,14 @@ final class OutputHandlerTest extends TestCase
         }
 
         $this->expectException(FpdfException::class);
-        $this->expectExceptionMessage('Unable to create output file:');
+        $this->expectExceptionMessage('Could not create output directory:');
         $this->outputHandler->output('test', OutputDestination::FILE, '/invalid/path/test.pdf');
     }
 
     public function testOutputWithInlineDestination(): void
     {
         if (PHP_SAPI === 'cli') {
-            // In CLI mode, headers won't be sent
+
             $buffer = 'test pdf content';
             ob_start();
             $result = $this->outputHandler->output($buffer, OutputDestination::INLINE, 'test.pdf');
@@ -102,7 +103,7 @@ final class OutputHandlerTest extends TestCase
             $this->markTestSkipped('Headers are not sent in CLI mode');
         }
 
-        // This test would require actually sending headers, which is complex in unit tests
+
         $this->assertTrue(true);
     }
 
@@ -112,7 +113,7 @@ final class OutputHandlerTest extends TestCase
             $this->markTestSkipped('Output buffer handling differs in CLI mode');
         }
 
-        // This test would require output buffer manipulation, which is complex in unit tests
+
         $this->assertTrue(true);
     }
 }
