@@ -685,7 +685,7 @@ class TestCase extends \PHPUnit\Framework\TestCase
      * @param string $pdfPath Path to PDF file
      * @return int Number of pages (1 if unable to determine, as safe default)
      */
-    private static function getPdfPageCount(string $pdfPath): int
+    protected static function getPdfPageCount(string $pdfPath): int
     {
         // Try using pdfinfo if available (poppler-utils)
         if (self::commandExists('pdfinfo')) {
@@ -773,7 +773,7 @@ class TestCase extends \PHPUnit\Framework\TestCase
      * @param string $imagePath Path to image file
      * @return bool True if image is >99% white
      */
-    private static function isImageMostlyWhite(string $imagePath): bool
+    protected static function isImageMostlyWhite(string $imagePath): bool
     {
         if (!extension_loaded('gd')) {
             return false;

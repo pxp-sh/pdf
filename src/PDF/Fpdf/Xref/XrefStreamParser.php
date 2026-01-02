@@ -138,8 +138,8 @@ final class XrefStreamParser
                     break;
 
                 case 2: // Compressed object
-                    // Store as special marker - compressed objects need special handling
-                    // For now, we'll skip them as they require object stream parsing
+                    // Record compressed object mapping so registry/parser can resolve it lazily
+                    $xrefTable->addCompressedEntry($objNum, $field1, $field2);
                     break;
             }
 

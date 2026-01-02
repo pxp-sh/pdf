@@ -169,6 +169,46 @@ final class PDFObjectRegistry
         // If lazy loading is enabled, parse on-demand
         if ($this->isLazyLoadingEnabled()) {
             $xrefEntry = $this->xrefTable->getEntry($objectNumber);
+
+            // If entry not found or entry indicates compressed object, try compressed resolution
+            if (($xrefEntry === null || $xrefEntry->isCompressed())) {
+                $compressed = $this->xrefTable->getCompressedEntry($objectNumber);
+                if ($compressed !== null) {
+                    $this->logger->debug('Attempting to resolve compressed object', [
+                        'object_number' => $objectNumber,
+                        'object_stream' => $compressed['stream'],
+                        'index' => $compressed['index'],
+                        'file_based' => $this->isFileBasedLazyLoading(),
+                    ]);
+
+                    $node = null;
+                    if ($this->isFileBasedLazyLoading()) {
+                        $node = $this->parser->parseObjectFromObjectStreamInFile(
+                            $this->filePath,
+                            $this->fileIO,
+                            $compressed['stream'],
+                            $compressed['index'],
+                            $this->xrefTable
+                        );
+                    } else {
+                        // Memory-based not implemented for compressed objects yet
+                        $node = null;
+                    }
+
+                    if ($node !== null) {
+                        // Register the parsed node so it can be reused
+                        $this->objects[$objectNumber] = $node;
+                        $cacheItem->set($node);
+                        $this->cache->save($cacheItem);
+                        $this->logger->debug('Compressed object resolved and cached', [
+                            'object_number' => $objectNumber,
+                            'type' => get_class($node->getValue()),
+                        ]);
+                        return $node;
+                    }
+                }
+            }
+
             if ($xrefEntry !== null && !$xrefEntry->isFree()) {
                 $node = null;
 

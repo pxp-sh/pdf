@@ -78,34 +78,121 @@ final class MergePdfTest extends TestCase
         $content = file_get_contents($mergedPdfPath);
         $this->assertStringContainsString('%PDF-', $content, 'Merged file should be a valid PDF');
 
-        // Calculate expected total page count
+        // Calculate expected total page count using robust helper
         $expectedTotalPages = 0;
         foreach ($pdfFilePaths as $pdfPath) {
-            // Count pages in each input PDF by checking /Count in the PDF structure
-            $pdfContent = file_get_contents($pdfPath);
-            if (preg_match('/\/Count\s+(\d+)/', $pdfContent, $matches)) {
-                $expectedTotalPages += (int) $matches[1];
-            } else {
-                // Fallback: assume at least 1 page if count not found
-                $expectedTotalPages += 1;
-            }
+            $expectedTotalPages += self::getPdfPageCount($pdfPath);
         }
 
         // Verify merged PDF has the expected number of pages
         if ($expectedTotalPages > 0) {
-            $mergedContent = file_get_contents($mergedPdfPath);
-            if (preg_match('/\/Count\s+(\d+)/', $mergedContent, $matches)) {
-                $actualPageCount = (int) $matches[1];
-                $this->assertEquals(
+            $actualPageCount = self::getPdfPageCount($mergedPdfPath);
+            $this->assertEquals(
+                $expectedTotalPages,
+                $actualPageCount,
+                sprintf(
+                    'Merged PDF should have %d pages (sum of all input PDFs), but has %d pages',
                     $expectedTotalPages,
-                    $actualPageCount,
-                    sprintf(
-                        'Merged PDF should have %d pages (sum of all input PDFs), but has %d pages',
-                        $expectedTotalPages,
-                        $actualPageCount
-                    )
-                );
+                    $actualPageCount
+                )
+            );
+        }
+
+        // Validate visual correctness of each merged page against the original source pages
+        // For each source page attempt to find a matching merged page starting from the expected position.
+        // This helps detect cases where trailing pages are blank or shifted.
+        $globalPage = 1;
+        $pagesCompared = 0;
+        $pagesSkipped = 0;
+        $skippedReasons = [];
+
+        // Number of pages in the merged PDF
+        $mergedPageCount = self::getPdfPageCount($mergedPdfPath);
+        $maxLookahead = 5; // how many merged pages ahead we'll search for a match
+
+        try {
+            foreach ($pdfFilePaths as $srcPdf) {
+                $srcPageCount = self::getPdfPageCount($srcPdf);
+
+                for ($p = 1; $p <= $srcPageCount; ++$p) {
+                    // Render source page image
+                    try {
+                        $imgOrig = self::pdfToImage($srcPdf, $p);
+                    } catch (\RuntimeException $e) {
+                        if (str_contains($e->getMessage(), 'No PDF to image conversion tool found')) {
+                            $this->markTestSkipped('PDF to image conversion not available: ' . $e->getMessage());
+                        }
+                        throw $e;
+                    }
+
+                    $origBlank = self::isImageMostlyWhite($imgOrig);
+
+                    // Strict per-source-page mapping: the source's next page must map to the merged page at position $globalPage.
+                    $candidate = $globalPage;
+                    if ($candidate > $mergedPageCount) {
+                        self::unlink($imgOrig);
+                        $this->fail(sprintf('Merged PDF missing expected page %d for source %s page %d', $candidate, basename($srcPdf), $p));
+                    }
+
+                    try {
+                        $imgMerged = self::pdfToImage($mergedPdfPath, $candidate);
+                    } catch (\RuntimeException $e) {
+                        if (str_contains($e->getMessage(), 'No PDF to image conversion tool found')) {
+                            self::unlink($imgOrig);
+                            $this->markTestSkipped('PDF to image conversion not available: ' . $e->getMessage());
+                        }
+                        throw $e;
+                    }
+
+                    $mergedBlank = self::isImageMostlyWhite($imgMerged);
+
+                    if ($origBlank && $mergedBlank) {
+                        // Both render blank — skip this source page
+                        self::unlink($imgOrig);
+                        self::unlink($imgMerged);
+                        ++$pagesSkipped;
+                        $skippedReasons[] = sprintf('Page %d from %s appears blank when rendered', $p, basename($srcPdf));
+                        // advance to next merged page
+                        $globalPage++;
+                        continue;
+                    }
+
+                    if (!$origBlank && $mergedBlank) {
+                        // Non-blank source mapped to blank merged page — this is an error
+                        self::unlink($imgOrig);
+                        self::unlink($imgMerged);
+                        $this->fail(sprintf('Merged PDF has blank page %d while source %s page %d is non-blank', $candidate, basename($srcPdf), $p));
+                    }
+
+                    // Both non-blank: compare visually
+                    $similarity = self::compareImages($imgOrig, $imgMerged);
+
+                    // cleanup images
+                    self::unlink($imgOrig);
+                    self::unlink($imgMerged);
+
+                    if ($similarity < 0.90) {
+                        $this->fail(sprintf('Visual mismatch for source %s page %d vs merged page %d (similarity %.3f)', basename($srcPdf), $p, $candidate, $similarity));
+                    }
+
+                    // success — advance expected merged page
+                    $pagesCompared++;
+                    $globalPage++;
+                    // If we've exhausted merged pages, stop early
+                    if ($globalPage > $mergedPageCount) {
+                        break 2; // break out of both loops; remaining source pages cannot be matched
+                    }
+                }
             }
+        } catch (\RuntimeException $e) {
+            if (str_contains($e->getMessage(), 'No PDF to image conversion tool found')) {
+                $this->markTestSkipped('PDF to image conversion not available: ' . $e->getMessage());
+            }
+            throw $e;
+        }
+
+        if ($pagesCompared === 0 && $pagesSkipped > 0) {
+            $this->markTestSkipped('All pages were skipped because they render as blank in this environment: ' . implode('; ', $skippedReasons));
         }
 
         // Clean up

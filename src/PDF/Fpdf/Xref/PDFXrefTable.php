@@ -33,6 +33,35 @@ final class PDFXrefTable
     }
 
     /**
+     * Add a compressed entry pointing to an object stored inside an ObjStm
+     */
+    public function addCompressedEntry(int $objectNumber, int $objectStreamNumber, int $index): void
+    {
+        // Create an entry with offset -1 (placeholder) and mark compressed
+        $entry = new XrefEntry(-1, 0, false);
+        $entry->setCompressed($objectStreamNumber, $index);
+        $this->entries[$objectNumber] = $entry;
+    }
+
+    /**
+     * Get compressed entry details for a given object number.
+     * Returns null if not compressed or entry does not exist.
+     *
+     * @return array{stream: int, index: int}|null
+     */
+    public function getCompressedEntry(int $objectNumber): ?array
+    {
+        if (!isset($this->entries[$objectNumber])) {
+            return null;
+        }
+        $entry = $this->entries[$objectNumber];
+        if ($entry->isCompressed()) {
+            return ['stream' => $entry->getCompressedObjectStream(), 'index' => $entry->getCompressedIndex()];
+        }
+        return null;
+    }
+
+    /**
      * Get an xref entry.
      */
     public function getEntry(int $objectNumber): ?XrefEntry
@@ -89,53 +118,76 @@ final class PDFXrefTable
     {
         $this->entries = [];
 
-        // Skip initial whitespace
-        $offset = strspn($xrefContent, " \t\r\n\f\0");
-        $objNum = 0;
+        // Split into lines supporting CRLF, CR, LF
+        $lines = preg_split('/\r\n|\r|\n/', $xrefContent);
+        if (false === $lines) {
+            return;
+        }
 
-        // PDF whitespace characters: space, tab, CR, LF, FF, null
-        $whitespaceChars = " \t\r\n\f\0";
+        $lineCount = count($lines);
+        $i = 0;
 
-        // Search for cross-reference entries or subsection headers
-        // Pattern: ([0-9]+)[\x20]([0-9]+)[\x20]?([nf]?)(\r\n|[\x20]?[\r\n])
-        while (preg_match(
-            '/([0-9]+)[\x20]([0-9]+)[\x20]?([nf]?)(\r\n|[\x20]?[\r\n])/',
-            $xrefContent,
-            $matches,
-            \PREG_OFFSET_CAPTURE,
-            $offset
-        ) > 0) {
-            if ($matches[0][1] != $offset) {
-                // We are on another section (trailer or end)
-                break;
+        while ($i < $lineCount) {
+            $line = trim($lines[$i]);
+
+            if ($line === '') {
+                $i++;
+                continue;
             }
 
-            $offset += \strlen($matches[0][0]);
+            // Subsection header: "start count"
+            if (preg_match('/^([0-9]+)\s+([0-9]+)$/', $line, $headerMatches) === 1) {
+                $startObj = (int) $headerMatches[1];
+                $count = (int) $headerMatches[2];
 
-            $firstNum = (int) $matches[1][0];
-            $secondNum = (int) $matches[2][0];
-            $flag = $matches[3][0] ?? '';
+                // Read the next $count lines as entries
+                for ($j = 0; $j < $count; $j++) {
+                    $i++;
+                    if ($i >= $lineCount) {
+                        break 2; // premature end
+                    }
 
-            if ('n' === $flag) {
-                // In-use entry: offset generation n
-                // $firstNum is the offset, $secondNum is the generation
-                if (!isset($this->entries[$objNum])) {
-                    $this->addEntry($objNum, $firstNum, $secondNum, false);
+                    $entryLine = trim($lines[$i]);
+
+                    // Entry format: 10-digit offset, 5-digit generation, flag n|f (flag required)
+                    if (preg_match('/^([0-9]{10})\s+([0-9]{5})\s+([nf])\s*$/', $entryLine, $entryMatches) === 1) {
+                        $offsetNum = (int) ltrim($entryMatches[1], '0');
+                        $generation = (int) $entryMatches[2];
+                        $flag = $entryMatches[3];
+
+                        $objNum = $startObj + $j;
+                        if ('n' === $flag) {
+                            $this->addEntry($objNum, $offsetNum, $generation, false);
+                        } else {
+                            $this->addEntry($objNum, $offsetNum, $generation, true);
+                        }
+                    } else {
+                        // If the line doesn't match an entry, treat it as subsection header or stop
+                        // To be tolerant, try to parse a more permissive entry pattern (allow variable digit counts)
+                        if (preg_match('/^([0-9]+)\s+([0-9]+)\s+([nf])\s*$/', $entryLine, $entryMatches2) === 1) {
+                            $offsetNum = (int) $entryMatches2[1];
+                            $generation = (int) $entryMatches2[2];
+                            $flag = $entryMatches2[3];
+
+                            $objNum = $startObj + $j;
+                            if ('n' === $flag) {
+                                $this->addEntry($objNum, $offsetNum, $generation, false);
+                            } else {
+                                $this->addEntry($objNum, $offsetNum, $generation, true);
+                            }
+                        } else {
+                            // Malformed entry - stop parsing
+                            break 2;
+                        }
+                    }
                 }
-                ++$objNum;
-            } elseif ('f' === $flag) {
-                // Free entry: next_free_object generation f
-                // $firstNum is the next free object, $secondNum is the generation
-                if (!isset($this->entries[$objNum])) {
-                    $this->addEntry($objNum, $firstNum, $secondNum, true);
-                }
-                ++$objNum;
-            } else {
-                // Subsection header: start_object number_of_entries
-                // $firstNum is the starting object number, $secondNum is the count
-                $objNum = $firstNum;
-                // The next entries will be for objects starting at $objNum
+
+                $i++;
+                continue;
             }
+
+            // If we reach here, the line wasn't a subsection header - skip it
+            $i++;
         }
     }
 
@@ -149,10 +201,8 @@ final class PDFXrefTable
     public function mergeEntries(PDFXrefTable $otherTable): void
     {
         foreach ($otherTable->getAllEntries() as $objectNumber => $entry) {
-            // Only add entries that don't already exist (newer entries override older ones)
-            if (!isset($this->entries[$objectNumber])) {
-                $this->entries[$objectNumber] = $entry;
-            }
+            // Merge entries from another table; entries from the other table override existing ones.
+            $this->entries[$objectNumber] = $entry;
         }
     }
 

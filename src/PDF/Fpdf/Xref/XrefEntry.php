@@ -19,6 +19,9 @@ namespace PXP\PDF\Fpdf\Xref;
  */
 final class XrefEntry
 {
+    private ?int $compressedObjectStream = null;
+    private ?int $compressedIndex = null;
+
     public function __construct(
         private int $offset,
         private int $generation = 0,
@@ -54,6 +57,30 @@ final class XrefEntry
     public function setFree(bool $free): void
     {
         $this->free = $free;
+    }
+
+    /**
+     * Mark this entry as a compressed object stored inside an ObjStm
+     */
+    public function setCompressed(int $objectStreamNumber, int $index): void
+    {
+        $this->compressedObjectStream = $objectStreamNumber;
+        $this->compressedIndex = $index;
+    }
+
+    public function isCompressed(): bool
+    {
+        return $this->compressedObjectStream !== null;
+    }
+
+    public function getCompressedObjectStream(): ?int
+    {
+        return $this->compressedObjectStream;
+    }
+
+    public function getCompressedIndex(): ?int
+    {
+        return $this->compressedIndex;
     }
 
     /**

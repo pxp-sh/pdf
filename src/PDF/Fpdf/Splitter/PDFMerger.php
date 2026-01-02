@@ -96,6 +96,7 @@ final class PDFMerger
 
             $document = $parser->parseDocumentFromFile($pdfPath, $this->fileIO);
             $pageCount = $this->getPageCount($document);
+            $originalPageCount = $pageCount; // Keep original expected count for fallback placeholder creation
 
             $this->logger->debug('Extracting pages from PDF', [
                 'file_path' => $absolutePath,
@@ -104,6 +105,8 @@ final class PDFMerger
 
             // Extract all pages from this document
             $pagesExtractedForThisPdf = 0;
+            // Used to hold nodes returned by getAllPages fallback so we can derive an authoritative expected count
+            $fallbackAllPageNodes = null;
             if ($pageCount > 0) {
                 for ($pageNum = 1; $pageNum <= $pageCount; $pageNum++) {
                     // Verify page exists before extracting
@@ -154,22 +157,37 @@ final class PDFMerger
                 $expectedPageCount = $this->getPageCount($document);
                 try {
                     $allPageNodes = $document->getAllPages(true);
+                    // record fallback page nodes so we can derive an authoritative page count if needed
+                    $fallbackAllPageNodes = $allPageNodes;
                     if (!empty($allPageNodes)) {
                         // Limit to expected page count to avoid extracting embedded pages
                         $pagesToExtract = min(count($allPageNodes), $expectedPageCount > 0 ? $expectedPageCount : count($allPageNodes));
                         for ($pageIndex = 0; $pageIndex < $pagesToExtract; $pageIndex++) {
-                            $pageNum = $pageIndex + 1;
+                                    $pageNum = $pageIndex + 1;
                             $pageNode = $allPageNodes[$pageIndex];
                             try {
+                                // First try the existing extraction by page number
                                 $pageData = $this->extractPageData($document, $pageNum, $nextObjectNumber, $mergedDoc, $resourceNameMap);
                                 $allPages[] = $pageData;
                                 $pagesExtractedForThisPdf++;
                             } catch (FpdfException $e) {
-                                $this->logger->debug('Page extraction failed in getAllPages fallback', [
+                                $this->logger->debug('Page extraction failed in getAllPages fallback, attempting node-based extraction', [
                                     'file_path' => $absolutePath,
                                     'page_number' => $pageNum,
                                     'error' => $e->getMessage(),
                                 ]);
+                                // Try extracting directly from the page node if available
+                                try {
+                                    $pageData = $this->extractPageDataFromNode($document, $pageNode, $nextObjectNumber, $mergedDoc, $resourceNameMap);
+                                    $allPages[] = $pageData;
+                                    $pagesExtractedForThisPdf++;
+                                } catch (FpdfException $e2) {
+                                    $this->logger->debug('Node-based page extraction also failed', [
+                                        'file_path' => $absolutePath,
+                                        'page_number' => $pageNum,
+                                        'error' => $e2->getMessage(),
+                                    ]);
+                                }
                             }
                         }
                         if ($pagesExtractedForThisPdf > 0) {
@@ -215,6 +233,7 @@ final class PDFMerger
                             break;
                         }
                     }
+
                     if ($pagesExtractedForThisPdf > 0) {
                         $this->logger->debug('Extracted pages using sequential fallback method', [
                             'file_path' => $absolutePath,
@@ -224,8 +243,133 @@ final class PDFMerger
                         $this->logger->warning('Could not extract any pages from PDF', [
                             'file_path' => $absolutePath,
                         ]);
+
+                        // Retry once by re-parsing the document and attempting sequential extraction again.
+                        try {
+                            $this->logger->info('Retrying extraction after re-parsing document', ['file_path' => $absolutePath]);
+                            // Re-parse document to clear any transient state that might have prevented extraction
+                            $document = $parser->parseDocumentFromFile($pdfPath, $this->fileIO);
+
+                            $pageNum = 1;
+                            while ($pageNum <= $maxAttempts) {
+                                $pageNode = $document->getPage($pageNum);
+                                if ($pageNode === null) {
+                                    break;
+                                }
+                                try {
+                                    $pageData = $this->extractPageData($document, $pageNum, $nextObjectNumber, $mergedDoc, $resourceNameMap);
+                                    $allPages[] = $pageData;
+                                    $pagesExtractedForThisPdf++;
+                                    $pageNum++;
+                                } catch (FpdfException $e) {
+                                    $this->logger->debug('Retry page extraction failed, stopping', [
+                                        'file_path' => $absolutePath,
+                                        'page_number' => $pageNum,
+                                        'error' => $e->getMessage(),
+                                    ]);
+                                    break;
+                                }
+                            }
+
+                            if ($pagesExtractedForThisPdf > 0) {
+                                $this->logger->info('Retry extraction succeeded', [
+                                    'file_path' => $absolutePath,
+                                    'pages_extracted' => $pagesExtractedForThisPdf,
+                                ]);
+                            }
+                        } catch (FpdfException $e) {
+                            $this->logger->debug('Retry parsing/ extraction failed', ['file_path' => $absolutePath, 'error' => $e->getMessage()]);
+                        }
                     }
                 }
+            }
+
+            // Determine authoritative expected page count for this document.
+            // If getAllPages returned nodes during fallback extraction, prefer that as it's often more reliable
+            // than a single /Count value for PDFs with unusual page trees.
+            $effectiveExpectedCount = $originalPageCount;
+            if (is_array($fallbackAllPageNodes) && count($fallbackAllPageNodes) > $effectiveExpectedCount) {
+                $effectiveExpectedCount = count($fallbackAllPageNodes);
+            }
+
+            // If still unclear (e.g., parser found 1 but file likely contains more), try using pdfinfo if available to get authoritative page count
+            if ($effectiveExpectedCount <= 1 && function_exists('exec')) {
+                try {
+                    $cmd = 'pdfinfo ' . escapeshellarg($absolutePath) . ' 2>&1';
+                    @exec($cmd, $pdfInfoOutput, $pdfReturn);
+                    if (isset($pdfReturn) && $pdfReturn === 0 && !empty($pdfInfoOutput)) {
+                        $pdfInfoStr = implode("\n", $pdfInfoOutput);
+                        if (preg_match('/Pages:\s*(\d+)/i', $pdfInfoStr, $m)) {
+                            $pdfPages = (int) $m[1];
+                            if ($pdfPages > $effectiveExpectedCount) {
+                                $effectiveExpectedCount = $pdfPages;
+                            }
+                        }
+                    }
+                } catch (\Throwable $e) {
+                    // ignore failures of external utility
+                }
+            }
+
+            // If we expected pages but couldn't extract them all, add blank placeholders so page counts match
+            if ($effectiveExpectedCount > $pagesExtractedForThisPdf) {
+                $missing = $effectiveExpectedCount - $pagesExtractedForThisPdf;
+                $this->logger->warning('Not all pages extracted, adding placeholder blank pages', [
+                    'file_path' => $absolutePath,
+                    'expected_count' => $effectiveExpectedCount,
+                    'extracted' => $pagesExtractedForThisPdf,
+                    'added_placeholders' => $missing,
+                ]);
+
+                for ($i = 0; $i < $missing; $i++) {
+                    $allPages[] = [
+                        'pageDict' => new \PXP\PDF\Fpdf\Object\Base\PDFDictionary(),
+                        'content' => '',
+                        'resources' => null,
+                        'mediaBox' => null,
+                        'hasMediaBox' => false,
+                        'sourceDoc' => null,
+                    ];
+                }
+            }
+
+            // Log per-file processing summary for debugging
+            $this->logger->info('Completed processing input PDF', [
+                'file_path' => $absolutePath,
+                'expected_count' => $effectiveExpectedCount,
+                'extracted' => $pagesExtractedForThisPdf,
+                'total_pages_so_far' => count($allPages),
+            ]);
+
+            // Also write a simple debug line to a temp file so we can inspect across environments
+            try {
+                file_put_contents(sys_get_temp_dir() . '/pdf_merge_debug.log', json_encode([
+                    'file_path' => $absolutePath,
+                    'expected_count' => $effectiveExpectedCount,
+                    'extracted' => $pagesExtractedForThisPdf,
+                    'total_pages_so_far' => count($allPages),
+                ], JSON_THROW_ON_ERROR) . PHP_EOL, FILE_APPEND);
+            } catch (\Throwable $e) {
+                // ignore
+            }
+
+            $this->logger->info('Completed processing input PDF', [
+                'file_path' => $absolutePath,
+                'expected_count' => $effectiveExpectedCount,
+                'extracted' => $pagesExtractedForThisPdf,
+                'total_pages_so_far' => count($allPages),
+            ]);
+
+            // Also write a simple debug line to a temp file so we can inspect across environments
+            try {
+                file_put_contents(sys_get_temp_dir() . '/pdf_merge_debug.log', json_encode([
+                    'file_path' => $absolutePath,
+                    'expected_count' => $effectiveExpectedCount,
+                    'extracted' => $pagesExtractedForThisPdf,
+                    'total_pages_so_far' => count($allPages),
+                ], JSON_THROW_ON_ERROR) . PHP_EOL, FILE_APPEND);
+            } catch (\Throwable $e) {
+                // ignore
             }
 
             // Clear cache periodically to manage memory
@@ -273,8 +417,22 @@ final class PDFMerger
      */
     private function getPageCount(PDFDocument $document): int
     {
-        // First try to read /Count from file content (matches test's approach - uses first match)
-        // This ensures we match the test's behavior exactly
+        // Prefer authoritative /Count from Pages dictionary when available
+        $pagesNode = $document->getPages();
+        if ($pagesNode !== null) {
+            $pagesDict = $pagesNode->getValue();
+            if ($pagesDict instanceof PDFDictionary) {
+                $countEntry = $pagesDict->getEntry('/Count');
+                if ($countEntry instanceof \PXP\PDF\Fpdf\Object\Base\PDFNumber) {
+                    $count = (int) $countEntry->getValue();
+                    if ($count > 0) {
+                        return $count;
+                    }
+                }
+            }
+        }
+
+        // First try to read /Count from file content (fallback to naive scan)
         $registry = $document->getObjectRegistry();
         $reflection = new \ReflectionClass($registry);
         $filePathProp = $reflection->getProperty('filePath');
@@ -300,8 +458,7 @@ final class PDFMerger
         }
 
         // Fallback: Try to get /Count from Pages dictionary (for PDFs where file content search fails)
-        $pagesNode = $document->getPages();
-        if ($pagesNode === null) {
+        $pagesNode = $document->getPages();        if ($pagesNode === null) {
             // Try to load Pages from root if not already loaded
             $root = $document->getRoot();
             if ($root === null) {
@@ -338,7 +495,26 @@ final class PDFMerger
             }
         }
 
-        // Final fallback: Return 1 (matches test's fallback behavior when /Count not found)
+        // Final fallback: Try sequentially calling getPage() to count pages as a robust fallback
+        // This handles PDFs where /Count is missing or cannot be reliably parsed.
+        try {
+            $count = 0;
+            $maxAttempts = 10000; // safety limit
+            for ($i = 1; $i <= $maxAttempts; ++$i) {
+                $pageNode = $document->getPage($i);
+                if ($pageNode === null) {
+                    break;
+                }
+                $count++;
+            }
+            if ($count > 0) {
+                return $count;
+            }
+        } catch (\Throwable $e) {
+            // ignore and fall through to default
+        }
+
+        // If all else fails, return 1 as a safe default
         return 1;
     }
 
@@ -502,6 +678,9 @@ final class PDFMerger
             // Resources object number for this page (allocate first)
             $resourcesObjNum = $currentObjNum++;
 
+            // Local mapping of original resource names to unique names for this page
+            $localResourceMap = [];
+
             // Copy resources for this page (this will update currentObjNum as needed)
             if ($pageData['resources'] !== null) {
                 $this->copyResourcesForPage(
@@ -510,7 +689,8 @@ final class PDFMerger
                     $mergedDoc,
                     $resourcesObjNum,
                     $currentObjNum,
-                    $resourceNameMap
+                    $resourceNameMap,
+                    $localResourceMap
                 );
             } else {
                 $emptyResources = new \PXP\PDF\Fpdf\Object\Dictionary\ResourcesDictionary();
@@ -522,10 +702,24 @@ final class PDFMerger
 
             // Add content stream
             if (!empty($pageData['content'])) {
+                $content = $pageData['content'];
+
+                // Rewrite resource names inside content to match renamed resources for this page
+                if (!empty($localResourceMap)) {
+                    foreach (['Font', 'XObject'] as $type) {
+                        if (!empty($localResourceMap[$type]) && is_array($localResourceMap[$type])) {
+                            foreach ($localResourceMap[$type] as $oldName => $newName) {
+                                // Replace occurrences like /OldName with /NewName (word boundary)
+                                $content = preg_replace('/\/' . preg_quote($oldName, '/') . '\b/', '/' . $newName, $content);
+                            }
+                        }
+                    }
+                }
+
                 $streamDict = new \PXP\PDF\Fpdf\Object\Base\PDFDictionary();
-                $newStream = new PDFStream($streamDict, $pageData['content'], false);
+                $newStream = new PDFStream($streamDict, $content, false);
                 // Add compression if content is large
-                if (strlen($pageData['content']) > 1024) {
+                if (strlen($content) > 1024) {
                     $newStream->addFilter('FlateDecode');
                 }
                 $mergedDoc->addObject($newStream, $contentObjNum);
@@ -586,7 +780,8 @@ final class PDFMerger
         PDFDocument $targetDoc,
         int $resourcesObjNum,
         int &$nextObjectNumber,
-        array &$resourceNameMap
+        array &$resourceNameMap,
+        array &$localResourceMap = []
     ): void {
         // Use similar approach to PDFSplitter's copyResourcesWithReferences
         $newResources = new \PXP\PDF\Fpdf\Object\Dictionary\ResourcesDictionary();
@@ -605,12 +800,22 @@ final class PDFMerger
             );
         }
 
-        // Copy Fonts with full object copying
+        // Copy Fonts with full object copying (support dict or reference-to-dict)
         $fonts = $resourcesDict->getEntry('/Font');
+        if ($fonts instanceof PDFReference) {
+            $fontsNode = $sourceDoc->getObject($fonts->getObjectNumber());
+            if ($fontsNode !== null) {
+                $fonts = $fontsNode->getValue();
+            }
+        }
+
         if ($fonts instanceof PDFDictionary) {
             $newFonts = new \PXP\PDF\Fpdf\Object\Base\PDFDictionary();
             foreach ($fonts->getAllEntries() as $fontName => $fontRef) {
                 $uniqueFontName = $this->getUniqueResourceName($fontName, $resourceNameMap, 'Font');
+                // Record local mapping (old => new) for content rewriting
+                $localResourceMap['Font'][$fontName] = $uniqueFontName;
+
                 $copyingObjects = [];
                 if ($fontRef instanceof PDFReference) {
                     $fontNode = $sourceDoc->getObject($fontRef->getObjectNumber());
@@ -633,12 +838,22 @@ final class PDFMerger
             }
         }
 
-        // Copy XObjects (images) with full object copying
+        // Copy XObjects (images) with full object copying (support dict or reference-to-dict)
         $xObjects = $resourcesDict->getEntry('/XObject');
+        if ($xObjects instanceof PDFReference) {
+            $xObjectsNode = $sourceDoc->getObject($xObjects->getObjectNumber());
+            if ($xObjectsNode !== null) {
+                $xObjects = $xObjectsNode->getValue();
+            }
+        }
+
         if ($xObjects instanceof PDFDictionary) {
             $newXObjects = new \PXP\PDF\Fpdf\Object\Base\PDFDictionary();
             foreach ($xObjects->getAllEntries() as $xObjectName => $xObjectRef) {
                 $uniqueXObjectName = $this->getUniqueResourceName($xObjectName, $resourceNameMap, 'XObject');
+                // Record local mapping (old => new)
+                $localResourceMap['XObject'][$xObjectName] = $uniqueXObjectName;
+
                 $copyingObjects = [];
                 if ($xObjectRef instanceof PDFReference) {
                     $xObjectNode = $sourceDoc->getObject($xObjectRef->getObjectNumber());
@@ -759,6 +974,18 @@ final class PDFMerger
             return $newArray;
         }
 
+        if ($obj instanceof \PXP\PDF\Fpdf\Object\Base\PDFArray) {
+            $newArray = new \PXP\PDF\Fpdf\Object\Base\PDFArray();
+            foreach ($obj->getAll() as $item) {
+                if ($item instanceof \PXP\PDF\Fpdf\Object\PDFObjectInterface) {
+                    $newArray->add($this->copyObjectWithReferences($item, $sourceDoc, $targetDoc, $nextObjectNumber, $objectMap, $copyingObjects));
+                } else {
+                    $newArray->add($item);
+                }
+            }
+            return $newArray;
+        }
+
         if ($obj instanceof PDFStream) {
             $streamDict = $obj->getDictionary();
             $streamData = $obj->getDecodedData();
@@ -774,7 +1001,133 @@ final class PDFMerger
             return $newStream;
         }
 
+        // Default: return original object
         return $obj;
+    }
+
+    /**
+     * Extract page data directly from a page node (when numeric getPage() fails)
+     *
+     * @return array{pageDict: PDFDictionary, content: string, resources: PDFDictionary|null, mediaBox: array<float>|null, hasMediaBox: bool}
+     */
+    private function extractPageDataFromNode(
+        PDFDocument $sourceDoc,
+        $pageNode,
+        int &$nextObjectNumber,
+        PDFDocument $targetDoc,
+        array &$resourceNameMap
+    ): array {
+        if ($pageNode === null) {
+            throw new FpdfException('Page node is null');
+        }
+
+        $pageDict = $pageNode->getValue();
+        if (!$pageDict instanceof PDFDictionary) {
+            throw new FpdfException('Page object is not a dictionary');
+        }
+
+        // Extract MediaBox
+        $mediaBox = null;
+        $pageHasMediaBox = false;
+        $mediaBoxEntry = $pageDict->getEntry('/MediaBox');
+        if ($mediaBoxEntry instanceof MediaBoxArray) {
+            $mediaBox = $mediaBoxEntry->getValues();
+            $pageHasMediaBox = true;
+        } elseif ($mediaBoxEntry instanceof \PXP\PDF\Fpdf\Object\Base\PDFArray) {
+            $values = [];
+            foreach ($mediaBoxEntry->getAll() as $item) {
+                if ($item instanceof \PXP\PDF\Fpdf\Object\Base\PDFNumber) {
+                    $values[] = (float) $item->getValue();
+                }
+            }
+            if (count($values) >= 4) {
+                $mediaBox = [$values[0], $values[1], $values[2], $values[3]];
+                $pageHasMediaBox = true;
+            }
+        }
+
+        // If page doesn't have MediaBox, check parent
+        if (!$pageHasMediaBox) {
+            $parentRef = $pageDict->getEntry('/Parent');
+            if ($parentRef instanceof PDFReference) {
+                $parentNode = $sourceDoc->getObject($parentRef->getObjectNumber());
+                if ($parentNode !== null) {
+                    $parentDict = $parentNode->getValue();
+                    if ($parentDict instanceof PDFDictionary) {
+                        $parentMediaBoxEntry = $parentDict->getEntry('/MediaBox');
+                        if ($parentMediaBoxEntry instanceof MediaBoxArray) {
+                            $mediaBox = $parentMediaBoxEntry->getValues();
+                        } elseif ($parentMediaBoxEntry instanceof \PXP\PDF\Fpdf\Object\Base\PDFArray) {
+                            $values = [];
+                            foreach ($parentMediaBoxEntry->getAll() as $item) {
+                                if ($item instanceof \PXP\PDF\Fpdf\Object\Base\PDFNumber) {
+                                    $values[] = (float) $item->getValue();
+                                }
+                            }
+                            if (count($values) >= 4) {
+                                $mediaBox = [$values[0], $values[1], $values[2], $values[3]];
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        // Extract Contents
+        $contentsRef = $pageDict->getEntry('/Contents');
+        $contentStreams = [];
+
+        if ($contentsRef instanceof PDFReference) {
+            $contentNode = $sourceDoc->getObject($contentsRef->getObjectNumber());
+            if ($contentNode !== null) {
+                $contentObj = $contentNode->getValue();
+                if ($contentObj instanceof PDFStream) {
+                    $contentStreams[] = $contentObj;
+                }
+            }
+        } elseif ($contentsRef instanceof \PXP\PDF\Fpdf\Object\Base\PDFArray) {
+            foreach ($contentsRef->getAll() as $item) {
+                if ($item instanceof PDFReference) {
+                    $contentNode = $sourceDoc->getObject($item->getObjectNumber());
+                    if ($contentNode !== null) {
+                        $contentObj = $contentNode->getValue();
+                        if ($contentObj instanceof PDFStream) {
+                            $contentStreams[] = $contentObj;
+                        }
+                    }
+                }
+            }
+        }
+
+        // Combine content streams
+        $combinedContent = '';
+        foreach ($contentStreams as $stream) {
+            $combinedContent .= $stream->getDecodedData();
+        }
+
+        // Extract Resources
+        $resourcesRef = $pageDict->getEntry('/Resources');
+        $resourcesDict = null;
+        if ($resourcesRef instanceof PDFReference) {
+            $resourcesNode = $sourceDoc->getObject($resourcesRef->getObjectNumber());
+            if ($resourcesNode !== null) {
+                $resourcesObj = $resourcesNode->getValue();
+                if ($resourcesObj instanceof PDFDictionary) {
+                    $resourcesDict = $resourcesObj;
+                }
+            }
+        } elseif ($resourcesRef instanceof PDFDictionary) {
+            $resourcesDict = $resourcesRef;
+        }
+
+        return [
+            'pageDict' => $pageDict,
+            'content' => $combinedContent,
+            'resources' => $resourcesDict,
+            'mediaBox' => $mediaBox,
+            'hasMediaBox' => $pageHasMediaBox,
+            'sourceDoc' => $sourceDoc, // Keep reference to source document for resource copying
+        ];
     }
 
     /**
