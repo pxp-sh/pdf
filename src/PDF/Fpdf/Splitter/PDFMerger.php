@@ -163,7 +163,7 @@ final class PDFMerger
                         // Limit to expected page count to avoid extracting embedded pages
                         $pagesToExtract = min(count($allPageNodes), $expectedPageCount > 0 ? $expectedPageCount : count($allPageNodes));
                         for ($pageIndex = 0; $pageIndex < $pagesToExtract; $pageIndex++) {
-                                    $pageNum = $pageIndex + 1;
+                            $pageNum = $pageIndex + 1;
                             $pageNode = $allPageNodes[$pageIndex];
                             try {
                                 // First try the existing extraction by page number
@@ -458,7 +458,8 @@ final class PDFMerger
         }
 
         // Fallback: Try to get /Count from Pages dictionary (for PDFs where file content search fails)
-        $pagesNode = $document->getPages();        if ($pagesNode === null) {
+        $pagesNode = $document->getPages();
+        if ($pagesNode === null) {
             // Try to load Pages from root if not already loaded
             $root = $document->getRoot();
             if ($root === null) {
