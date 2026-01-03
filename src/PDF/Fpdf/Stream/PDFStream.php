@@ -76,11 +76,28 @@ final class PDFStream extends PDFObject
     }
 
     /**
+     * Set already encoded stream data directly. Useful when copying streams without decoding/re-encoding.
+     */
+    public function setEncodedData(string $encoded): void
+    {
+        $this->encodedData = $encoded;
+        $this->dataIsEncoded = true;
+        // Keep $this->data as-is (raw encoded data) but ensure getEncodedData returns the provided value
+    }
+
+    /**
      * Get encoded stream data (with filters applied).
      */
     public function getEncodedData(): string
     {
         if ($this->encodedData !== null) {
+            return $this->encodedData;
+        }
+
+        // If the stream data is already encoded (parsed from file or set via setEncodedData),
+        // return the raw data directly without re-encoding to avoid unnecessary memory usage.
+        if ($this->dataIsEncoded) {
+            $this->encodedData = $this->data;
             return $this->encodedData;
         }
 
@@ -176,9 +193,22 @@ final class PDFStream extends PDFObject
             $this->dictionary->addEntry('/Filter', $filterArray);
         }
 
-        // Update /Length entry
-        $encodedData = $this->getEncodedData();
-        $this->dictionary->addEntry('/Length', new PDFNumber(strlen($encodedData)));
+        // Update /Length entry without forcing an encode when possible to avoid unnecessary memory allocations.
+        if ($this->encodedData !== null) {
+            $length = strlen($this->encodedData);
+        } elseif ($this->dataIsEncoded) {
+            // Raw data is already encoded; use it directly without copying.
+            $length = strlen($this->data);
+        } elseif (empty($this->filters)) {
+            // No filters applied, so data is stored as-is.
+            $length = strlen($this->data);
+        } else {
+            // Filters present and data not encoded: encode to determine length.
+            $encodedData = $this->getEncodedData();
+            $length = strlen($encodedData);
+        }
+
+        $this->dictionary->addEntry('/Length', new PDFNumber($length));
     }
 
     public function __toString(): string
@@ -190,6 +220,13 @@ final class PDFStream extends PDFObject
         $result .= "stream\n";
         $result .= $encodedData . "\n";
         $result .= "endstream";
+
+        // Free heavy buffers after serializing to reduce peak memory usage during large merges.
+        $this->encodedData = null;
+        // Clear raw data when it was encoded to free the memory used by large streams.
+        if ($this->dataIsEncoded) {
+            $this->data = '';
+        }
 
         return $result;
     }

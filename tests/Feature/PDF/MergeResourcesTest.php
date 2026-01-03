@@ -4,12 +4,19 @@ declare(strict_types=1);
 
 /**
  * Copyright (c) 2025-2026 PXP
+ *
+ * For the full copyright and license information, please view
+ * the LICENSE file that was distributed with this source code.
+ *
+ * @see https://github.com/pxp-sh/pdf
+ *
  */
 
 namespace Test\Feature\PDF;
 
 use Test\TestCase;
-use PXP\PDF\Fpdf\FPDF;
+use PXP\PDF\Fpdf\Splitter\PDFMerger;
+use PXP\PDF\Fpdf\IO\FileIO;
 use PXP\PDF\Fpdf\Stream\PDFStream;
 use PXP\PDF\Fpdf\Tree\PDFDocument;
 use PXP\PDF\Fpdf\Object\Base\PDFDictionary;
@@ -19,10 +26,6 @@ final class MergeResourcesTest extends TestCase
 {
     public function test_merged_page_resources_are_copied(): void
     {
-        if (!method_exists(FPDF::class, 'mergePdf')) {
-            $this->markTestSkipped('mergePdf method not yet implemented');
-        }
-
         $inputDir = dirname(__DIR__, 2) . '/resources/input';
         $srcPdf = $inputDir . '/2402.04367v1.pdf';
         if (!is_file($srcPdf)) {
@@ -33,7 +36,9 @@ final class MergeResourcesTest extends TestCase
         mkdir($tmpDir, 0777, true);
         $out = $tmpDir . '/merged.pdf';
 
-        FPDF::mergePdf([$srcPdf], $out, self::getLogger(), self::getCache(), self::getEventDispatcher());
+        $fileIO = new FileIO(self::getLogger());
+        $merger = new PDFMerger($fileIO, self::getLogger(), self::getEventDispatcher(), self::getCache());
+        $merger->mergeIncremental([$srcPdf], $out);
         $this->assertFileExists($out);
 
         // Parse merged PDF and inspect first page resources using full parser
@@ -108,10 +113,6 @@ final class MergeResourcesTest extends TestCase
 
     public function test_merge_file_with_previously_zero_pages_yields_pages(): void
     {
-        if (!method_exists(FPDF::class, 'mergePdf')) {
-            $this->markTestSkipped('mergePdf method not yet implemented');
-        }
-
         $inputDir = dirname(__DIR__, 2) . '/resources/input';
         $srcPdf = $inputDir . '/3722041.3723104.pdf';
         if (!is_file($srcPdf)) {
@@ -122,7 +123,9 @@ final class MergeResourcesTest extends TestCase
         mkdir($tmpDir, 0777, true);
         $out = $tmpDir . '/merged.pdf';
 
-        FPDF::mergePdf([$srcPdf], $out, self::getLogger(), self::getCache(), self::getEventDispatcher());
+        $fileIO = new FileIO(self::getLogger());
+        $merger = new PDFMerger($fileIO, self::getLogger(), self::getEventDispatcher(), self::getCache());
+        $merger->mergeIncremental([$srcPdf], $out);
         $this->assertFileExists($out);
 
         $expected = self::getPdfPageCount($srcPdf);

@@ -641,13 +641,27 @@ final class PDFDocument
      */
     public function serialize(): string
     {
+        // Backwards-compatible wrapper that collects the whole PDF into memory.
         $parts = [];
+        $this->serializeToStream(function (string $chunk) use (&$parts) {
+            $parts[] = $chunk;
+        });
+
+        return implode('', $parts);
+    }
+
+    /**
+     * Stream-serializes the PDF by invoking the provided writer for each written chunk.
+     * The writer should accept a single string argument containing a PDF fragment to write.
+     */
+    public function serializeToStream(callable $writer): void
+    {
         $offsets = [];
         $offset = 0;
 
         // Header
         $headerStr = (string) $this->header;
-        $parts[] = $headerStr;
+        $writer($headerStr);
         $offset += strlen($headerStr);
 
         // Serialize all objects
@@ -657,7 +671,7 @@ final class PDFDocument
         foreach ($objects as $objectNumber => $node) {
             $offsets[$objectNumber] = $offset;
             $objStr = (string) $node . "\n";
-            $parts[] = $objStr;
+            $writer($objStr);
             $offset += strlen($objStr);
         }
 
@@ -667,14 +681,12 @@ final class PDFDocument
         // Xref table
         $xrefOffset = $offset;
         $xrefStr = $this->xrefTable->serialize();
-        $parts[] = $xrefStr;
+        $writer($xrefStr);
         $offset += strlen($xrefStr);
 
         // Trailer
         $this->trailer->setSize($this->objectRegistry->getMaxObjectNumber() + 1);
         $trailerStr = $this->trailer->serialize($xrefOffset);
-        $parts[] = $trailerStr;
-
-        return implode('', $parts);
+        $writer($trailerStr);
     }
 }

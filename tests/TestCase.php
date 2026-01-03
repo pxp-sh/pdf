@@ -18,6 +18,8 @@ use Composer\Autoload\ClassLoader;
 use Monolog\Handler\StreamHandler;
 use Monolog\Level;
 use Monolog\Logger;
+use Monolog\Processor\MemoryPeakUsageProcessor;
+use Monolog\Processor\MemoryUsageProcessor;
 use PXP\PDF\Fpdf\Enum\PageOrientation;
 use PXP\PDF\Fpdf\Enum\Unit;
 use PXP\PDF\Fpdf\ValueObject\PageSize;
@@ -43,6 +45,8 @@ class TestCase extends \PHPUnit\Framework\TestCase
             $logger = new Logger('test');
             $handler = new StreamHandler('php://stdout', Level::Debug);
             $logger->pushHandler($handler);
+            $logger->pushProcessor(new MemoryUsageProcessor());
+            $logger->pushProcessor(new MemoryPeakUsageProcessor());
             self::$logger = $logger;
         }
 

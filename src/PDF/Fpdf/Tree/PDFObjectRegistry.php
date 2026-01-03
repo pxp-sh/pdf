@@ -18,6 +18,7 @@ use PXP\PDF\Fpdf\Cache\NullCache;
 use PXP\PDF\Fpdf\IO\FileIOInterface;
 use PXP\PDF\Fpdf\Log\NullLogger;
 use PXP\PDF\Fpdf\Object\Parser\PDFParser;
+use PXP\PDF\Fpdf\Object\PDFObjectInterface;
 use PXP\PDF\Fpdf\Xref\PDFXrefTable;
 use Psr\Cache\CacheItemPoolInterface;
 use Psr\Log\LoggerInterface;
@@ -118,11 +119,36 @@ final class PDFObjectRegistry
             $this->nextObjectNumber = $objectNumber + 1;
         }
 
-        // Cache the object
+        // If the registry grows too large and lazy-loading is enabled (i.e. we can reload
+        // objects from the source PDF on-demand), proactively clear already-loaded objects to
+        // avoid unbounded memory growth when merging many PDFs. For in-memory-only documents
+        // (lazy loading disabled), don't clear because those objects are necessary for final
+        // serialization.
+        $MAX_LOADED_IN_MEMORY = 2048;
+        if ($this->isLazyLoadingEnabled() && count($this->objects) > $MAX_LOADED_IN_MEMORY) {
+            $this->logger->debug('Loaded objects cap reached, clearing in-memory registry to avoid OOM (lazy-loading active)', [
+                'loaded_objects' => count($this->objects),
+                'cap' => $MAX_LOADED_IN_MEMORY,
+            ]);
+            $this->objects = [];
+            // Attempt to free memory immediately
+            if (function_exists('gc_collect_cycles')) {
+                gc_collect_cycles();
+            }
+        }
+
+        // Cache the object if cacheable (avoid serializing stream-heavy objects)
         $cacheKey = $this->getCacheKey($objectNumber);
-        $cacheItem = $this->cache->getItem($cacheKey);
-        $cacheItem->set($node);
-        $this->cache->save($cacheItem);
+        if ($this->isCacheableNode($node)) {
+            $cacheItem = $this->cache->getItem($cacheKey);
+            $cacheItem->set($node);
+            $this->cache->save($cacheItem);
+        } else {
+            $this->logger->debug('Skipping external cache for non-cacheable object', [
+                'object_number' => $objectNumber,
+                'type' => get_class($node->getValue()),
+            ]);
+        }
 
         $this->logger->debug('Object registered', [
             'object_number' => $objectNumber,
@@ -198,12 +224,19 @@ final class PDFObjectRegistry
                     if ($node !== null) {
                         // Register the parsed node so it can be reused
                         $this->objects[$objectNumber] = $node;
-                        $cacheItem->set($node);
-                        $this->cache->save($cacheItem);
-                        $this->logger->debug('Compressed object resolved and cached', [
-                            'object_number' => $objectNumber,
-                            'type' => get_class($node->getValue()),
-                        ]);
+                        if ($this->isCacheableNode($node)) {
+                            $cacheItem->set($node);
+                            $this->cache->save($cacheItem);
+                            $this->logger->debug('Compressed object resolved and cached', [
+                                'object_number' => $objectNumber,
+                                'type' => get_class($node->getValue()),
+                            ]);
+                        } else {
+                            $this->logger->debug('Compressed object resolved but skipped external cache (non-cacheable)', [
+                                'object_number' => $objectNumber,
+                                'type' => get_class($node->getValue()),
+                            ]);
+                        }
                         return $node;
                     }
                 }
@@ -236,13 +269,20 @@ final class PDFObjectRegistry
 
                 if ($node !== null) {
                     $this->objects[$objectNumber] = $node;
-                    // Cache the loaded object
-                    $cacheItem->set($node);
-                    $this->cache->save($cacheItem);
-                    $this->logger->debug('Object lazy loaded and cached', [
-                        'object_number' => $objectNumber,
-                        'type' => get_class($node->getValue()),
-                    ]);
+                    // Cache the loaded object if cacheable
+                    if ($this->isCacheableNode($node)) {
+                        $cacheItem->set($node);
+                        $this->cache->save($cacheItem);
+                        $this->logger->debug('Object lazy loaded and cached', [
+                            'object_number' => $objectNumber,
+                            'type' => get_class($node->getValue()),
+                        ]);
+                    } else {
+                        $this->logger->debug('Object lazy loaded but skipped external cache (non-cacheable)', [
+                            'object_number' => $objectNumber,
+                            'type' => get_class($node->getValue()),
+                        ]);
+                    }
                     return $node;
                 }
             }
@@ -339,6 +379,65 @@ final class PDFObjectRegistry
             $fileHash = '_' . md5(substr($this->rawContent, 0, 1024));
         }
         return 'pxp_pdf_object_' . $objectNumber . $fileHash;
+    }
+
+    /**
+     * Decide if a node is safe to serialize into the external cache.
+     * We avoid caching nodes that contain stream objects (e.g., image/XObject/FontFile streams)
+     * because serializing large binary buffers can spike memory usage and cause OOMs.
+     */
+    private function isCacheableNode(PDFObjectNode $node): bool
+    {
+        $val = $node->getValue();
+        return !$this->containsStream($val);
+    }
+
+    /**
+     * Recursively inspect an object for the presence of any PDFStream instances.
+     * We avoid following PDFReference instances to prevent triggering lazy loads.
+     * The $visited set prevents infinite recursion.
+     */
+    private function containsStream(PDFObjectInterface $obj, array &$visited = []): bool {
+        // Safety: avoid unbounded recursion on very large or circular object graphs.
+        // If we've visited a large number of nodes, treat the object as non-cacheable
+        // so we err on the side of skipping external cache for complex structures.
+        $MAX_VISITED = 2048;
+        if (count($visited) > $MAX_VISITED) {
+            return true;
+        }
+
+        $id = spl_object_id($obj);
+        if (in_array($id, $visited, true)) {
+            return false;
+        }
+        $visited[] = $id;
+
+        // If we encounter a PDFReference, treat it as non-cacheable. References may point to
+        // stream-containing objects in other parts of the PDF and following them risks
+        // pulling large stream content into memory during marshalling.
+        if ($obj instanceof \PXP\PDF\Fpdf\Object\Base\PDFReference) {
+            return true;
+        }
+
+        if ($obj instanceof \PXP\PDF\Fpdf\Stream\PDFStream) {
+            return true;
+        }
+
+        if ($obj instanceof \PXP\PDF\Fpdf\Object\Base\PDFDictionary) {
+            foreach ($obj->getAllEntries() as $v) {
+                if ($v instanceof PDFObjectInterface && $this->containsStream($v, $visited)) {
+                    return true;
+                }
+            }
+        } elseif ($obj instanceof \PXP\PDF\Fpdf\Object\Base\PDFArray) {
+            foreach ($obj->getAll() as $item) {
+                if ($item instanceof PDFObjectInterface && $this->containsStream($item, $visited)) {
+                    return true;
+                }
+            }
+        }
+
+        return false;
     }
 
     /**
