@@ -177,7 +177,7 @@ final class PDFObjectRegistry
         if ($cacheItem->isHit()) {
             $node = $cacheItem->get();
             if ($node instanceof PDFObjectNode) {
-                $this->objects[$objectNumber] = $node;
+                // Do NOT store in memory - keep only in external cache
                 $this->logger->debug('Object retrieved from external cache', [
                     'object_number' => $objectNumber,
                     'cache_hit' => true,
@@ -222,12 +222,11 @@ final class PDFObjectRegistry
                     }
 
                     if ($node !== null) {
-                        // Register the parsed node so it can be reused
-                        $this->objects[$objectNumber] = $node;
+                        // Store in external cache only, NOT in memory
                         if ($this->isCacheableNode($node)) {
                             $cacheItem->set($node);
                             $this->cache->save($cacheItem);
-                            $this->logger->debug('Compressed object resolved and cached', [
+                            $this->logger->debug('Compressed object resolved and cached externally', [
                                 'object_number' => $objectNumber,
                                 'type' => get_class($node->getValue()),
                             ]);
@@ -268,12 +267,11 @@ final class PDFObjectRegistry
                 }
 
                 if ($node !== null) {
-                    $this->objects[$objectNumber] = $node;
-                    // Cache the loaded object if cacheable
+                    // Store in external cache only, NOT in memory
                     if ($this->isCacheableNode($node)) {
                         $cacheItem->set($node);
                         $this->cache->save($cacheItem);
-                        $this->logger->debug('Object lazy loaded and cached', [
+                        $this->logger->debug('Object lazy loaded and cached externally', [
                             'object_number' => $objectNumber,
                             'type' => get_class($node->getValue()),
                         ]);
@@ -397,7 +395,8 @@ final class PDFObjectRegistry
      * We avoid following PDFReference instances to prevent triggering lazy loads.
      * The $visited set prevents infinite recursion.
      */
-    private function containsStream(PDFObjectInterface $obj, array &$visited = []): bool {
+    private function containsStream(PDFObjectInterface $obj, array &$visited = []): bool
+    {
         // Safety: avoid unbounded recursion on very large or circular object graphs.
         // If we've visited a large number of nodes, treat the object as non-cacheable
         // so we err on the side of skipping external cache for complex structures.

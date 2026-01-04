@@ -32,7 +32,7 @@ use PXP\PDF\Fpdf\Tree\PDFDocument;
 use PXP\PDF\Fpdf\Merger\IncrementalPageProcessor;
 use PXP\PDF\Fpdf\Merger\StreamCopier;
 
-final class PDFMerger
+class PDFMerger
 {
     private LoggerInterface $logger;
     private EventDispatcherInterface $dispatcher;
@@ -1378,15 +1378,17 @@ final class PDFMerger
     }
 
     /**
-     * Merge PDFs incrementally with minimal memory footprint.
+     * Merge PDFs incrementally with TRUE STREAMING architecture.
      *
-     * This is the optimized version that:
-     * - Processes one page at a time
-     * - Writes to PDF structure immediately
-     * - Frees memory after each page
-     * - Processes one source file at a time
+     * This implementation:
+     * - Opens output file IMMEDIATELY
+     * - Writes PDF header first
+     * - Processes pages ONE AT A TIME
+     * - Writes objects DIRECTLY to disk (NOT to memory)
+     * - Tracks byte offsets for xref table
+     * - Only keeps catalog/pages dict in memory (NOT page objects)
      *
-     * Memory usage: O(1 page) instead of O(all pages)
+     * Memory usage: O(1 page) - constant memory regardless of page count
      *
      * @param array<string> $pdfFilePaths
      */
@@ -1397,10 +1399,10 @@ final class PDFMerger
         }
 
         $startTime = microtime(true);
-        $this->logger->info('Incremental PDF merge started', [
+        $this->logger->info('Streaming PDF merge started', [
             'input_files' => count($pdfFilePaths),
             'output_path' => $outputPath,
-            'mode' => 'incremental',
+            'mode' => 'streaming',
         ]);
 
         // Verify files
@@ -1410,242 +1412,296 @@ final class PDFMerger
             }
         }
 
-        // Create merged document
-        $registry = new \PXP\PDF\Fpdf\Tree\PDFObjectRegistry(
-            null,
-            null,
-            null,
-            null,
-            null,
-            $this->cache,
-            $this->logger
-        );
-        $mergedDoc = new PDFDocument('1.3', $registry);
-
-        // Initialize incremental processor
-        $processor = new IncrementalPageProcessor($mergedDoc, $this->logger);
-        $parser = new PDFParser($this->logger, $this->cache);
-
-        $resourceNameMap = [];
-        $totalPagesProcessed = 0;
-
-        // Process each PDF file ONE AT A TIME
-        foreach ($pdfFilePaths as $fileIndex => $pdfPath) {
-            $absolutePath = realpath($pdfPath) ?: $pdfPath;
-
-            $this->logger->info('Processing file incrementally', [
-                'file' => $fileIndex + 1,
-                'total_files' => count($pdfFilePaths),
-                'path' => $absolutePath,
-            ]);
-
-            // Parse document (kept in memory only for THIS file)
-            $sourceDoc = $parser->parseDocumentFromFile($pdfPath, $this->fileIO);
-            $pageCount = $this->getPageCount($sourceDoc);
-
-            $this->logger->debug('File loaded', [
-                'file_index' => $fileIndex + 1,
-                'page_count' => $pageCount,
-            ]);
-
-            // Cache source doc temporarily for this file
-            $sourceDocCache = [$absolutePath => $sourceDoc];
-
-            // Process each page and IMMEDIATELY append to merged doc
-            for ($pageNum = 1; $pageNum <= $pageCount; $pageNum++) {
-                try {
-                    // Extract page data (simplified for incremental processing)
-                    $pageNode = $sourceDoc->getPage($pageNum);
-                    if ($pageNode === null) {
-                        $this->logger->warning('Page not found', [
-                            'file' => $absolutePath,
-                            'page' => $pageNum,
-                        ]);
-                        continue;
-                    }
-
-                    // Prepare page data for processor
-                    $pageDict = $pageNode->getValue();
-                    if (!$pageDict instanceof PDFDictionary) {
-                        continue;
-                    }
-
-                    // Extract MediaBox
-                    $mediaBox = null;
-                    $hasMediaBox = false;
-                    $mediaBoxEntry = $pageDict->getEntry('/MediaBox');
-                    if ($mediaBoxEntry !== null) {
-                        if (
-                            $mediaBoxEntry instanceof \PXP\PDF\Fpdf\Object\Array\MediaBoxArray ||
-                            $mediaBoxEntry instanceof \PXP\PDF\Fpdf\Object\Base\PDFArray
-                        ) {
-                            $mediaBox = [];
-                            for ($i = 0; $i < 4 && $i < $mediaBoxEntry->count(); $i++) {
-                                $item = $mediaBoxEntry->get($i);
-                                if ($item instanceof \PXP\PDF\Fpdf\Object\Base\PDFNumber) {
-                                    $mediaBox[] = (float) $item->getValue();
-                                } elseif (is_numeric($item)) {
-                                    $mediaBox[] = (float) $item;
-                                }
-                            }
-                            if (count($mediaBox) === 4) {
-                                $hasMediaBox = true;
-                            } else {
-                                $mediaBox = null;
-                            }
-                        }
-                    }
-
-                    // Extract Contents
-                    $content = '';
-                    $contentsEntry = $pageDict->getEntry('/Contents');
-                    if ($contentsEntry instanceof PDFReference) {
-                        // Single content stream
-                        $contentNode = $sourceDoc->getObject($contentsEntry->getObjectNumber());
-                        if ($contentNode !== null) {
-                            $contentObj = $contentNode->getValue();
-                            if ($contentObj instanceof PDFStream) {
-                                $content = $contentObj->getDecodedData();
-                            }
-                        }
-                    } elseif ($contentsEntry instanceof \PXP\PDF\Fpdf\Object\Base\PDFArray) {
-                        // Array of content streams - combine them
-                        foreach ($contentsEntry->getAll() as $item) {
-                            if ($item instanceof PDFReference) {
-                                $contentNode = $sourceDoc->getObject($item->getObjectNumber());
-                                if ($contentNode !== null) {
-                                    $contentObj = $contentNode->getValue();
-                                    if ($contentObj instanceof PDFStream) {
-                                        $content .= $contentObj->getDecodedData();
-                                    }
-                                }
-                            }
-                        }
-                    }
-
-                    // Extract Resources (with inheritance from parent Pages if needed)
-                    $resources = null;
-                    $resourcesEntry = $pageDict->getEntry('/Resources');
-                    if ($resourcesEntry instanceof PDFReference) {
-                        $resourcesNode = $sourceDoc->getObject($resourcesEntry->getObjectNumber());
-                        if ($resourcesNode !== null) {
-                            $resourcesObj = $resourcesNode->getValue();
-                            if ($resourcesObj instanceof PDFDictionary) {
-                                $resources = $resourcesObj;
-                            }
-                        }
-                    } elseif ($resourcesEntry instanceof PDFDictionary) {
-                        $resources = $resourcesEntry;
-                    }
-
-                    // If page doesn't have Resources, check if it inherits from parent
-                    if ($resources === null) {
-                        $parentRef = $pageDict->getEntry('/Parent');
-                        if ($parentRef instanceof PDFReference) {
-                            $parentNode = $sourceDoc->getObject($parentRef->getObjectNumber());
-                            if ($parentNode !== null) {
-                                $parentDict = $parentNode->getValue();
-                                if ($parentDict instanceof PDFDictionary) {
-                                    $inheritedResources = $parentDict->getEntry('/Resources');
-                                    if ($inheritedResources instanceof PDFReference) {
-                                        $inheritedNode = $sourceDoc->getObject($inheritedResources->getObjectNumber());
-                                        if ($inheritedNode !== null) {
-                                            $inheritedObj = $inheritedNode->getValue();
-                                            if ($inheritedObj instanceof PDFDictionary) {
-                                                $resources = $inheritedObj;
-                                            }
-                                        }
-                                    } elseif ($inheritedResources instanceof PDFDictionary) {
-                                        $resources = $inheritedResources;
-                                    }
-                                }
-                            }
-                        }
-                    }
-
-                    $pageData = [
-                        'pageDict' => $pageDict,
-                        'content' => $content,
-                        'resources' => $resources,
-                        'mediaBox' => $mediaBox,
-                        'hasMediaBox' => $hasMediaBox,
-                        'sourcePath' => $absolutePath,
-                        'sourceDoc' => $sourceDoc,
-                    ];
-
-                    // CRITICAL: Append immediately and free
-                    $processor->appendPage(
-                        $pageData,
-                        $resourceNameMap,
-                        $sourceDocCache
-                    );
-
-                    $totalPagesProcessed++;
-
-                    // Explicit memory cleanup after each page
-                    unset($pageData, $content, $mediaBox);
-
-                    $this->logger->debug('Page processed incrementally', [
-                        'file' => $fileIndex + 1,
-                        'page' => $pageNum,
-                        'total_processed' => $totalPagesProcessed,
-                    ]);
-
-                } catch (\Throwable $e) {
-                    $this->logger->warning('Failed to extract page', [
-                        'file' => $absolutePath,
-                        'page' => $pageNum,
-                        'error' => $e->getMessage(),
-                    ]);
-                    continue;
-                }
-            }
-
-            // CRITICAL: Free source document after ALL its pages are processed
-            unset($sourceDoc, $sourceDocCache);
-
-            // Force garbage collection after each file
-            gc_collect_cycles();
-
-            $this->logger->info('File completed', [
-                'file' => $fileIndex + 1,
-                'pages_from_file' => $pageCount,
-                'total_pages_so_far' => $totalPagesProcessed,
-            ]);
-        }
-
-        if ($totalPagesProcessed === 0) {
-            throw new FpdfException('No pages were successfully extracted from any input PDFs');
-        }
-
-        // Finalize merged document
-        $processor->finalize();
-
-        // Stream to output file
+        // Open output file IMMEDIATELY for streaming writes
         $handle = $this->fileIO->openWriteStream($outputPath);
         $bytesWritten = 0;
 
         try {
+            // Create merged document (only for catalog/pages structure)
+            $registry = new \PXP\PDF\Fpdf\Tree\PDFObjectRegistry(
+                null,
+                null,
+                null,
+                null,
+                null,
+                $this->cache,
+                $this->logger
+            );
+            $mergedDoc = new PDFDocument('1.3', $registry);
+
+            // Write PDF header IMMEDIATELY
             $writer = function (string $chunk) use ($handle, &$bytesWritten): void {
                 $written = fwrite($handle, $chunk);
                 if ($written === false) {
-                    throw new FpdfException('Failed to write PDF chunk to output file');
+                    throw new \RuntimeException('Failed to write PDF chunk to output stream');
                 }
                 $bytesWritten += $written;
             };
 
-            $mergedDoc->serializeToStream($writer);
+            $headerStr = (string) $mergedDoc->getHeader();
+            $writer($headerStr);
+            $currentOffset = strlen($headerStr);
+
+            $this->logger->debug('PDF header written to stream', [
+                'offset' => $currentOffset,
+            ]);
+
+            // Initialize incremental processor WITH STREAMING WRITER
+            $processor = new IncrementalPageProcessor(
+                $mergedDoc,
+                $this->logger,
+                2, // Start at object 2 (object 1 is Pages dict)
+                $writer,
+                $currentOffset
+            );
+            $parser = new PDFParser($this->logger, $this->cache);
+
+            $resourceNameMap = [];
+            $totalPagesProcessed = 0;
+
+            // Process each PDF file, streaming pages to disk immediately
+            foreach ($pdfFilePaths as $fileIndex => $pdfPath) {
+                $absolutePath = realpath($pdfPath) ?: $pdfPath;
+
+                $this->logger->info('Processing file (streaming mode)', [
+                    'file' => $fileIndex + 1,
+                    'total_files' => count($pdfFilePaths),
+                    'path' => $absolutePath,
+                ]);
+
+                // Parse document
+                $sourceDoc = $parser->parseDocumentFromFile($pdfPath, $this->fileIO);
+                $pageCount = $this->getPageCount($sourceDoc);
+
+                $this->logger->debug('File loaded', [
+                    'file_index' => $fileIndex + 1,
+                    'page_count' => $pageCount,
+                ]);
+
+                $sourceDocCache = [$absolutePath => $sourceDoc];
+
+                // Extract and WRITE each page immediately to disk
+                for ($pageNum = 1; $pageNum <= $pageCount; $pageNum++) {
+                    try {
+                        $pageNode = $sourceDoc->getPage($pageNum);
+                        if ($pageNode === null) {
+                            continue;
+                        }
+
+                        $pageDict = $pageNode->getValue();
+                        if (!$pageDict instanceof PDFDictionary) {
+                            continue;
+                        }
+
+                        // Extract minimal page data
+                        $pageData = $this->extractMinimalPageData($sourceDoc, $pageNum);
+                        $pageData['sourcePath'] = $absolutePath;
+                        $pageData['sourceDoc'] = $sourceDoc;
+
+                        // CRITICAL: appendPage() writes objects to disk IMMEDIATELY
+                        // Objects are NOT stored in memory after this call
+                        $processor->appendPage(
+                            $pageData,
+                            $resourceNameMap,
+                            $sourceDocCache
+                        );
+
+                        $totalPagesProcessed++;
+
+                        // Free page data immediately
+                        unset($pageData);
+
+                        if ($totalPagesProcessed % 50 === 0) {
+                            $this->logger->debug('Streaming progress', [
+                                'pages_written' => $totalPagesProcessed,
+                                'bytes_written' => $bytesWritten,
+                            ]);
+                        }
+
+                    } catch (\Throwable $e) {
+                        $this->logger->warning('Failed to extract page', [
+                            'file' => $absolutePath,
+                            'page' => $pageNum,
+                            'error' => $e->getMessage(),
+                        ]);
+                    }
+                }
+
+                // Free source document after processing all pages
+                unset($sourceDoc, $sourceDocCache);
+                gc_collect_cycles();
+
+                $this->logger->info('File completed (streaming)', [
+                    'file' => $fileIndex + 1,
+                    'pages_from_file' => $pageCount,
+                    'total_pages_written' => $totalPagesProcessed,
+                ]);
+            }
+
+            if ($totalPagesProcessed === 0) {
+                throw new FpdfException('No pages were successfully extracted from any input PDFs');
+            }
+
+            $this->logger->info('All pages streamed to disk', [
+                'total_pages' => $totalPagesProcessed,
+                'bytes_written' => $bytesWritten,
+            ]);
+
+            // Get current offset and object offsets tracked during streaming
+            $currentOffset = $processor->getCurrentOffset();
+            $objectOffsets = $processor->getObjectOffsets();
+
+            // Write Pages dictionary (object 1) to stream
+            $pagesNode = $mergedDoc->getObjectRegistry()->get(1);
+            if ($pagesNode !== null) {
+                $objectOffsets[1] = $currentOffset;
+                $objStr = (string) $pagesNode . "\n";
+                $writer($objStr);
+                $currentOffset += strlen($objStr);
+            }
+
+            // Finalize creates catalog in registry
+            $processor->finalize();
+
+            // Write Catalog to stream
+            $catalogObjNum = $processor->getNextObjectNumber() - 1;
+            $catalogNode = $mergedDoc->getObjectRegistry()->get($catalogObjNum);
+            if ($catalogNode !== null) {
+                $objectOffsets[$catalogObjNum] = $currentOffset;
+                $objStr = (string) $catalogNode . "\n";
+                $writer($objStr);
+                $currentOffset += strlen($objStr);
+            }
+
+            // Build and write xref table
+            $mergedDoc->getXrefTable()->rebuild($objectOffsets);
+            $xrefOffset = $currentOffset;
+            $xrefStr = $mergedDoc->getXrefTable()->serialize();
+            $writer($xrefStr);
+            $currentOffset += strlen($xrefStr);
+
+            // Write trailer
+            $mergedDoc->getTrailer()->setSize($processor->getNextObjectNumber());
+            $trailerStr = $mergedDoc->getTrailer()->serialize($xrefOffset);
+            $writer($trailerStr);
+
+            $duration = (microtime(true) - $startTime) * 1000;
+
+            $this->logger->info('Streaming PDF merge completed', [
+                'input_files' => count($pdfFilePaths),
+                'total_pages' => $totalPagesProcessed,
+                'output_path' => $outputPath,
+                'bytes_written' => $bytesWritten,
+                'duration_ms' => round($duration, 2),
+                'memory_peak_mb' => round(memory_get_peak_usage(true) / 1024 / 1024, 2),
+            ]);
         } finally {
             fclose($handle);
         }
+    }
 
-        $duration = (microtime(true) - $startTime) * 1000;
+    /**
+     * Extract minimal page data needed for streaming merge
+     */
+    private function extractMinimalPageData(PDFDocument $sourceDoc, int $pageNum): array
+    {
+        $pageNode = $sourceDoc->getPage($pageNum);
+        if ($pageNode === null) {
+            throw new FpdfException('Invalid page number: ' . $pageNum);
+        }
 
-        $this->logger->info('Incremental PDF merge completed', [
-            'total_pages' => $totalPagesProcessed,
-            'output_size_bytes' => $bytesWritten,
-            'duration_ms' => round($duration, 2),
-            'memory_peak_mb' => round(memory_get_peak_usage(true) / 1024 / 1024, 2),
-        ]);
+        $pageDict = $pageNode->getValue();
+        if (!$pageDict instanceof PDFDictionary) {
+            throw new FpdfException('Page object is not a dictionary');
+        }
+        // Extract MediaBox
+        $mediaBox = null;
+        $hasMediaBox = false;
+        $mediaBoxEntry = $pageDict->getEntry('/MediaBox');
+        if ($mediaBoxEntry instanceof MediaBoxArray) {
+            $mediaBox = $mediaBoxEntry->getValues();
+            $hasMediaBox = true;
+        } elseif ($mediaBoxEntry instanceof \PXP\PDF\Fpdf\Object\Base\PDFArray) {
+            $values = [];
+            foreach ($mediaBoxEntry->getAll() as $item) {
+                if ($item instanceof \PXP\PDF\Fpdf\Object\Base\PDFNumber) {
+                    $values[] = (float) $item->getValue();
+                }
+            }
+            if (count($values) >= 4) {
+                $mediaBox = [$values[0], $values[1], $values[2], $values[3]];
+                $hasMediaBox = true;
+            }
+        }
+
+        // Extract Contents
+        $content = '';
+        $contentsEntry = $pageDict->getEntry('/Contents');
+        if ($contentsEntry instanceof PDFReference) {
+            $contentNode = $sourceDoc->getObject($contentsEntry->getObjectNumber());
+            if ($contentNode !== null) {
+                $contentObj = $contentNode->getValue();
+                if ($contentObj instanceof PDFStream) {
+                    $content = $contentObj->getDecodedData();
+                }
+            }
+        } elseif ($contentsEntry instanceof \PXP\PDF\Fpdf\Object\Base\PDFArray) {
+            foreach ($contentsEntry->getAll() as $item) {
+                if ($item instanceof PDFReference) {
+                    $contentNode = $sourceDoc->getObject($item->getObjectNumber());
+                    if ($contentNode !== null) {
+                        $contentObj = $contentNode->getValue();
+                        if ($contentObj instanceof PDFStream) {
+                            $content .= $contentObj->getDecodedData();
+                        }
+                    }
+                }
+            }
+        }
+
+        // Extract Resources
+        $resources = null;
+        $resourcesEntry = $pageDict->getEntry('/Resources');
+        if ($resourcesEntry instanceof PDFReference) {
+            $resourcesNode = $sourceDoc->getObject($resourcesEntry->getObjectNumber());
+            if ($resourcesNode !== null) {
+                $resourcesObj = $resourcesNode->getValue();
+                if ($resourcesObj instanceof PDFDictionary) {
+                    $resources = $resourcesObj;
+                }
+            }
+        } elseif ($resourcesEntry instanceof PDFDictionary) {
+            $resources = $resourcesEntry;
+        }
+
+        // Check parent for inherited resources if needed
+        if ($resources === null) {
+            $parentRef = $pageDict->getEntry('/Parent');
+            if ($parentRef instanceof PDFReference) {
+                $parentNode = $sourceDoc->getObject($parentRef->getObjectNumber());
+                if ($parentNode !== null) {
+                    $parentDict = $parentNode->getValue();
+                    if ($parentDict instanceof PDFDictionary) {
+                        $inheritedResources = $parentDict->getEntry('/Resources');
+                        if ($inheritedResources instanceof PDFReference) {
+                            $inheritedNode = $sourceDoc->getObject($inheritedResources->getObjectNumber());
+                            if ($inheritedNode !== null && $inheritedNode->getValue() instanceof PDFDictionary) {
+                                $resources = $inheritedNode->getValue();
+                            }
+                        } elseif ($inheritedResources instanceof PDFDictionary) {
+                            $resources = $inheritedResources;
+                        }
+                    }
+                }
+            }
+        }
+
+        return [
+            'pageDict' => $pageDict,
+            'content' => $content,
+            'resources' => $resources,
+            'mediaBox' => $mediaBox,
+            'hasMediaBox' => $hasMediaBox,
+        ];
     }
 }

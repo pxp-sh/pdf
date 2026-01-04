@@ -92,6 +92,27 @@ final class PDFDocument
     }
 
     /**
+     * Write an object directly to stream and track its offset WITHOUT storing in registry.
+     * This enables true streaming where objects are written immediately and released from memory.
+     *
+     * @param callable $writer Function that accepts string chunks to write
+     * @param int $currentOffset Current byte offset in the output stream
+     * @return int New offset after writing this object
+     */
+    public function writeObjectToStream(
+        PDFObjectInterface $object,
+        int $objectNumber,
+        callable $writer,
+        int $currentOffset
+    ): int {
+        $node = new PDFObjectNode($objectNumber, $object);
+        $objStr = (string) $node . "\n";
+        $writer($objStr);
+
+        return $currentOffset + strlen($objStr);
+    }
+
+    /**
      * Get the root catalog object.
      */
     public function getRoot(): ?PDFObjectNode
@@ -474,11 +495,11 @@ final class PDFDocument
             $xrefTable = $xrefTableProp->getValue($this->objectRegistry);
 
             if ($xrefTable !== null) {
-                    // First try to find Pages objects (more reliable than finding Page objects directly)
-                    $allEntries = $xrefTable->getAllEntries();
-                    $pagesObjects = [];
-                    $checked = 0;
-                    $maxChecks = 300; // Check more objects to find Pages
+                // First try to find Pages objects (more reliable than finding Page objects directly)
+                $allEntries = $xrefTable->getAllEntries();
+                $pagesObjects = [];
+                $checked = 0;
+                $maxChecks = 300; // Check more objects to find Pages
 
                 foreach ($allEntries as $objectNumber => $entry) {
                     if ($checked >= $maxChecks) {

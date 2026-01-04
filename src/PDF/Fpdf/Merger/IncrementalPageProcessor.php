@@ -48,14 +48,30 @@ final class IncrementalPageProcessor
     /** @var array<float>|null */
     private ?array $defaultMediaBox = null;
 
+    /** @var array<int, int> Global object mapping to reuse copied objects across pages */
+    private array $globalObjectMap = [];
+
+    /** @var callable|null Stream writer function for immediate writes */
+    private $streamWriter = null;
+
+    /** @var int Current byte offset in output stream */
+    private int $currentOffset = 0;
+
+    /** @var array<int, int> Object number => byte offset mapping for xref table */
+    private array $objectOffsets = [];
+
     public function __construct(
         PDFDocument $targetDoc,
         LoggerInterface $logger,
-        int $startObjectNumber = 2
+        int $startObjectNumber = 2,
+        ?callable $streamWriter = null,
+        int $startOffset = 0
     ) {
         $this->targetDoc = $targetDoc;
         $this->logger = $logger;
         $this->nextObjectNumber = $startObjectNumber;
+        $this->streamWriter = $streamWriter;
+        $this->currentOffset = $startOffset;
 
         // Initialize Pages tree (object 1) - empty at first
         $this->initializePagesTree();
@@ -134,9 +150,19 @@ final class IncrementalPageProcessor
                 $this->nextObjectNumber
             );
         } else {
-            // Empty resources
+            // Empty resources - write immediately if streaming
             $emptyResources = new ResourcesDictionary();
-            $this->targetDoc->addObject($emptyResources, $resourcesObjNum);
+            if ($this->streamWriter !== null) {
+                $this->objectOffsets[$resourcesObjNum] = $this->currentOffset;
+                $this->currentOffset = $this->targetDoc->writeObjectToStream(
+                    $emptyResources,
+                    $resourcesObjNum,
+                    $this->streamWriter,
+                    $this->currentOffset
+                );
+            } else {
+                $this->targetDoc->addObject($emptyResources, $resourcesObjNum);
+            }
         }
 
         // Copy content streams
@@ -146,14 +172,23 @@ final class IncrementalPageProcessor
             $sourceDocCache
         );
 
-        // Create page dictionary
+        // Create page dictionary - write immediately if streaming
         $pageObjNum = $this->nextObjectNumber++;
-        $this->createPageObject(
-            $pageObjNum,
-            $resourcesObjNum,
-            $contentObjNums,
-            $pageData
-        );
+        if ($this->streamWriter !== null) {
+            $this->writePageObjectToStream(
+                $pageObjNum,
+                $resourcesObjNum,
+                $contentObjNums,
+                $pageData
+            );
+        } else {
+            $this->createPageObject(
+                $pageObjNum,
+                $resourcesObjNum,
+                $contentObjNums,
+                $pageData
+            );
+        }
 
         // Append to Kids array
         $this->kidsArray->addPage($pageObjNum);
@@ -211,7 +246,8 @@ final class IncrementalPageProcessor
         int &$nextObjectNumber
     ): void {
         $newResources = new ResourcesDictionary();
-        $objectMap = [];
+        // Use global objectMap to reuse copied objects across pages
+        // This prevents copying the same font/xobject multiple times
 
         // Copy fonts with full object copying
         $fonts = $resourcesDict->getEntry('/Font');
@@ -235,14 +271,36 @@ final class IncrementalPageProcessor
 
                 // Copy font object recursively
                 if ($fontRef instanceof PDFReference) {
-                    $fontNode = $sourceDoc->getObject($fontRef->getObjectNumber());
-                    if ($fontNode !== null) {
-                        $fontObj = $fontNode->getValue();
-                        $copyingObjects = [];
-                        $copiedFont = $this->copyObjectWithReferences($fontObj, $sourceDoc, $this->targetDoc, $nextObjectNumber, $objectMap, $copyingObjects);
-                        $this->targetDoc->addObject($copiedFont, $nextObjectNumber);
-                        $newFonts->addEntry('/' . $uniqueName, new PDFReference($nextObjectNumber));
-                        $nextObjectNumber++;
+                    $oldObjNum = $fontRef->getObjectNumber();
+
+                    // Check if already copied
+                    if (isset($this->globalObjectMap[$oldObjNum])) {
+                        $newFonts->addEntry('/' . $uniqueName, new PDFReference($this->globalObjectMap[$oldObjNum]));
+                    } else {
+                        $fontNode = $sourceDoc->getObject($oldObjNum);
+                        if ($fontNode !== null) {
+                            $fontObj = $fontNode->getValue();
+                            $copyingObjects = [];
+                            $newObjNum = $nextObjectNumber;
+                            $this->globalObjectMap[$oldObjNum] = $newObjNum;
+                            $nextObjectNumber++;
+
+                            $copiedFont = $this->copyObjectWithReferences($fontObj, $sourceDoc, $this->targetDoc, $nextObjectNumber, $this->globalObjectMap, $copyingObjects, 0, 10);
+
+                            // Write immediately if streaming
+                            if ($this->streamWriter !== null) {
+                                $this->objectOffsets[$newObjNum] = $this->currentOffset;
+                                $this->currentOffset = $this->targetDoc->writeObjectToStream(
+                                    $copiedFont,
+                                    $newObjNum,
+                                    $this->streamWriter,
+                                    $this->currentOffset
+                                );
+                            } else {
+                                $this->targetDoc->addObject($copiedFont, $newObjNum);
+                            }
+                            $newFonts->addEntry('/' . $uniqueName, new PDFReference($newObjNum));
+                        }
                     }
                 }
             }
@@ -273,14 +331,36 @@ final class IncrementalPageProcessor
 
                 // Copy XObject recursively
                 if ($xobjRef instanceof PDFReference) {
-                    $xobjNode = $sourceDoc->getObject($xobjRef->getObjectNumber());
-                    if ($xobjNode !== null) {
-                        $xobjObj = $xobjNode->getValue();
-                        $copyingObjects = [];
-                        $copiedXObj = $this->copyObjectWithReferences($xobjObj, $sourceDoc, $this->targetDoc, $nextObjectNumber, $objectMap, $copyingObjects);
-                        $this->targetDoc->addObject($copiedXObj, $nextObjectNumber);
-                        $newXObjects->addEntry('/' . $uniqueName, new PDFReference($nextObjectNumber));
-                        $nextObjectNumber++;
+                    $oldObjNum = $xobjRef->getObjectNumber();
+
+                    // Check if already copied
+                    if (isset($this->globalObjectMap[$oldObjNum])) {
+                        $newXObjects->addEntry('/' . $uniqueName, new PDFReference($this->globalObjectMap[$oldObjNum]));
+                    } else {
+                        $xobjNode = $sourceDoc->getObject($oldObjNum);
+                        if ($xobjNode !== null) {
+                            $xobjObj = $xobjNode->getValue();
+                            $copyingObjects = [];
+                            $newObjNum = $nextObjectNumber;
+                            $this->globalObjectMap[$oldObjNum] = $newObjNum;
+                            $nextObjectNumber++;
+
+                            $copiedXObj = $this->copyObjectWithReferences($xobjObj, $sourceDoc, $this->targetDoc, $nextObjectNumber, $this->globalObjectMap, $copyingObjects, 0, 10);
+
+                            // Write immediately if streaming
+                            if ($this->streamWriter !== null) {
+                                $this->objectOffsets[$newObjNum] = $this->currentOffset;
+                                $this->currentOffset = $this->targetDoc->writeObjectToStream(
+                                    $copiedXObj,
+                                    $newObjNum,
+                                    $this->streamWriter,
+                                    $this->currentOffset
+                                );
+                            } else {
+                                $this->targetDoc->addObject($copiedXObj, $newObjNum);
+                            }
+                            $newXObjects->addEntry('/' . $uniqueName, new PDFReference($newObjNum));
+                        }
                     }
                 }
             }
@@ -311,14 +391,36 @@ final class IncrementalPageProcessor
 
                 // Copy ExtGState recursively
                 if ($gsRef instanceof PDFReference) {
-                    $gsNode = $sourceDoc->getObject($gsRef->getObjectNumber());
-                    if ($gsNode !== null) {
-                        $gsObj = $gsNode->getValue();
-                        $copyingObjects = [];
-                        $copiedGS = $this->copyObjectWithReferences($gsObj, $sourceDoc, $this->targetDoc, $nextObjectNumber, $objectMap, $copyingObjects);
-                        $this->targetDoc->addObject($copiedGS, $nextObjectNumber);
-                        $newExtGStates->addEntry('/' . $uniqueName, new PDFReference($nextObjectNumber));
-                        $nextObjectNumber++;
+                    $oldObjNum = $gsRef->getObjectNumber();
+
+                    // Check if already copied
+                    if (isset($this->globalObjectMap[$oldObjNum])) {
+                        $newExtGStates->addEntry('/' . $uniqueName, new PDFReference($this->globalObjectMap[$oldObjNum]));
+                    } else {
+                        $gsNode = $sourceDoc->getObject($oldObjNum);
+                        if ($gsNode !== null) {
+                            $gsObj = $gsNode->getValue();
+                            $copyingObjects = [];
+                            $newObjNum = $nextObjectNumber;
+                            $this->globalObjectMap[$oldObjNum] = $newObjNum;
+                            $nextObjectNumber++;
+
+                            $copiedGS = $this->copyObjectWithReferences($gsObj, $sourceDoc, $this->targetDoc, $nextObjectNumber, $this->globalObjectMap, $copyingObjects, 0, 10);
+
+                            // Write immediately if streaming
+                            if ($this->streamWriter !== null) {
+                                $this->objectOffsets[$newObjNum] = $this->currentOffset;
+                                $this->currentOffset = $this->targetDoc->writeObjectToStream(
+                                    $copiedGS,
+                                    $newObjNum,
+                                    $this->streamWriter,
+                                    $this->currentOffset
+                                );
+                            } else {
+                                $this->targetDoc->addObject($copiedGS, $newObjNum);
+                            }
+                            $newExtGStates->addEntry('/' . $uniqueName, new PDFReference($newObjNum));
+                        }
                     }
                 }
             }
@@ -327,7 +429,18 @@ final class IncrementalPageProcessor
             }
         }
 
-        $this->targetDoc->addObject($newResources, $resourcesObjNum);
+        // Write resources immediately if streaming, otherwise add to document
+        if ($this->streamWriter !== null) {
+            $this->objectOffsets[$resourcesObjNum] = $this->currentOffset;
+            $this->currentOffset = $this->targetDoc->writeObjectToStream(
+                $newResources,
+                $resourcesObjNum,
+                $this->streamWriter,
+                $this->currentOffset
+            );
+        } else {
+            $this->targetDoc->addObject($newResources, $resourcesObjNum);
+        }
     }
 
     /**
@@ -396,7 +509,18 @@ final class IncrementalPageProcessor
         $stream = new PDFStream($streamDict, $content, false);
         $stream->addFilter('FlateDecode');
 
-        $this->targetDoc->addObject($stream, $contentObjNum);
+        // Write immediately if streaming
+        if ($this->streamWriter !== null) {
+            $this->objectOffsets[$contentObjNum] = $this->currentOffset;
+            $this->currentOffset = $this->targetDoc->writeObjectToStream(
+                $stream,
+                $contentObjNum,
+                $this->streamWriter,
+                $this->currentOffset
+            );
+        } else {
+            $this->targetDoc->addObject($stream, $contentObjNum);
+        }
 
         // Free content immediately
         unset($content);
@@ -442,6 +566,53 @@ final class IncrementalPageProcessor
         $this->copyPageLevelEntries($sourcePageDict, $newPageDict);
 
         $this->targetDoc->addObject($newPageDict, $pageObjNum);
+    }
+
+    /**
+     * Write page object directly to stream (streaming mode)
+     *
+     * @param array<int> $contentObjNums
+     * @param array{hasMediaBox: bool, mediaBox: array<float>|null, pageDict: PDFDictionary} $pageData
+     */
+    private function writePageObjectToStream(
+        int $pageObjNum,
+        int $resourcesObjNum,
+        array $contentObjNums,
+        array $pageData
+    ): void {
+        $newPageDict = new PageDictionary();
+        $newPageDict->setParent($this->pagesNode);
+        $newPageDict->setResources($resourcesObjNum);
+
+        // Set contents (single stream or array)
+        if (count($contentObjNums) === 1) {
+            $newPageDict->setContents($contentObjNums[0]);
+        } else {
+            // Multiple content streams - create array
+            $contentsArray = new \PXP\PDF\Fpdf\Object\Base\PDFArray();
+            foreach ($contentObjNums as $num) {
+                $contentsArray->add(new PDFReference($num));
+            }
+            $newPageDict->addEntry('/Contents', $contentsArray);
+        }
+
+        // Set MediaBox only if page has its own
+        if ($pageData['hasMediaBox'] && $pageData['mediaBox'] !== null) {
+            $newPageDict->setMediaBox($pageData['mediaBox']);
+        }
+
+        // Copy important page-level entries
+        $sourcePageDict = $pageData['pageDict'];
+        $this->copyPageLevelEntries($sourcePageDict, $newPageDict);
+
+        // Write immediately to stream
+        $this->objectOffsets[$pageObjNum] = $this->currentOffset;
+        $this->currentOffset = $this->targetDoc->writeObjectToStream(
+            $newPageDict,
+            $pageObjNum,
+            $this->streamWriter,
+            $this->currentOffset
+        );
     }
 
     /**
@@ -518,10 +689,30 @@ final class IncrementalPageProcessor
     }
 
     /**
+     * Get current byte offset (for streaming mode)
+     */
+    public function getCurrentOffset(): int
+    {
+        return $this->currentOffset;
+    }
+
+    /**
+     * Get object offsets for xref table (streaming mode)
+     *
+     * @return array<int, int>
+     */
+    public function getObjectOffsets(): array
+    {
+        return $this->objectOffsets;
+    }
+
+    /**
      * Recursively copy an object and resolve all references
      *
      * @param array<int, int> $objectMap
      * @param array<int, true> $copyingObjects
+     * @param int $depth Current recursion depth
+     * @param int $maxDepth Maximum allowed recursion depth
      */
     private function copyObjectWithReferences(
         \PXP\PDF\Fpdf\Object\PDFObjectInterface $obj,
@@ -529,8 +720,19 @@ final class IncrementalPageProcessor
         PDFDocument $targetDoc,
         int &$nextObjectNumber,
         array &$objectMap = [],
-        array &$copyingObjects = []
+        array &$copyingObjects = [],
+        int $depth = 0,
+        int $maxDepth = 10
     ): \PXP\PDF\Fpdf\Object\PDFObjectInterface {
+        // Check depth limit to prevent stack overflow and memory exhaustion
+        if ($depth >= $maxDepth) {
+            // At max depth, return reference without resolving to prevent deep recursion
+            if ($obj instanceof PDFReference) {
+                return $obj;
+            }
+            return $obj;
+        }
+
         if ($obj instanceof PDFReference) {
             $oldObjNum = $obj->getObjectNumber();
 
@@ -558,8 +760,20 @@ final class IncrementalPageProcessor
 
                 $copyingObjects[$oldObjNum] = true;
 
-                $copiedRefObj = $this->copyObjectWithReferences($refObj, $sourceDoc, $targetDoc, $nextObjectNumber, $objectMap, $copyingObjects);
-                $targetDoc->addObject($copiedRefObj, $newObjNum);
+                $copiedRefObj = $this->copyObjectWithReferences($refObj, $sourceDoc, $targetDoc, $nextObjectNumber, $objectMap, $copyingObjects, $depth + 1, $maxDepth);
+
+                // Write immediately if streaming
+                if ($this->streamWriter !== null) {
+                    $this->objectOffsets[$newObjNum] = $this->currentOffset;
+                    $this->currentOffset = $targetDoc->writeObjectToStream(
+                        $copiedRefObj,
+                        $newObjNum,
+                        $this->streamWriter,
+                        $this->currentOffset
+                    );
+                } else {
+                    $targetDoc->addObject($copiedRefObj, $newObjNum);
+                }
 
                 unset($copyingObjects[$oldObjNum]);
 
@@ -572,7 +786,7 @@ final class IncrementalPageProcessor
             $newDict = new PDFDictionary();
             foreach ($obj->getAllEntries() as $key => $value) {
                 if ($value instanceof \PXP\PDF\Fpdf\Object\PDFObjectInterface) {
-                    $newDict->addEntry($key, $this->copyObjectWithReferences($value, $sourceDoc, $targetDoc, $nextObjectNumber, $objectMap, $copyingObjects));
+                    $newDict->addEntry($key, $this->copyObjectWithReferences($value, $sourceDoc, $targetDoc, $nextObjectNumber, $objectMap, $copyingObjects, $depth + 1, $maxDepth));
                 } else {
                     $newDict->addEntry($key, $value);
                 }
@@ -584,7 +798,7 @@ final class IncrementalPageProcessor
             $newArray = new \PXP\PDF\Fpdf\Object\Base\PDFArray();
             foreach ($obj->getAll() as $item) {
                 if ($item instanceof \PXP\PDF\Fpdf\Object\PDFObjectInterface) {
-                    $newArray->add($this->copyObjectWithReferences($item, $sourceDoc, $targetDoc, $nextObjectNumber, $objectMap, $copyingObjects));
+                    $newArray->add($this->copyObjectWithReferences($item, $sourceDoc, $targetDoc, $nextObjectNumber, $objectMap, $copyingObjects, $depth + 1, $maxDepth));
                 } else {
                     $newArray->add($item);
                 }
@@ -595,7 +809,7 @@ final class IncrementalPageProcessor
         if ($obj instanceof PDFStream) {
             $streamDict = $obj->getDictionary();
             // Copy stream dictionary first
-            $copiedDict = $this->copyObjectWithReferences($streamDict, $sourceDoc, $targetDoc, $nextObjectNumber, $objectMap, $copyingObjects);
+            $copiedDict = $this->copyObjectWithReferences($streamDict, $sourceDoc, $targetDoc, $nextObjectNumber, $objectMap, $copyingObjects, $depth + 1, $maxDepth);
             if (!$copiedDict instanceof PDFDictionary) {
                 $copiedDict = new PDFDictionary();
             }
