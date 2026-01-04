@@ -15,10 +15,15 @@ namespace Tests\Unit\PDF\CCITTFax;
 
 use function array_fill;
 use function array_merge;
+use function fclose;
+use function fopen;
 use function ord;
+use function rewind;
+use function stream_get_contents;
 use function strlen;
 use PHPUnit\Framework\TestCase;
 use PXP\PDF\CCITTFax\BitmapPacker;
+use RuntimeException;
 
 final class BitmapPackerTest extends TestCase
 {
@@ -180,5 +185,87 @@ final class BitmapPackerTest extends TestCase
         $packed = BitmapPacker::packLines($lines, 8);
 
         $this->assertSame(0b10000000, ord($packed[0]), 'Leftmost pixel should be MSB (bit 7)');
+    }
+
+    public function test_pack_single_line_method(): void
+    {
+        $line   = [255, 0, 255, 0, 255, 0, 255, 0];
+        $packed = BitmapPacker::packSingleLine($line, 8);
+
+        $this->assertEquals(1, strlen($packed));
+        $this->assertEquals("\xAA", $packed);
+    }
+
+    public function test_pack_lines_to_stream(): void
+    {
+        $lines = [
+            [0, 0, 0, 0, 0, 0, 0, 0],
+            [255, 255, 255, 255, 255, 255, 255, 255],
+        ];
+
+        $stream       = fopen('php://temp', 'rb+');
+        $bytesWritten = BitmapPacker::packLinesToStream($stream, $lines, 8);
+
+        $this->assertEquals(2, $bytesWritten);
+
+        rewind($stream);
+        $output = stream_get_contents($stream);
+        fclose($stream);
+
+        $this->assertEquals("\x00\xFF", $output);
+    }
+
+    public function test_pack_to_stream_invalid_stream_throws_exception(): void
+    {
+        $lines = [[0, 0, 0, 0, 0, 0, 0, 0]];
+
+        $this->expectException(RuntimeException::class);
+        $this->expectExceptionMessage('Stream must be a valid resource');
+
+        BitmapPacker::packLinesToStream('not a stream', $lines, 8);
+    }
+
+    public function test_pack_lines_to_stream_large_data(): void
+    {
+        // Test with many lines to ensure streaming works efficiently
+        $lines = [];
+
+        for ($i = 0; $i < 100; $i++) {
+            $lines[] = array_fill(0, 100, $i % 2 === 0 ? 0 : 255);
+        }
+
+        $stream       = fopen('php://temp', 'rb+');
+        $bytesWritten = BitmapPacker::packLinesToStream($stream, $lines, 100);
+
+        // 100 pixels per line = 13 bytes per line (ceil(100/8))
+        // 100 lines * 13 bytes = 1300 bytes
+        $this->assertEquals(1300, $bytesWritten);
+
+        rewind($stream);
+        $output = stream_get_contents($stream);
+        fclose($stream);
+
+        $this->assertEquals(1300, strlen($output));
+    }
+
+    public function test_streaming_vs_legacy_produce_same_output(): void
+    {
+        $lines = [
+            [255, 0, 255, 0, 255, 0, 255, 0],
+            [0, 255, 0, 255, 0, 255, 0, 255],
+            [255, 255, 0, 0, 255, 255, 0, 0],
+        ];
+
+        // Legacy method
+        $legacyOutput = BitmapPacker::packLines($lines, 8);
+
+        // Streaming method
+        $stream = fopen('php://temp', 'rb+');
+        BitmapPacker::packLinesToStream($stream, $lines, 8);
+        rewind($stream);
+        $streamOutput = stream_get_contents($stream);
+        fclose($stream);
+
+        $this->assertEquals($legacyOutput, $streamOutput);
     }
 }
