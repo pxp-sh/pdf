@@ -27,11 +27,11 @@ class CCITT4FaxDecoder
 
     public function __construct(int $width, string $bytes, bool $reverseColor = false)
     {
-        $this->width = $width;
-        $this->buffer = new BitBuffer($bytes);
-        $this->modeCodes = new CCITTFaxModes;
+        $this->width           = $width;
+        $this->buffer          = new BitBuffer($bytes);
+        $this->modeCodes       = new CCITTFaxModes;
         $this->horizontalCodes = new CCITTFaxCodes;
-        $this->reverseColor = $reverseColor;
+        $this->reverseColor    = $reverseColor;
 
         // Skip any leading fill bits (0x00 bytes) at the beginning
         $this->skipFillBits();
@@ -42,8 +42,8 @@ class CCITT4FaxDecoder
      */
     public function decode(): array
     {
-        $lines = [];
-        $line = array_fill(0, $this->width, 0);
+        $lines   = [];
+        $line    = array_fill(0, $this->width, 0);
         $linePos = 0;
         $curLine = 0;
         $a0Color = 255; // start white
@@ -51,7 +51,7 @@ class CCITT4FaxDecoder
         while ($this->buffer->hasData()) {
             if ($linePos > $this->width - 1) {
                 $lines[] = $line;
-                $line = array_fill(0, $this->width, 0);
+                $line    = array_fill(0, $this->width, 0);
                 $linePos = 0;
                 $a0Color = 255; // start white
                 $curLine++;
@@ -108,7 +108,7 @@ class CCITT4FaxDecoder
                     $isWhite = $a0Color === 255;
 
                     $length = [0, 0];
-                    $color = [127, 127];
+                    $color  = [127, 127];
 
                     for ($i = 0; $i < 2; $i++) {
                         $scan = true;
@@ -121,7 +121,7 @@ class CCITT4FaxDecoder
 
                             if ($h->terminating) {
                                 $isWhite = !$isWhite;
-                                $scan = false;
+                                $scan    = false;
                             }
                         }
                     }
@@ -146,7 +146,7 @@ class CCITT4FaxDecoder
                 case Mode::VerticalL3:
                 case Mode::VerticalR3:
                     $offset = $mode->getVerticalOffset();
-                    [$b1] = $this->findBValues(
+                    [$b1]   = $this->findBValues(
                         $this->getPreviousLine($lines, $curLine),
                         $linePos,
                         $a0Color,
@@ -212,7 +212,7 @@ class CCITT4FaxDecoder
      */
     private function findBValues(array $refLine, int $a0pos, int $a0Color, bool $justb1): array
     {
-        $other = $this->reverseColorValue($a0Color);
+        $other    = $this->reverseColorValue($a0Color);
         $startPos = $a0pos;
 
         if ($startPos !== 0) {
@@ -224,10 +224,10 @@ class CCITT4FaxDecoder
 
         for ($i = $startPos; $i < count($refLine); $i++) {
             if ($i === 0) {
-                $curColor = $refLine[0];
+                $curColor  = $refLine[0];
                 $lastColor = 255;
             } else {
-                $curColor = $refLine[$i];
+                $curColor  = $refLine[$i];
                 $lastColor = $refLine[$i - 1];
             }
 

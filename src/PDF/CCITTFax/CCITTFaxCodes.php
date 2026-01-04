@@ -21,7 +21,7 @@ class CCITTFaxCodes
 {
     private const COLOR_BLACK = 0;
     private const COLOR_WHITE = 255;
-    private const COLOR_BOTH = 127;
+    private const COLOR_BOTH  = 127;
 
     /** @var HorizontalCode[] */
     private array $whiteCodes;
@@ -315,8 +315,8 @@ class CCITTFaxCodes
         // White terminating codes
         for ($i = 0; $i < count($whiteTermCodes) / 2; $i++) {
             $bitsUsed = $whiteTermCodes[$i * 2 + 1];
-            $value = $whiteTermCodes[$i * 2] << (16 - $bitsUsed);
-            $mask = 0xFFFF << (16 - $bitsUsed);
+            $value    = $whiteTermCodes[$i * 2] << (16 - $bitsUsed);
+            $mask     = 0xFFFF << (16 - $bitsUsed);
 
             $codes[] = new HorizontalCode(
                 $bitsUsed,
@@ -331,8 +331,8 @@ class CCITTFaxCodes
         // White make-up codes
         for ($i = 0; $i < count($whiteMakeUpCodes) / 2; $i++) {
             $bitsUsed = $whiteMakeUpCodes[$i * 2 + 1];
-            $value = $whiteMakeUpCodes[$i * 2] << (16 - $bitsUsed);
-            $mask = 0xFFFF << (16 - $bitsUsed);
+            $value    = $whiteMakeUpCodes[$i * 2] << (16 - $bitsUsed);
+            $mask     = 0xFFFF << (16 - $bitsUsed);
 
             $codes[] = new HorizontalCode(
                 $bitsUsed,
@@ -347,8 +347,8 @@ class CCITTFaxCodes
         // Common make-up codes
         for ($i = 0; $i < count($commonMakeUpCodes) / 2; $i++) {
             $bitsUsed = $commonMakeUpCodes[$i * 2 + 1];
-            $value = $commonMakeUpCodes[$i * 2] << (16 - $bitsUsed);
-            $mask = 0xFFFF << (16 - $bitsUsed);
+            $value    = $commonMakeUpCodes[$i * 2] << (16 - $bitsUsed);
+            $mask     = 0xFFFF << (16 - $bitsUsed);
 
             $codes[] = new HorizontalCode(
                 $bitsUsed,
@@ -361,7 +361,7 @@ class CCITTFaxCodes
         }
 
         // Sort by bits used (descending)
-        usort($codes, static fn($a, $b) => $b->bitsUsed <=> $a->bitsUsed);
+        usort($codes, static fn ($a, $b) => $b->bitsUsed <=> $a->bitsUsed);
 
         return $codes;
     }
@@ -590,8 +590,8 @@ class CCITTFaxCodes
         // Black terminating codes
         for ($i = 0; $i < count($blackTermCodes) / 2; $i++) {
             $bitsUsed = $blackTermCodes[$i * 2 + 1];
-            $value = $blackTermCodes[$i * 2] << (16 - $bitsUsed);
-            $mask = 0xFFFF << (16 - $bitsUsed);
+            $value    = $blackTermCodes[$i * 2] << (16 - $bitsUsed);
+            $mask     = 0xFFFF << (16 - $bitsUsed);
 
             $codes[] = new HorizontalCode(
                 $bitsUsed,
@@ -606,8 +606,8 @@ class CCITTFaxCodes
         // Black make-up codes
         for ($i = 0; $i < count($blackMakeUpCodes) / 2; $i++) {
             $bitsUsed = $blackMakeUpCodes[$i * 2 + 1];
-            $value = $blackMakeUpCodes[$i * 2] << (16 - $bitsUsed);
-            $mask = 0xFFFF << (16 - $bitsUsed);
+            $value    = $blackMakeUpCodes[$i * 2] << (16 - $bitsUsed);
+            $mask     = 0xFFFF << (16 - $bitsUsed);
 
             $codes[] = new HorizontalCode(
                 $bitsUsed,
@@ -622,8 +622,8 @@ class CCITTFaxCodes
         // Common make-up codes
         for ($i = 0; $i < count($commonMakeUpCodes) / 2; $i++) {
             $bitsUsed = $commonMakeUpCodes[$i * 2 + 1];
-            $value = $commonMakeUpCodes[$i * 2] << (16 - $bitsUsed);
-            $mask = 0xFFFF << (16 - $bitsUsed);
+            $value    = $commonMakeUpCodes[$i * 2] << (16 - $bitsUsed);
+            $mask     = 0xFFFF << (16 - $bitsUsed);
 
             $codes[] = new HorizontalCode(
                 $bitsUsed,
@@ -636,7 +636,7 @@ class CCITTFaxCodes
         }
 
         // Sort by bits used (descending)
-        usort($codes, static fn($a, $b) => $b->bitsUsed <=> $a->bitsUsed);
+        usort($codes, static fn ($a, $b) => $b->bitsUsed <=> $a->bitsUsed);
 
         return $codes;
     }

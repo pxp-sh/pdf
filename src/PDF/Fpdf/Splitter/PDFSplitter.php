@@ -17,6 +17,8 @@ use function array_map;
 use function basename;
 use function count;
 use function dirname;
+use function fclose;
+use function fwrite;
 use function gc_collect_cycles;
 use function in_array;
 use function is_dir;
@@ -124,8 +126,8 @@ final class PDFSplitter
         ]);
 
         // Clear cache periodically to manage memory for large PDFs
-        // Clear every 100 pages to balance memory usage and performance
-        $cacheClearInterval = 100;
+        // Use smaller interval (50) with streaming for more aggressive cleanup
+        $cacheClearInterval = 50;
 
         for ($pageNum = 1; $pageNum <= $totalPages; $pageNum++) {
             $filename   = sprintf($filenamePattern, $pageNum);
@@ -136,6 +138,7 @@ final class PDFSplitter
                 'output_path' => $outputPath,
             ]);
 
+            // extractPage() now uses streaming by default
             $this->extractPage($pageNum, $outputPath);
             $outputFiles[] = $outputPath;
 
@@ -150,6 +153,9 @@ final class PDFSplitter
                 gc_collect_cycles();
             }
         }
+
+        // Final cleanup
+        gc_collect_cycles();
 
         $duration = (microtime(true) - $startTime) * 1000;
         $this->logger->info('PDF split operation completed', [
@@ -169,9 +175,84 @@ final class PDFSplitter
      */
     public function extractPage(int $pageNumber, string $outputPath): void
     {
+        // Use streaming extraction by default for memory efficiency
+        $this->extractPageStreaming($pageNumber, $outputPath);
+    }
+
+    /**
+     * Extract a single page using streaming writes (memory-optimized).
+     *
+     * This method writes the PDF directly to disk without building
+     * the entire PDF in memory first. Memory usage: O(1 page).
+     *
+     * @param int    $pageNumber Page number (1-based)
+     * @param string $outputPath Path where the single-page PDF will be saved
+     */
+    public function extractPageStreaming(int $pageNumber, string $outputPath): void
+    {
         $absoluteOutputPath = realpath(dirname($outputPath)) ? '/' . basename($outputPath) : $outputPath;
 
-        $this->logger->debug('Extracting single page', [
+        $this->logger->debug('Extracting single page (streaming)', [
+            'page_number' => $pageNumber,
+            'output_path' => $absoluteOutputPath,
+        ]);
+
+        $pageNode = $this->document->getPage($pageNumber);
+
+        if ($pageNode === null) {
+            $this->logger->error('Invalid page number', [
+                'page_number' => $pageNumber,
+            ]);
+
+            throw new FpdfException('Invalid page number: ' . $pageNumber);
+        }
+
+        $pageDict = $pageNode->getValue();
+
+        if (!$pageDict instanceof PDFDictionary) {
+            $this->logger->error('Page object is not a dictionary', [
+                'page_number' => $pageNumber,
+            ]);
+
+            throw new FpdfException('Page object is not a dictionary');
+        }
+
+        // Open output file for streaming writes
+        $handle       = $this->fileIO->openWriteStream($outputPath);
+        $bytesWritten = 0;
+
+        try {
+            // Stream write the single-page PDF
+            $bytesWritten = $this->buildSinglePagePdfStreaming($pageNode, $handle);
+
+            $this->logger->debug('Page extraction completed (streaming)', [
+                'page_number'   => $pageNumber,
+                'output_path'   => $absoluteOutputPath,
+                'bytes_written' => $bytesWritten,
+            ]);
+        } finally {
+            fclose($handle);
+        }
+
+        // Free memory immediately
+        unset($pageNode, $pageDict);
+        gc_collect_cycles();
+    }
+
+    /**
+     * Legacy batch extraction method (kept for compatibility).
+     *
+     * This builds the entire PDF in memory before writing.
+     * Use extractPageStreaming() for better memory efficiency.
+     *
+     * @param int    $pageNumber Page number (1-based)
+     * @param string $outputPath Path where the single-page PDF will be saved
+     */
+    public function extractPageBatch(int $pageNumber, string $outputPath): void
+    {
+        $absoluteOutputPath = realpath(dirname($outputPath)) ? '/' . basename($outputPath) : $outputPath;
+
+        $this->logger->debug('Extracting single page (batch)', [
             'page_number' => $pageNumber,
             'output_path' => $absoluteOutputPath,
         ]);
@@ -731,5 +812,293 @@ final class PDFSplitter
 
         // For other types (primitives), return as-is
         return $obj;
+    }
+
+    /**
+     * Build a single-page PDF using streaming writes (memory-optimized).
+     *
+     * This method writes PDF objects directly to the output stream
+     * without assembling the entire PDF in memory.
+     *
+     * @return int Total bytes written
+     */
+    private function buildSinglePagePdfStreaming(PDFObjectNode $pageNode, $handle): int
+    {
+        $pageDict = $pageNode->getValue();
+
+        if (!$pageDict instanceof PDFDictionary) {
+            throw new FpdfException('Page object is not a dictionary');
+        }
+
+        // Extract page data
+        $pageData = $this->extractPageDataForStreaming($pageNode);
+
+        // Create new document with cache-enabled registry
+        $registry = new PDFObjectRegistry(null, null, null, null, null, $this->cache, $this->logger);
+        $newDoc   = new PDFDocument('1.3', $registry);
+
+        // Track byte offsets for xref table
+        $objectOffsets = [];
+        $currentOffset = 0;
+
+        // Write PDF header
+        $header = "%PDF-1.3\n";
+        fwrite($handle, $header);
+        $currentOffset += strlen($header);
+
+        // Write binary comment (ensures PDF is treated as binary)
+        $binaryComment = "%\xE2\xE3\xCF\xD3\n";
+        fwrite($handle, $binaryComment);
+        $currentOffset += strlen($binaryComment);
+
+        // Object 1: Pages dictionary
+        $objectOffsets[1] = $currentOffset;
+        $pagesDict        = new PDFDictionary;
+        $pagesDict->addEntry('/Type', new PDFName('Pages'));
+        $kids = new KidsArray;
+        $kids->addPage(3); // Page will be object 3
+        $pagesDict->addEntry('/Kids', $kids);
+        $pagesDict->addEntry('/Count', new PDFNumber(1));
+        $pagesDict->addEntry('/MediaBox', new MediaBoxArray($pageData['mediaBox']));
+        $pagesNode = $newDoc->addObject($pagesDict, 1);
+        $currentOffset += $this->writeObjectToStream($handle, $pagesDict, 1);
+
+        // Object 2: Resources
+        $objectOffsets[2] = $currentOffset;
+        $nextObjectNumber = 6; // Start after catalog (5)
+
+        if ($pageData['resourcesDict'] !== null) {
+            $newResourcesDict = $this->copyResourcesWithReferences(
+                $pageData['resourcesDict'],
+                $newDoc,
+                $nextObjectNumber,
+            );
+            $currentOffset += $this->writeObjectToStream($handle, $newResourcesDict, 2);
+        } else {
+            $emptyResources = new ResourcesDictionary;
+            $currentOffset += $this->writeObjectToStream($handle, $emptyResources, 2);
+        }
+
+        // Object 3: Page dictionary
+        $objectOffsets[3] = $currentOffset;
+        $newPageDict      = new PageDictionary;
+        $newPageDict->setParent($pagesNode);
+
+        if ($pageData['pageHasMediaBox']) {
+            $newPageDict->setMediaBox($pageData['mediaBox']);
+        }
+        $newPageDict->setResources(2);
+        $newPageDict->setContents(4);
+        $currentOffset += $this->writeObjectToStream($handle, $newPageDict, 3);
+
+        // Free page data immediately
+        unset($pageData['resourcesDict']);
+
+        // Object 4: Content stream
+        $objectOffsets[4] = $currentOffset;
+
+        if (!empty($pageData['content'])) {
+            $streamDict = new PDFDictionary;
+            $newStream  = new PDFStream($streamDict, $pageData['content'], false);
+
+            if ($pageData['hasCompression']) {
+                $newStream->addFilter('FlateDecode');
+            }
+            $currentOffset += $this->writeObjectToStream($handle, $newStream, 4);
+        } else {
+            $emptyStream = new PDFStream(new PDFDictionary, '');
+            $currentOffset += $this->writeObjectToStream($handle, $emptyStream, 4);
+        }
+
+        // Free content immediately
+        unset($pageData['content']);
+
+        // Object 5: Catalog
+        $objectOffsets[5] = $currentOffset;
+        $catalog          = new CatalogDictionary;
+        $catalog->setPages(1);
+        $currentOffset += $this->writeObjectToStream($handle, $catalog, 5);
+
+        // Write xref table
+        $xrefOffset = $currentOffset;
+        $xref       = "xref\n";
+        $xref .= '0 ' . (count($objectOffsets) + 1) . "\n";
+        $xref .= "0000000000 65535 f \n";
+
+        for ($i = 1; $i <= count($objectOffsets); $i++) {
+            $xref .= sprintf("%010d 00000 n \n", $objectOffsets[$i]);
+        }
+
+        fwrite($handle, $xref);
+        $currentOffset += strlen($xref);
+
+        // Write trailer
+        $trailer = "trailer\n";
+        $trailer .= '<< /Size ' . (count($objectOffsets) + 1) . " /Root 5 0 R >>\n";
+        $trailer .= "startxref\n";
+        $trailer .= $xrefOffset . "\n";
+        $trailer .= "%%EOF\n";
+
+        fwrite($handle, $trailer);
+        $currentOffset += strlen($trailer);
+
+        return $currentOffset;
+    }
+
+    /**
+     * Extract minimal page data needed for streaming write.
+     *
+     * @return array{mediaBox: array<float>, pageHasMediaBox: bool, content: string, resourcesDict: null|PDFDictionary, hasCompression: bool}
+     */
+    private function extractPageDataForStreaming(PDFObjectNode $pageNode): array
+    {
+        $pageDict = $pageNode->getValue();
+
+        if (!$pageDict instanceof PDFDictionary) {
+            throw new FpdfException('Page object is not a dictionary');
+        }
+
+        // Get MediaBox
+        $mediaBoxEntry   = $pageDict->getEntry('/MediaBox');
+        $pageHasMediaBox = false;
+        $mediaBox        = [0.0, 0.0, 612.0, 792.0]; // Default
+
+        if ($mediaBoxEntry instanceof MediaBoxArray) {
+            $mediaBox        = $mediaBoxEntry->getValues();
+            $pageHasMediaBox = true;
+        } elseif ($mediaBoxEntry instanceof PDFArray) {
+            $values = [];
+
+            foreach ($mediaBoxEntry->getAll() as $item) {
+                if ($item instanceof PDFNumber) {
+                    $values[] = (float) $item->getValue();
+                }
+            }
+
+            if (count($values) >= 4) {
+                $mediaBox        = [$values[0], $values[1], $values[2], $values[3]];
+                $pageHasMediaBox = true;
+            }
+        }
+
+        // If page doesn't have MediaBox, check parent
+        if (!$pageHasMediaBox) {
+            $parentRef = $pageDict->getEntry('/Parent');
+
+            if ($parentRef instanceof PDFReference) {
+                $parentNode = $this->document->getObject($parentRef->getObjectNumber());
+
+                if ($parentNode !== null) {
+                    $parentDict = $parentNode->getValue();
+
+                    if ($parentDict instanceof PDFDictionary) {
+                        $parentMediaBoxEntry = $parentDict->getEntry('/MediaBox');
+
+                        if ($parentMediaBoxEntry instanceof MediaBoxArray) {
+                            $mediaBox = $parentMediaBoxEntry->getValues();
+                        } elseif ($parentMediaBoxEntry instanceof PDFArray) {
+                            $values = [];
+
+                            foreach ($parentMediaBoxEntry->getAll() as $item) {
+                                if ($item instanceof PDFNumber) {
+                                    $values[] = (float) $item->getValue();
+                                }
+                            }
+
+                            if (count($values) >= 4) {
+                                $mediaBox = [$values[0], $values[1], $values[2], $values[3]];
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        // Get Contents
+        $contentsRef    = $pageDict->getEntry('/Contents');
+        $contentStreams = [];
+        $hasCompression = false;
+
+        if ($contentsRef instanceof PDFReference) {
+            $contentNode = $this->document->getObject($contentsRef->getObjectNumber());
+
+            if ($contentNode !== null) {
+                $contentObj = $contentNode->getValue();
+
+                if ($contentObj instanceof PDFStream) {
+                    $contentStreams[] = $contentObj;
+                    $hasCompression   = $contentObj->hasFilter('FlateDecode');
+                }
+            }
+        } elseif ($contentsRef instanceof PDFArray) {
+            foreach ($contentsRef->getAll() as $item) {
+                if ($item instanceof PDFReference) {
+                    $contentNode = $this->document->getObject($item->getObjectNumber());
+
+                    if ($contentNode !== null) {
+                        $contentObj = $contentNode->getValue();
+
+                        if ($contentObj instanceof PDFStream) {
+                            $contentStreams[] = $contentObj;
+
+                            if ($contentObj->hasFilter('FlateDecode')) {
+                                $hasCompression = true;
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        // Combine content streams
+        $combinedContent = '';
+
+        foreach ($contentStreams as $stream) {
+            $combinedContent .= $stream->getDecodedData();
+        }
+        // Free streams immediately
+        unset($contentStreams);
+
+        // Get Resources
+        $resourcesRef  = $pageDict->getEntry('/Resources');
+        $resourcesDict = null;
+
+        if ($resourcesRef instanceof PDFReference) {
+            $resourcesNode = $this->document->getObject($resourcesRef->getObjectNumber());
+
+            if ($resourcesNode !== null) {
+                $resourcesObj = $resourcesNode->getValue();
+
+                if ($resourcesObj instanceof PDFDictionary) {
+                    $resourcesDict = $resourcesObj;
+                }
+            }
+        } elseif ($resourcesRef instanceof PDFDictionary) {
+            $resourcesDict = $resourcesRef;
+        }
+
+        return [
+            'mediaBox'        => $mediaBox,
+            'pageHasMediaBox' => $pageHasMediaBox,
+            'content'         => $combinedContent,
+            'resourcesDict'   => $resourcesDict,
+            'hasCompression'  => $hasCompression,
+        ];
+    }
+
+    /**
+     * Write a single PDF object to stream.
+     *
+     * @return int Bytes written
+     */
+    private function writeObjectToStream($handle, PDFObjectInterface $obj, int $objNum): int
+    {
+        // Create PDFObjectNode for proper serialization
+        $node   = new PDFObjectNode($objNum, $obj);
+        $objStr = (string) $node . "\n";
+
+        fwrite($handle, $objStr);
+
+        return strlen($objStr);
     }
 }

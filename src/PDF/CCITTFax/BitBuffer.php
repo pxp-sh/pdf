@@ -27,9 +27,9 @@ class BitBuffer
 
     public function __construct(string $source)
     {
-        $this->buffer = 0;
+        $this->buffer    = 0;
         $this->emptyBits = 32;
-        $this->source = $source;
+        $this->source    = $source;
         $this->sourcePos = 0;
         $this->tryFillBuffer();
     }
@@ -38,7 +38,7 @@ class BitBuffer
     {
         $this->buffer = ($this->buffer << $count) & 0xFFFFFFFF;
         $this->emptyBits += $count;
-        $this->bitsRead += $count;
+        $this->bitsRead  += $count;
         $this->tryFillBuffer();
     }
 
@@ -77,7 +77,7 @@ class BitBuffer
 
     public function clear(): void
     {
-        $this->buffer = 0;
+        $this->buffer    = 0;
         $this->emptyBits = 32;
         $this->sourcePos = 0;
     }
@@ -112,9 +112,9 @@ class BitBuffer
     public function getBits(int $count): int
     {
         [$value] = match ($count) {
-            8 => $this->peak8(),
-            16 => $this->peak16(),
-            32 => $this->peak32(),
+            8       => $this->peak8(),
+            16      => $this->peak16(),
+            32      => $this->peak32(),
             default => throw new InvalidArgumentException("Unsupported bit count: {$count}"),
         };
         $this->flushBits($count);
@@ -135,8 +135,8 @@ class BitBuffer
 
     private function addByte(int $sourceByte): void
     {
-        $padRight = $this->emptyBits - 8;
-        $zeroed = (($this->buffer >> (8 + $padRight)) << (8 + $padRight)) & 0xFFFFFFFF;
+        $padRight     = $this->emptyBits - 8;
+        $zeroed       = (($this->buffer >> (8 + $padRight)) << (8 + $padRight)) & 0xFFFFFFFF;
         $this->buffer = ($zeroed | ($sourceByte << $padRight)) & 0xFFFFFFFF;
         $this->emptyBits -= 8;
     }

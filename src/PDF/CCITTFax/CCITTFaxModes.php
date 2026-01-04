@@ -85,9 +85,9 @@ class CCITTFaxModes
 
         for ($i = 0; $i < $count; $i++) {
             $bitsUsed = $modeCodes[$i * 3 + 1];
-            $value = $modeCodes[$i * 3] << (8 - $bitsUsed);
-            $mask = 0xFF << (8 - $bitsUsed);
-            $type = Mode::from($modeCodes[$i * 3 + 2]);
+            $value    = $modeCodes[$i * 3] << (8 - $bitsUsed);
+            $mask     = 0xFF << (8 - $bitsUsed);
+            $type     = Mode::from($modeCodes[$i * 3 + 2]);
 
             $modes[] = new ModeCode($bitsUsed, $mask, $value, $type);
         }
