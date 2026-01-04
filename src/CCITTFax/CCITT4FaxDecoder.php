@@ -1,0 +1,234 @@
+<?php
+
+declare(strict_types=1);
+
+/**
+ * Copyright (c) 2025-2026 PXP
+ *
+ * For the full copyright and license information, please view
+ * the LICENSE file that was distributed with this source code.
+ *
+ * @see https://github.com/pxp-sh/pdf
+ *
+ */
+
+namespace PXP\PDF\CCITTFax;
+
+class CCITT4FaxDecoder
+{
+    private int $width;
+    private BitBuffer $buffer;
+    private CCITTFaxModes $modeCodes;
+    private CCITTFaxCodes $horizontalCodes;
+    private bool $reverseColor;
+
+    public function __construct(int $width, string $bytes, bool $reverseColor = false)
+    {
+        $this->width = $width;
+        $this->buffer = new BitBuffer($bytes);
+        $this->modeCodes = new CCITTFaxModes();
+        $this->horizontalCodes = new CCITTFaxCodes();
+        $this->reverseColor = $reverseColor;
+    }
+
+    /**
+     * @return array<int, array<int, int>>
+     */
+    public function decode(): array
+    {
+        $lines = [];
+        $line = array_fill(0, $this->width, 0);
+        $linePos = 0;
+        $curLine = 0;
+        $a0Color = 255; // start white
+
+        while ($this->buffer->hasData()) {
+            if ($linePos > $this->width - 1) {
+                $lines[] = $line;
+                $line = array_fill(0, $this->width, 0);
+                $linePos = 0;
+                $a0Color = 255; // start white
+                $curLine++;
+                if ($this->endOfBlock($this->buffer->getBuffer())) {
+                    break;
+                }
+            }
+
+            // end on trailing zeros padding
+            [$v,] = $this->buffer->peak32();
+            if ($v === 0x00000000) {
+                break;
+            }
+
+            // mode lookup
+            $mode = $this->getMode();
+            $this->buffer->flushBits($mode->bitsUsed);
+
+            // act on mode
+            switch ($mode->type) {
+                case Mode::Pass:
+                    [, $b2] = $this->findBValues(
+                        $this->getPreviousLine($lines, $curLine),
+                        $linePos,
+                        $a0Color,
+                        false
+                    );
+                    for ($p = $linePos; $p < $b2; $p++) {
+                        $line[$linePos] = $a0Color;
+                        $linePos++;
+                    }
+                    // a0 color should stay the same
+                    break;
+
+                case Mode::Extension:
+                    throw new \RuntimeException('CCITTFax extensions not supported');
+
+                case Mode::Horizontal:
+                    $isWhite = $a0Color === 255;
+
+                    $length = [0, 0];
+                    $color = [127, 127];
+                    for ($i = 0; $i < 2; $i++) {
+                        $scan = true;
+                        while ($scan) {
+                            $h = $this->horizontalCodes->findMatch32($this->buffer->getBuffer(), $isWhite);
+                            $this->buffer->flushBits($h->bitsUsed);
+                            $length[$i] += $h->pixels;
+                            $color[$i] = $h->color;
+
+                            if ($h->terminating) {
+                                $isWhite = !$isWhite;
+                                $scan = false;
+                            }
+                        }
+                    }
+
+                    for ($i = 0; $i < 2; $i++) {
+                        for ($p = 0; $p < $length[$i]; $p++) {
+                            if ($linePos < count($line)) {
+                                $line[$linePos] = $color[$i];
+                            }
+                            $linePos++;
+                        }
+                    }
+                    // a0 color should stay the same
+                    break;
+
+                case Mode::VerticalZero:
+                case Mode::VerticalL1:
+                case Mode::VerticalR1:
+                case Mode::VerticalL2:
+                case Mode::VerticalR2:
+                case Mode::VerticalL3:
+                case Mode::VerticalR3:
+                    $offset = $mode->getVerticalOffset();
+                    [$b1,] = $this->findBValues(
+                        $this->getPreviousLine($lines, $curLine),
+                        $linePos,
+                        $a0Color,
+                        true
+                    );
+
+                    for ($i = $linePos; $i < $b1 + $offset; $i++) {
+                        if ($linePos < count($line)) {
+                            $line[$linePos] = $a0Color;
+                        }
+                        $linePos++;
+                    }
+
+                    // a0 color changes
+                    $a0Color = $this->reverseColorValue($a0Color);
+                    break;
+
+                default:
+                    throw new \RuntimeException('unknown mode type');
+            }
+        }
+
+        if ($this->reverseColor) {
+            for ($i = 0; $i < count($lines); $i++) {
+                for ($x = 0; $x < count($lines[$i]); $x++) {
+                    $lines[$i][$x] = $this->reverseColorValue($lines[$i][$x]);
+                }
+            }
+        }
+
+        return $lines;
+    }
+
+    private function reverseColorValue(int $current): int
+    {
+        return $current === 0 ? 255 : 0;
+    }
+
+    private function endOfBlock(int $buffer): bool
+    {
+        return ($buffer & 0xffffff00) === 0x00100100;
+    }
+
+    /**
+     * @param array<int, array<int, int>> $lines
+     * @return array<int, int>
+     */
+    private function getPreviousLine(array $lines, int $currentLine): array
+    {
+        if ($currentLine === 0) {
+            return array_fill(0, $this->width, 255);
+        }
+        return $lines[$currentLine - 1];
+    }
+
+    /**
+     * @param array<int, int> $refLine
+     * @return array{int, int}
+     */
+    private function findBValues(array $refLine, int $a0pos, int $a0Color, bool $justb1): array
+    {
+        $other = $this->reverseColorValue($a0Color);
+        $startPos = $a0pos;
+        if ($startPos !== 0) {
+            $startPos += 1;
+        }
+
+        $b1 = 0;
+        $b2 = 0;
+
+        for ($i = $startPos; $i < count($refLine); $i++) {
+            if ($i === 0) {
+                $curColor = $refLine[0];
+                $lastColor = 255;
+            } else {
+                $curColor = $refLine[$i];
+                $lastColor = $refLine[$i - 1];
+            }
+
+            if ($b1 !== 0) {
+                if ($curColor === $a0Color && $lastColor === $other) {
+                    $b2 = $i;
+                    return [$b1, $b2];
+                }
+            }
+
+            if ($curColor === $other && $lastColor === $a0Color) {
+                $b1 = $i;
+                if ($b2 !== 0 || $justb1) {
+                    return [$b1, $b2];
+                }
+            }
+        }
+
+        if ($b1 === 0) {
+            $b1 = count($refLine);
+        } else {
+            $b2 = count($refLine);
+        }
+
+        return [$b1, $b2];
+    }
+
+    private function getMode(): ModeCode
+    {
+        [$b8,] = $this->buffer->peak8();
+        return $this->modeCodes->getMode($b8);
+    }
+}
