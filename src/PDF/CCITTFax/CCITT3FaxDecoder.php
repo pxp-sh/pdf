@@ -15,6 +15,8 @@ namespace PXP\PDF\CCITTFax;
 
 use const PHP_INT_MAX;
 use function array_fill;
+use function fwrite;
+use function is_resource;
 use function min;
 use function sprintf;
 use RuntimeException;
@@ -32,7 +34,7 @@ use RuntimeException;
  *
  * @see https://www.itu.int/rec/T-REC-T.4/en ITU-T T.4 Recommendation
  */
-final class CCITT3FaxDecoder
+final class CCITT3FaxDecoder implements StreamDecoderInterface
 {
     private BitBuffer $bitBuffer;
     private CCITTFaxParams $params;
@@ -53,10 +55,10 @@ final class CCITT3FaxDecoder
     private int $consecutiveDamagedRows = 0;
 
     /**
-     * @param CCITTFaxParams $params CCITT Fax parameters
-     * @param string         $data   Compressed fax data
+     * @param CCITTFaxParams  $params CCITT Fax parameters
+     * @param resource|string $data   Compressed fax data (string or stream resource)
      */
-    public function __construct(CCITTFaxParams $params, string $data)
+    public function __construct(CCITTFaxParams $params, $data)
     {
         $this->params    = $params;
         $this->bitBuffer = new BitBuffer($data);
@@ -136,6 +138,103 @@ final class CCITT3FaxDecoder
         }
 
         return $lines;
+    }
+
+    /**
+     * Decode to stream (streaming method for memory efficiency).
+     *
+     * @param resource $outputStream Stream to write decoded bitmap data to
+     *
+     * @throws RuntimeException on decoding error
+     *
+     * @return int Number of bytes written
+     */
+    public function decodeToStream($outputStream): int
+    {
+        if (!is_resource($outputStream)) {
+            throw new RuntimeException('Output must be a valid stream resource');
+        }
+
+        $bytesWritten = 0;
+
+        // Skip initial EOL if present
+        if ($this->params->getEndOfLine()) {
+            $this->skipToNextEOL();
+        }
+
+        $maxRows = $this->params->getRows() > 0 ? $this->params->getRows() : PHP_INT_MAX;
+
+        while ($this->linesDecoded < $maxRows) {
+            try {
+                // Decode one line
+                $line = $this->decodeLine();
+
+                if ($line === null) {
+                    // End of data or RTC encountered
+                    break;
+                }
+
+                // Write line to stream immediately
+                $packed  = BitmapPacker::packLines([$line], $this->params->getColumns());
+                $written = fwrite($outputStream, $packed);
+
+                if ($written === false) {
+                    throw new RuntimeException('Failed to write to output stream');
+                }
+
+                $bytesWritten += $written;
+                $this->linesDecoded++;
+                $this->consecutiveDamagedRows = 0;
+
+                // Check for end conditions
+                if ($this->checkEndOfBlock()) {
+                    break;
+                }
+
+                // Skip EOL before next line if present
+                if ($this->params->getEndOfLine()) {
+                    $this->skipToNextEOL();
+                }
+            } catch (RuntimeException $e) {
+                // Handle damaged row
+                if ($this->consecutiveDamagedRows >= $this->params->getDamagedRowsBeforeError()) {
+                    throw new RuntimeException(
+                        sprintf(
+                            'Too many consecutive damaged rows (limit: %d): %s',
+                            $this->params->getDamagedRowsBeforeError(),
+                            $e->getMessage(),
+                        ),
+                        0,
+                        $e,
+                    );
+                }
+
+                $this->consecutiveDamagedRows++;
+
+                // Try to recover by finding next EOL
+                if ($this->params->getEndOfLine()) {
+                    $this->skipToNextEOL();
+                    $this->initializeLine();
+
+                    continue;
+                }
+
+                // Can't recover without EOL markers
+                throw $e;
+            }
+        }
+
+        return $bytesWritten;
+    }
+
+    public function getWidth(): int
+    {
+        return $this->params->getColumns();
+    }
+
+    public function getHeight(): int
+    {
+        return $this->params->getRows();
     }
 
     /**

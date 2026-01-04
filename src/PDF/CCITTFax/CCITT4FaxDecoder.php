@@ -15,9 +15,11 @@ namespace PXP\PDF\CCITTFax;
 
 use function array_fill;
 use function count;
+use function fwrite;
+use function is_resource;
 use RuntimeException;
 
-class CCITT4FaxDecoder
+class CCITT4FaxDecoder implements StreamDecoderInterface
 {
     private int $width;
     private BitBuffer $buffer;
@@ -25,7 +27,12 @@ class CCITT4FaxDecoder
     private CCITTFaxCodes $horizontalCodes;
     private bool $reverseColor;
 
-    public function __construct(int $width, string $bytes, bool $reverseColor = false)
+    /**
+     * @param int             $width        Image width in pixels
+     * @param resource|string $bytes        Compressed data (string or stream resource)
+     * @param bool            $reverseColor Whether to reverse colors (BlackIs1)
+     */
+    public function __construct(int $width, $bytes, bool $reverseColor = false)
     {
         $this->width           = $width;
         $this->buffer          = new BitBuffer($bytes);
@@ -38,6 +45,8 @@ class CCITT4FaxDecoder
     }
 
     /**
+     * Decode to memory (legacy method).
+     *
      * @return array<int, array<int, int>>
      */
     public function decode(): array
@@ -181,6 +190,174 @@ class CCITT4FaxDecoder
         return $lines;
     }
 
+    /**
+     * Decode to stream (streaming method for memory efficiency).
+     *
+     * @param resource $outputStream Stream to write decoded bitmap data to
+     *
+     * @return int Number of bytes written
+     */
+    public function decodeToStream($outputStream): int
+    {
+        if (!is_resource($outputStream)) {
+            throw new RuntimeException('Output must be a valid stream resource');
+        }
+
+        $bytesWritten  = 0;
+        $line          = array_fill(0, $this->width, 0);
+        $referenceLine = array_fill(0, $this->width, 255); // Previous line for 2D coding
+        $linePos       = 0;
+        $curLine       = 0;
+        $a0Color       = 255; // start white
+
+        while ($this->buffer->hasData()) {
+            if ($linePos > $this->width - 1) {
+                // Write completed line to stream
+                $packed  = BitmapPacker::packLines([$line], $this->width);
+                $written = fwrite($outputStream, $packed);
+
+                if ($written === false) {
+                    throw new RuntimeException('Failed to write to output stream');
+                }
+
+                $bytesWritten += $written;
+
+                // Store as reference for next line
+                $referenceLine = $line;
+
+                // Reset for next line
+                $line    = array_fill(0, $this->width, 0);
+                $linePos = 0;
+                $a0Color = 255; // start white
+                $curLine++;
+
+                if ($this->endOfBlock($this->buffer->getBuffer())) {
+                    break;
+                }
+            }
+
+            // end on trailing zeros padding
+            [$v] = $this->buffer->peak32();
+
+            if ($v === 0x00000000) {
+                break;
+            }
+
+            // mode lookup
+            try {
+                $mode = $this->getMode();
+            } catch (RuntimeException $e) {
+                // If we can't get a valid mode and we have lines, treat as end of stream
+                if ($curLine > 0) {
+                    break;
+                }
+
+                throw $e;
+            }
+            $this->buffer->flushBits($mode->bitsUsed);
+
+            // act on mode
+            switch ($mode->type) {
+                case Mode::Pass:
+                    [, $b2] = $this->findBValues(
+                        $referenceLine,
+                        $linePos,
+                        $a0Color,
+                        false,
+                    );
+
+                    for ($p = $linePos; $p < $b2; $p++) {
+                        $line[$linePos] = $a0Color;
+                        $linePos++;
+                    }
+
+                    // a0 color should stay the same
+                    break;
+
+                case Mode::Extension:
+                    // Extension mode is rarely used - skip it and continue
+                    // In most cases, this indicates a malformed stream that can be ignored
+                    continue 2;
+
+                case Mode::Horizontal:
+                    $isWhite = $a0Color === 255;
+
+                    $length = [0, 0];
+                    $color  = [127, 127];
+
+                    for ($i = 0; $i < 2; $i++) {
+                        $scan = true;
+
+                        while ($scan) {
+                            $h = $this->horizontalCodes->findMatch32($this->buffer->getBuffer(), $isWhite);
+                            $this->buffer->flushBits($h->bitsUsed);
+                            $length[$i] += $h->pixels;
+                            $color[$i] = $h->color;
+
+                            if ($h->terminating) {
+                                $isWhite = !$isWhite;
+                                $scan    = false;
+                            }
+                        }
+                    }
+
+                    for ($i = 0; $i < 2; $i++) {
+                        for ($p = 0; $p < $length[$i]; $p++) {
+                            if ($linePos < count($line)) {
+                                $line[$linePos] = $color[$i];
+                            }
+                            $linePos++;
+                        }
+                    }
+
+                    // a0 color should stay the same
+                    break;
+
+                case Mode::VerticalZero:
+                case Mode::VerticalL1:
+                case Mode::VerticalR1:
+                case Mode::VerticalL2:
+                case Mode::VerticalR2:
+                case Mode::VerticalL3:
+                case Mode::VerticalR3:
+                    $offset = $mode->getVerticalOffset();
+                    [$b1]   = $this->findBValues(
+                        $referenceLine,
+                        $linePos,
+                        $a0Color,
+                        true,
+                    );
+
+                    for ($i = $linePos; $i < $b1 + $offset; $i++) {
+                        if ($linePos < count($line)) {
+                            $line[$linePos] = $a0Color;
+                        }
+                        $linePos++;
+                    }
+
+                    // a0 color changes
+                    $a0Color = $this->reverseColorValue($a0Color);
+
+                    break;
+
+                default:
+                    throw new RuntimeException('unknown mode type');
+            }
+        }
+
+        return $bytesWritten;
+    }
+
+    public function getWidth(): int
+    {
+        return $this->width;
+    }
+
+    public function getHeight(): int
+    {
+        return 0; // Height not known beforehand for Group 4
+    }
+
     private function reverseColorValue(int $current): int
     {
         return $current === 0 ? 255 : 0;
@@ -192,21 +369,7 @@ class CCITT4FaxDecoder
     }
 
     /**
-     * @param array<int, array<int, int>> $lines
-     *
-     * @return array<int, int>
-     */
-    private function getPreviousLine(array $lines, int $currentLine): array
-    {
-        if ($currentLine === 0) {
-            return array_fill(0, $this->width, 255);
-        }
-
-        return $lines[$currentLine - 1];
-    }
-
-    /**
-     * @param array<int, int> $refLine
+     * @param array<int, int> $refLine Reference line (previous line for streaming mode)
      *
      * @return array{int, int}
      */
@@ -255,6 +418,23 @@ class CCITT4FaxDecoder
         }
 
         return [$b1, $b2];
+    }
+
+    /**
+     * Get previous line from lines array (for legacy decode() method).
+     *
+     * @param array<int, array<int, int>> $lines       Array of decoded lines
+     * @param int                         $currentLine Current line index
+     *
+     * @return array<int, int> Previous line or white line for first line
+     */
+    private function getPreviousLine(array $lines, int $currentLine): array
+    {
+        if ($currentLine === 0) {
+            return array_fill(0, $this->width, 255);
+        }
+
+        return $lines[$currentLine - 1];
     }
 
     private function getMode(): ModeCode

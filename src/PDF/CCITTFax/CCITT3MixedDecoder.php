@@ -15,6 +15,8 @@ namespace PXP\PDF\CCITTFax;
 
 use const PHP_INT_MAX;
 use function array_fill;
+use function fwrite;
+use function is_resource;
 use function min;
 use function sprintf;
 use RuntimeException;
@@ -31,7 +33,7 @@ use RuntimeException;
  *
  * @see https://www.itu.int/rec/T-REC-T.4/en ITU-T T.4 Recommendation
  */
-final class CCITT3MixedDecoder
+final class CCITT3MixedDecoder implements StreamDecoderInterface
 {
     private BitBuffer $bitBuffer;
     private CCITTFaxParams $params;
@@ -47,10 +49,10 @@ final class CCITT3MixedDecoder
     private int $linesDecoded = 0;
 
     /**
-     * @param CCITTFaxParams $params CCITT Fax parameters (K must be > 0)
-     * @param string         $data   Compressed fax data
+     * @param CCITTFaxParams  $params CCITT Fax parameters (K must be > 0)
+     * @param resource|string $data   Compressed fax data (string or stream resource)
      */
-    public function __construct(CCITTFaxParams $params, string $data)
+    public function __construct(CCITTFaxParams $params, $data)
     {
         if ($params->getK() <= 0) {
             throw new RuntimeException('Mixed mode requires K > 0');
@@ -141,6 +143,109 @@ final class CCITT3MixedDecoder
         }
 
         return $lines;
+    }
+
+    /**
+     * Decode to stream (streaming method for memory efficiency).
+     *
+     * @param resource $outputStream Stream to write decoded bitmap data to
+     *
+     * @throws RuntimeException on decoding error
+     *
+     * @return int Number of bytes written
+     */
+    public function decodeToStream($outputStream): int
+    {
+        if (!is_resource($outputStream)) {
+            throw new RuntimeException('Output must be a valid stream resource');
+        }
+
+        $bytesWritten = 0;
+
+        // Skip initial EOL if present
+        if ($this->params->getEndOfLine()) {
+            $this->skipToNextEOL();
+        }
+
+        $maxRows = $this->params->getRows() > 0 ? $this->params->getRows() : PHP_INT_MAX;
+        $k       = $this->params->getK();
+
+        while ($this->linesDecoded < $maxRows) {
+            try {
+                // Determine if this line is 1D or 2D encoded
+                $is1D = false;
+
+                if ($this->params->getEndOfLine()) {
+                    // After EOL, next bit indicates encoding type
+                    // 1 = 1D, 0 = 2D
+                    [$tagBit] = $this->bitBuffer->peak16();
+                    $is1D     = (($tagBit & 0x8000) !== 0);
+                    $this->bitBuffer->flushBits(1);
+                } else {
+                    // Without EOL markers, use K parameter
+                    // Every (K+1)th line must be 1D
+                    $is1D = ($this->consecutive2DLines >= $k);
+                }
+
+                // Decode line based on type
+                if ($is1D) {
+                    $line                     = $this->decode1DLine();
+                    $this->consecutive2DLines = 0;
+                } else {
+                    $line = $this->decode2DLine();
+                    $this->consecutive2DLines++;
+                }
+
+                if ($line === null) {
+                    break;
+                }
+
+                // Write line to stream immediately
+                $packed  = BitmapPacker::packLines([$line], $this->params->getColumns());
+                $written = fwrite($outputStream, $packed);
+
+                if ($written === false) {
+                    throw new RuntimeException('Failed to write to output stream');
+                }
+
+                $bytesWritten += $written;
+                $this->referenceLine = $line; // Update reference for next 2D line
+                $this->linesDecoded++;
+
+                // Check for end conditions
+                if ($this->checkEndOfBlock()) {
+                    break;
+                }
+
+                // Skip EOL before next line if present
+                if ($this->params->getEndOfLine()) {
+                    $this->skipToNextEOL();
+                }
+            } catch (RuntimeException $e) {
+                // Handle damaged row with error recovery
+                throw new RuntimeException(
+                    sprintf(
+                        'Failed to decode line %d in mixed mode: %s',
+                        $this->linesDecoded,
+                        $e->getMessage(),
+                    ),
+                    0,
+                    $e,
+                );
+            }
+        }
+
+        return $bytesWritten;
+    }
+
+    public function getWidth(): int
+    {
+        return $this->params->getColumns();
+    }
+
+    public function getHeight(): int
+    {
+        return $this->params->getRows();
     }
 
     /**

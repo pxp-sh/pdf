@@ -15,8 +15,11 @@ namespace PXP\PDF\CCITTFax;
 
 use function ceil;
 use function chr;
+use function fwrite;
+use function is_resource;
 use function ord;
 use function strlen;
+use RuntimeException;
 
 /**
  * Bitmap output formatter and packer.
@@ -25,6 +28,7 @@ use function strlen;
  * - Pack 8 pixels per byte (MSB first) for efficient storage
  * - Convert to uncompressed bitmap strings for PDF integration
  * - Handle color inversion (BlackIs1 parameter)
+ * - Support streaming output to avoid memory overflow
  */
 final class BitmapPacker
 {
@@ -182,5 +186,109 @@ final class BitmapPacker
         }
 
         return $inverted;
+    }
+
+    /**
+     * Pack and write pixel lines to a stream (streaming mode).
+     *
+     * This method writes packed bitmap data directly to a stream resource,
+     * avoiding the need to hold all data in memory.
+     *
+     * @param resource                    $stream Stream resource to write to
+     * @param array<int, array<int, int>> $lines  Array of pixel lines (each pixel is 0 or 255)
+     * @param int                         $width  Width in pixels (must match line width)
+     *
+     * @throws RuntimeException If stream write fails
+     *
+     * @return int Number of bytes written
+     */
+    public static function packLinesToStream($stream, array $lines, int $width): int
+    {
+        if (!is_resource($stream)) {
+            throw new RuntimeException('Stream must be a valid resource');
+        }
+
+        $bytesWritten = 0;
+        $bytesPerLine = (int) ceil($width / 8);
+
+        foreach ($lines as $line) {
+            $lineData = '';
+            $byte     = 0;
+            $bitPos   = 7;
+
+            for ($col = 0; $col < $width; $col++) {
+                // Pixel value: 255 = black, 0 = white
+                // Packed bit: 1 = black, 0 = white
+                $pixelBit = ($line[$col] === 255) ? 1 : 0;
+
+                $byte |= ($pixelBit << $bitPos);
+                $bitPos--;
+
+                if ($bitPos < 0 || $col === $width - 1) {
+                    // Byte is complete or end of line
+                    $lineData .= chr($byte);
+                    $byte   = 0;
+                    $bitPos = 7;
+                }
+            }
+
+            // Pad line to bytesPerLine if needed
+            while (strlen($lineData) < $bytesPerLine) {
+                $lineData .= chr(0);
+            }
+
+            // Write to stream
+            $written = fwrite($stream, $lineData);
+
+            if ($written === false) {
+                throw new RuntimeException('Failed to write to stream');
+            }
+
+            $bytesWritten += $written;
+        }
+
+        return $bytesWritten;
+    }
+
+    /**
+     * Pack a single pixel line to bytes (streaming helper).
+     *
+     * This method packs a single line into bytes without accumulating data.
+     * Useful for line-by-line streaming.
+     *
+     * @param array<int, int> $line  Pixel line (each pixel is 0 or 255)
+     * @param int             $width Width in pixels
+     *
+     * @return string Packed binary data for this line
+     */
+    public static function packSingleLine(array $line, int $width): string
+    {
+        $bytesPerLine = (int) ceil($width / 8);
+        $lineData     = '';
+        $byte         = 0;
+        $bitPos       = 7;
+
+        for ($col = 0; $col < $width; $col++) {
+            // Pixel value: 255 = black, 0 = white
+            // Packed bit: 1 = black, 0 = white
+            $pixelBit = ($line[$col] === 255) ? 1 : 0;
+
+            $byte |= ($pixelBit << $bitPos);
+            $bitPos--;
+
+            if ($bitPos < 0 || $col === $width - 1) {
+                // Byte is complete or end of line
+                $lineData .= chr($byte);
+                $byte   = 0;
+                $bitPos = 7;
+            }
+        }
+
+        // Pad line to bytesPerLine if needed
+        while (strlen($lineData) < $bytesPerLine) {
+            $lineData .= chr(0);
+        }
+
+        return $lineData;
     }
 }
