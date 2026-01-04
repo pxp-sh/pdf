@@ -11,34 +11,15 @@ declare(strict_types=1);
  * @see https://github.com/pxp-sh/pdf
  *
  */
-
 namespace PXP\PDF\Fpdf\Tree;
+
+use function preg_match;
 
 /**
  * Represents the PDF header (version declaration).
  */
 final class PDFHeader
 {
-    public function __construct(
-        private string $version = '1.3',
-    ) {
-    }
-
-    public function getVersion(): string
-    {
-        return $this->version;
-    }
-
-    public function setVersion(string $version): void
-    {
-        $this->version = $version;
-    }
-
-    public function __toString(): string
-    {
-        return '%PDF-' . $this->version . "\n";
-    }
-
     /**
      * Parse PDF header from content.
      */
@@ -49,5 +30,25 @@ final class PDFHeader
         }
 
         return null;
+    }
+
+    public function __construct(
+        private string $version = '1.3',
+    ) {
+    }
+
+    public function __toString(): string
+    {
+        return '%PDF-' . $this->version . "\n";
+    }
+
+    public function getVersion(): string
+    {
+        return $this->version;
+    }
+
+    public function setVersion(string $version): void
+    {
+        $this->version = $version;
     }
 }

@@ -11,14 +11,18 @@ declare(strict_types=1);
  * @see https://github.com/pxp-sh/pdf
  *
  */
-
 namespace Test\Feature\PDF;
 
-use Test\TestCase;
+use function count;
+use function dirname;
+use function glob;
+use function is_dir;
+use function str_contains;
 use PXP\PDF\Fpdf\Exception\FpdfException;
 use PXP\PDF\Fpdf\IO\FileIO;
 use PXP\PDF\Fpdf\Object\Parser\PDFParser;
 use PXP\PDF\Fpdf\Xref\PDFXrefTable;
+use Test\TestCase;
 
 /**
  * Feature tests for xref table parsing.
@@ -41,11 +45,13 @@ final class XrefParsingTest extends TestCase
     public function testParseDocumentWithTraditionalXref(): void
     {
         $inputDir = dirname(__DIR__, 2) . '/resources/input';
+
         if (!is_dir($inputDir)) {
             $this->markTestSkipped('Input directory not found: ' . $inputDir);
         }
 
         $pdfFiles = glob($inputDir . '/*.pdf') ?: [];
+
         if (empty($pdfFiles)) {
             $this->markTestSkipped('No PDF files found in test resources');
         }
@@ -95,7 +101,7 @@ final class XrefParsingTest extends TestCase
         $xrefContent .= "0000000200 00000 n \n";
         $xrefContent .= "0000000300 00000 n \n";
 
-        $xrefTable = new PDFXrefTable();
+        $xrefTable = new PDFXrefTable;
         $xrefTable->parseFromString($xrefContent);
 
         $this->assertNotNull($xrefTable->getEntry(0));
@@ -112,21 +118,21 @@ final class XrefParsingTest extends TestCase
     {
         // Test CRLF
         $xrefContent1 = "0 2\r\n0000000100 00000 n \r\n0000000200 00000 n \r\n";
-        $xrefTable1 = new PDFXrefTable();
+        $xrefTable1   = new PDFXrefTable;
         $xrefTable1->parseFromString($xrefContent1);
         $this->assertNotNull($xrefTable1->getEntry(0));
         $this->assertSame(100, $xrefTable1->getEntry(0)->getOffset());
 
         // Test LF only
         $xrefContent2 = "0 2\n0000000100 00000 n \n0000000200 00000 n \n";
-        $xrefTable2 = new PDFXrefTable();
+        $xrefTable2   = new PDFXrefTable;
         $xrefTable2->parseFromString($xrefContent2);
         $this->assertNotNull($xrefTable2->getEntry(0));
         $this->assertSame(100, $xrefTable2->getEntry(0)->getOffset());
 
         // Test CR only
         $xrefContent3 = "0 2\r0000000100 00000 n \r0000000200 00000 n \r";
-        $xrefTable3 = new PDFXrefTable();
+        $xrefTable3   = new PDFXrefTable;
         $xrefTable3->parseFromString($xrefContent3);
         $this->assertNotNull($xrefTable3->getEntry(0));
         $this->assertSame(100, $xrefTable3->getEntry(0)->getOffset());
@@ -184,11 +190,11 @@ final class XrefParsingTest extends TestCase
 
     public function testXrefEntryMerging(): void
     {
-        $xrefTable1 = new PDFXrefTable();
+        $xrefTable1 = new PDFXrefTable;
         $xrefTable1->addEntry(1, 100, 0, false);
         $xrefTable1->addEntry(2, 200, 0, false);
 
-        $xrefTable2 = new PDFXrefTable();
+        $xrefTable2 = new PDFXrefTable;
         $xrefTable2->addEntry(2, 300, 0, false); // Override
         $xrefTable2->addEntry(3, 400, 0, false); // New
 
@@ -203,11 +209,13 @@ final class XrefParsingTest extends TestCase
     public function testParseDocumentFromFileWithRealPdf(): void
     {
         $inputDir = dirname(__DIR__, 2) . '/resources/input';
+
         if (!is_dir($inputDir)) {
             $this->markTestSkipped('Input directory not found: ' . $inputDir);
         }
 
         $pdfFiles = glob($inputDir . '/*.pdf') ?: [];
+
         if (empty($pdfFiles)) {
             $this->markTestSkipped('No PDF files found in test resources');
         }
@@ -216,11 +224,11 @@ final class XrefParsingTest extends TestCase
             try {
                 $document = $this->parser->parseDocumentFromFile($pdfPath, $this->fileIO);
 
-                $this->assertNotNull($document, "Failed to parse: $pdfPath");
-                $this->assertNotNull($document->getXrefTable(), "No xref table in: $pdfPath");
+                $this->assertNotNull($document, "Failed to parse: {$pdfPath}");
+                $this->assertNotNull($document->getXrefTable(), "No xref table in: {$pdfPath}");
 
                 $entries = $document->getXrefTable()->getAllEntries();
-                $this->assertGreaterThan(0, count($entries), "Empty xref table in: $pdfPath");
+                $this->assertGreaterThan(0, count($entries), "Empty xref table in: {$pdfPath}");
 
                 // If we got here, parsing was successful
                 break;
@@ -229,6 +237,7 @@ final class XrefParsingTest extends TestCase
                 if (str_contains($e->getMessage(), 'Xref streams are not yet supported')) {
                     continue;
                 }
+
                 throw $e;
             }
         }

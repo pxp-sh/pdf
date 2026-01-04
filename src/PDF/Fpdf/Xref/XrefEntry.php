@@ -11,8 +11,9 @@ declare(strict_types=1);
  * @see https://github.com/pxp-sh/pdf
  *
  */
-
 namespace PXP\PDF\Fpdf\Xref;
+
+use function sprintf;
 
 /**
  * Represents a single entry in the cross-reference table.
@@ -20,13 +21,25 @@ namespace PXP\PDF\Fpdf\Xref;
 final class XrefEntry
 {
     private ?int $compressedObjectStream = null;
-    private ?int $compressedIndex = null;
+    private ?int $compressedIndex        = null;
 
     public function __construct(
         private int $offset,
         private int $generation = 0,
         private bool $free = false,
     ) {
+    }
+
+    /**
+     * Serialize to PDF xref entry format.
+     */
+    public function __toString(): string
+    {
+        if ($this->free) {
+            return sprintf('%010d %05d f ', $this->offset, $this->generation);
+        }
+
+        return sprintf('%010d %05d n ', $this->offset, $this->generation);
     }
 
     public function getOffset(): int
@@ -60,12 +73,12 @@ final class XrefEntry
     }
 
     /**
-     * Mark this entry as a compressed object stored inside an ObjStm
+     * Mark this entry as a compressed object stored inside an ObjStm.
      */
     public function setCompressed(int $objectStreamNumber, int $index): void
     {
         $this->compressedObjectStream = $objectStreamNumber;
-        $this->compressedIndex = $index;
+        $this->compressedIndex        = $index;
     }
 
     public function isCompressed(): bool
@@ -81,17 +94,5 @@ final class XrefEntry
     public function getCompressedIndex(): ?int
     {
         return $this->compressedIndex;
-    }
-
-    /**
-     * Serialize to PDF xref entry format.
-     */
-    public function __toString(): string
-    {
-        if ($this->free) {
-            return sprintf('%010d %05d f ', $this->offset, $this->generation);
-        }
-
-        return sprintf('%010d %05d n ', $this->offset, $this->generation);
     }
 }

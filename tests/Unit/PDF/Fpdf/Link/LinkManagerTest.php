@@ -11,11 +11,10 @@ declare(strict_types=1);
  * @see https://github.com/pxp-sh/pdf
  *
  */
-
 namespace Test\Unit\PDF\Fpdf\Link;
 
-use Test\TestCase;
 use PXP\PDF\Fpdf\Link\LinkManager;
+use Test\TestCase;
 
 /**
  * @covers \PXP\PDF\Fpdf\Link\LinkManager
@@ -26,7 +25,7 @@ final class LinkManagerTest extends TestCase
 
     protected function setUp(): void
     {
-        $this->linkManager = new LinkManager();
+        $this->linkManager = new LinkManager;
     }
 
     public function testAddLinkReturnsIncrementalId(): void

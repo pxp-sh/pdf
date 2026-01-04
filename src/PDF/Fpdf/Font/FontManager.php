@@ -11,23 +11,37 @@ declare(strict_types=1);
  * @see https://github.com/pxp-sh/pdf
  *
  */
-
 namespace PXP\PDF\Fpdf\Font;
 
+use function chr;
+use function count;
+use function get_defined_vars;
+use function in_array;
+use function is_array;
+use function is_file;
+use function md5;
+use function realpath;
+use function round;
+use function str_contains;
+use function str_ends_with;
+use function str_replace;
+use function strtolower;
+use function strtoupper;
+use Psr\Cache\CacheItemPoolInterface;
+use Psr\Log\LoggerInterface;
 use PXP\PDF\Fpdf\Cache\NullCache;
 use PXP\PDF\Fpdf\Exception\FpdfException;
 use PXP\PDF\Fpdf\Log\NullLogger;
-use Psr\Cache\CacheItemPoolInterface;
-use Psr\Log\LoggerInterface;
 
 final class FontManager
 {
     private const CORE_FONTS = ['courier', 'helvetica', 'times', 'symbol', 'zapfdingbats'];
-
-    private array $fonts = [];
+    private array $fonts     = [];
     private array $fontFiles = [];
     private array $encodings = [];
-    private array $cmaps = [];
+    private array $cmaps     = [];
+    private LoggerInterface $logger;
+    private CacheItemPoolInterface $cache;
 
     public function __construct(
         private string $fontPath,
@@ -35,12 +49,9 @@ final class FontManager
         ?LoggerInterface $logger = null,
         ?CacheItemPoolInterface $cache = null,
     ) {
-        $this->logger = $logger ?? new NullLogger();
-        $this->cache = $cache ?? new NullCache();
+        $this->logger = $logger ?? new NullLogger;
+        $this->cache  = $cache ?? new NullCache;
     }
-
-    private LoggerInterface $logger;
-    private CacheItemPoolInterface $cache;
 
     public function setDefaultCharWidth(int $w): void
     {
@@ -55,11 +66,13 @@ final class FontManager
     public function addFont(string $family, string $style = '', string $file = '', string $dir = ''): void
     {
         $family = strtolower($family);
+
         if ($file === '') {
             $file = str_replace(' ', '', $family) . strtolower($style) . '.php';
         }
 
         $style = strtoupper($style);
+
         if ($style === 'IB') {
             $style = 'BI';
         }
@@ -67,9 +80,9 @@ final class FontManager
         $fontKey = $family . $style;
 
         $this->logger->debug('Font loading started', [
-            'family' => $family,
-            'style' => $style,
-            'file' => $file,
+            'family'   => $family,
+            'style'    => $style,
+            'file'     => $file,
             'font_key' => $fontKey,
         ]);
 
@@ -77,22 +90,26 @@ final class FontManager
             $this->logger->debug('Font already loaded', [
                 'font_key' => $fontKey,
             ]);
+
             return;
         }
 
         // Check cache
-        $cacheKey = 'pxp_pdf_font_' . md5($fontKey . $file);
+        $cacheKey  = 'pxp_pdf_font_' . md5($fontKey . $file);
         $cacheItem = $this->cache->getItem($cacheKey);
+
         if ($cacheItem->isHit()) {
             $cachedInfo = $cacheItem->get();
+
             if (is_array($cachedInfo)) {
-                $cachedInfo['i'] = count($this->fonts) + 1;
+                $cachedInfo['i']       = count($this->fonts) + 1;
                 $this->fonts[$fontKey] = $cachedInfo;
                 $this->logger->debug('Font retrieved from cache', [
                     'font_key' => $fontKey,
-                    'name' => $cachedInfo['name'] ?? 'unknown',
-                    'type' => $cachedInfo['type'] ?? 'unknown',
+                    'name'     => $cachedInfo['name'] ?? 'unknown',
+                    'type'     => $cachedInfo['type'] ?? 'unknown',
                 ]);
+
                 return;
             }
         }
@@ -101,6 +118,7 @@ final class FontManager
             $this->logger->error('Incorrect font definition file name', [
                 'file' => $file,
             ]);
+
             throw new FpdfException('Incorrect font definition file name: ' . $file);
         }
 
@@ -115,24 +133,24 @@ final class FontManager
         $fontPath = $dir . $file;
         $this->logger->debug('Loading font from file', [
             'font_path' => $fontPath,
-            'font_key' => $fontKey,
+            'font_key'  => $fontKey,
         ]);
 
-        $info = $this->loadFont($fontPath);
+        $info      = $this->loadFont($fontPath);
         $info['i'] = count($this->fonts) + 1;
-
 
         if (!isset($info['cw']) || empty($info['cw'])) {
             $defaultCw = [];
+
             for ($ci = 32; $ci <= 255; $ci++) {
                 $defaultCw[chr($ci)] = $this->defaultCharWidth;
             }
 
             $info['cw'] = $defaultCw;
         } else {
-
-            $sum = 0;
+            $sum   = 0;
             $count = 0;
+
             foreach ($info['cw'] as $v) {
                 $sum += (int) $v;
                 $count++;
@@ -146,6 +164,7 @@ final class FontManager
 
             for ($ci = 32; $ci <= 255; $ci++) {
                 $ch = chr($ci);
+
                 if (!isset($info['cw'][$ch])) {
                     $info['cw'][$ch] = $avg;
                 }
@@ -154,6 +173,7 @@ final class FontManager
 
         if (!empty($info['file'])) {
             $info['file'] = $dir . $info['file'];
+
             if ($info['type'] === 'TrueType') {
                 $this->fontFiles[$info['file']] = ['length1' => $info['originalsize']];
             } else {
@@ -168,10 +188,10 @@ final class FontManager
         $this->cache->save($cacheItem);
 
         $this->logger->debug('Font loaded and cached', [
-            'font_key' => $fontKey,
-            'name' => $info['name'] ?? 'unknown',
-            'type' => $info['type'] ?? 'unknown',
-            'encoding' => $info['enc'] ?? 'none',
+            'font_key'        => $fontKey,
+            'name'            => $info['name'] ?? 'unknown',
+            'type'            => $info['type'] ?? 'unknown',
+            'encoding'        => $info['enc'] ?? 'none',
             'character_count' => isset($info['cw']) ? count($info['cw']) : 0,
         ]);
     }
@@ -179,11 +199,13 @@ final class FontManager
     public function getFont(string $family, string $style = ''): ?array
     {
         $family = strtolower($family);
+
         if ($family === 'arial') {
             $family = 'helvetica';
         }
 
         $style = strtoupper($style);
+
         if ($style === 'IB') {
             $style = 'BI';
         }
@@ -195,8 +217,8 @@ final class FontManager
         $fontKey = $family . $style;
 
         $this->logger->debug('Font retrieval requested', [
-            'family' => $family,
-            'style' => $style,
+            'family'   => $family,
+            'style'    => $style,
             'font_key' => $fontKey,
         ]);
 
@@ -208,10 +230,11 @@ final class FontManager
                 $this->addFont($family, $style);
             } else {
                 $this->logger->error('Undefined font', [
-                    'family' => $family,
-                    'style' => $style,
+                    'family'   => $family,
+                    'style'    => $style,
                     'font_key' => $fontKey,
                 ]);
+
                 throw new FpdfException('Undefined font: ' . $family . ' ' . $style);
             }
         }
@@ -219,7 +242,7 @@ final class FontManager
         $font = $this->fonts[$fontKey];
         $this->logger->debug('Font retrieved', [
             'font_key' => $fontKey,
-            'name' => $font['name'] ?? 'unknown',
+            'name'     => $font['name'] ?? 'unknown',
         ]);
 
         return $font;
@@ -249,7 +272,7 @@ final class FontManager
     {
         $this->encodings[$enc] = $n;
         $this->logger->debug('Encoding set', [
-            'encoding' => $enc,
+            'encoding'      => $enc,
             'object_number' => $n,
         ]);
     }
@@ -258,7 +281,7 @@ final class FontManager
     {
         $this->cmaps[$key] = $n;
         $this->logger->debug('CMap set', [
-            'key' => $key,
+            'key'           => $key,
             'object_number' => $n,
         ]);
     }
@@ -282,14 +305,17 @@ final class FontManager
             $this->logger->error('Font definition file not found', [
                 'font_path' => $absolutePath,
             ]);
+
             throw new FpdfException('Could not include font definition file: ' . $path);
         }
 
         include $path;
+
         if (!isset($name)) {
             $this->logger->error('Invalid font definition file', [
                 'font_path' => $absolutePath,
             ]);
+
             throw new FpdfException('Could not include font definition file: ' . $path);
         }
 
@@ -304,8 +330,8 @@ final class FontManager
         $info = get_defined_vars();
         $this->logger->debug('Font definition file loaded', [
             'font_path' => $absolutePath,
-            'name' => $name ?? 'unknown',
-            'type' => $info['type'] ?? 'unknown',
+            'name'      => $name ?? 'unknown',
+            'type'      => $info['type'] ?? 'unknown',
         ]);
 
         return $info;

@@ -11,9 +11,14 @@ declare(strict_types=1);
  * @see https://github.com/pxp-sh/pdf
  *
  */
-
 namespace PXP\PDF\Fpdf\Object\Base;
 
+use function bin2hex;
+use function hex2bin;
+use function str_ends_with;
+use function str_replace;
+use function str_starts_with;
+use function substr;
 use PXP\PDF\Fpdf\Charset\CharsetHandler;
 
 /**
@@ -23,15 +28,54 @@ use PXP\PDF\Fpdf\Charset\CharsetHandler;
 class PDFString extends PDFObject
 {
     protected string $value;
-    protected bool $isHex = false;
-    protected string $charset = 'UTF-8';
+    protected bool $isHex                   = false;
+    protected string $charset               = 'UTF-8';
     private ?CharsetHandler $charsetHandler = null;
+
+    /**
+     * Parse from PDF string format.
+     */
+    public static function fromPDFString(string $pdfString, string $charset = 'UTF-8'): self
+    {
+        $handler = new CharsetHandler;
+
+        // Check if hex string
+        if (str_starts_with($pdfString, '<') && str_ends_with($pdfString, '>')) {
+            $hex     = substr($pdfString, 1, -1);
+            $decoded = hex2bin($hex);
+            $value   = $handler->decodeFromPDF($decoded, $charset);
+
+            return new self($value, true, $charset);
+        }
+
+        // Literal string
+        if (str_starts_with($pdfString, '(') && str_ends_with($pdfString, ')')) {
+            $content = substr($pdfString, 1, -1);
+            // Unescape
+            $unescaped = str_replace(
+                ['\\\\', '\\(', '\\)', '\\r', '\\n', '\\t'],
+                ['\\', '(', ')', "\r", "\n", "\t"],
+                $content,
+            );
+            $value = $handler->decodeFromPDF($unescaped, $charset);
+
+            return new self($value, false, $charset);
+        }
+
+        // Default: treat as literal
+        return new self($pdfString, false, $charset);
+    }
 
     public function __construct(string $value, bool $isHex = false, string $charset = 'UTF-8')
     {
-        $this->value = $value;
-        $this->isHex = $isHex;
+        $this->value   = $value;
+        $this->isHex   = $isHex;
         $this->charset = $charset;
+    }
+
+    public function __toString(): string
+    {
+        return $this->toPDFString();
     }
 
     public function getValue(): string
@@ -44,7 +88,7 @@ class PDFString extends PDFObject
      */
     public function setValue(string $value, string $charset = 'UTF-8'): void
     {
-        $this->value = $value;
+        $this->value   = $value;
         $this->charset = $charset;
     }
 
@@ -79,57 +123,18 @@ class PDFString extends PDFObject
         $escaped = str_replace(
             ['\\', '(', ')', "\r"],
             ['\\\\', '\\(', '\\)', '\\r'],
-            $encoded
+            $encoded,
         );
 
         return '(' . $escaped . ')';
     }
 
-    /**
-     * Parse from PDF string format.
-     */
-    public static function fromPDFString(string $pdfString, string $charset = 'UTF-8'): self
-    {
-        $handler = new CharsetHandler();
-
-        // Check if hex string
-        if (str_starts_with($pdfString, '<') && str_ends_with($pdfString, '>')) {
-            $hex = substr($pdfString, 1, -1);
-            $decoded = hex2bin($hex);
-            $value = $handler->decodeFromPDF($decoded, $charset);
-
-            return new self($value, true, $charset);
-        }
-
-        // Literal string
-        if (str_starts_with($pdfString, '(') && str_ends_with($pdfString, ')')) {
-            $content = substr($pdfString, 1, -1);
-            // Unescape
-            $unescaped = str_replace(
-                ['\\\\', '\\(', '\\)', '\\r', '\\n', '\\t'],
-                ['\\', '(', ')', "\r", "\n", "\t"],
-                $content
-            );
-            $value = $handler->decodeFromPDF($unescaped, $charset);
-
-            return new self($value, false, $charset);
-        }
-
-        // Default: treat as literal
-        return new self($pdfString, false, $charset);
-    }
-
     private function getCharsetHandler(): CharsetHandler
     {
         if ($this->charsetHandler === null) {
-            $this->charsetHandler = new CharsetHandler();
+            $this->charsetHandler = new CharsetHandler;
         }
 
         return $this->charsetHandler;
-    }
-
-    public function __toString(): string
-    {
-        return $this->toPDFString();
     }
 }

@@ -11,9 +11,10 @@ declare(strict_types=1);
  * @see https://github.com/pxp-sh/pdf
  *
  */
-
 namespace PXP\PDF\Fpdf\Exception;
 
-class FpdfException extends \Exception
+use Exception;
+
+class FpdfException extends Exception
 {
 }

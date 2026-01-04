@@ -11,9 +11,9 @@ declare(strict_types=1);
  * @see https://github.com/pxp-sh/pdf
  *
  */
-
 namespace PXP\PDF\Fpdf\Object\Array;
 
+use function count;
 use PXP\PDF\Fpdf\Object\Base\PDFArray;
 use PXP\PDF\Fpdf\Object\Base\PDFNumber;
 
@@ -41,6 +41,7 @@ final class MediaBoxArray extends PDFArray
     public function setValues(array $values): self
     {
         $this->items = [];
+
         foreach ($values as $value) {
             $this->add(new PDFNumber($value));
         }
@@ -56,6 +57,7 @@ final class MediaBoxArray extends PDFArray
     public function getValues(): array
     {
         $values = [];
+
         foreach ($this->getAll() as $item) {
             if ($item instanceof PDFNumber) {
                 $values[] = (float) $item->getValue();

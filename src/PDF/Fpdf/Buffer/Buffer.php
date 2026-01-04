@@ -11,8 +11,9 @@ declare(strict_types=1);
  * @see https://github.com/pxp-sh/pdf
  *
  */
-
 namespace PXP\PDF\Fpdf\Buffer;
+
+use function strlen;
 
 final class Buffer
 {

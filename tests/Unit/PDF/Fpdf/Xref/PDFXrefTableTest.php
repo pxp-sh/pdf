@@ -11,12 +11,10 @@ declare(strict_types=1);
  * @see https://github.com/pxp-sh/pdf
  *
  */
-
 namespace Test\Unit\PDF\Fpdf\Xref;
 
-use Test\TestCase;
 use PXP\PDF\Fpdf\Xref\PDFXrefTable;
-use PXP\PDF\Fpdf\Xref\XrefEntry;
+use Test\TestCase;
 
 /**
  * @covers \PXP\PDF\Fpdf\Xref\PDFXrefTable
@@ -25,7 +23,7 @@ final class PDFXrefTableTest extends TestCase
 {
     public function testAddEntry(): void
     {
-        $xref = new PDFXrefTable();
+        $xref = new PDFXrefTable;
         $xref->addEntry(1, 100, 0, false);
 
         $entry = $xref->getEntry(1);
@@ -37,13 +35,13 @@ final class PDFXrefTableTest extends TestCase
 
     public function testGetEntryReturnsNullForMissing(): void
     {
-        $xref = new PDFXrefTable();
+        $xref = new PDFXrefTable;
         $this->assertNull($xref->getEntry(999));
     }
 
     public function testUpdateOffset(): void
     {
-        $xref = new PDFXrefTable();
+        $xref = new PDFXrefTable;
         $xref->addEntry(1, 100);
         $xref->updateOffset(1, 200);
 
@@ -54,7 +52,7 @@ final class PDFXrefTableTest extends TestCase
 
     public function testRebuild(): void
     {
-        $xref = new PDFXrefTable();
+        $xref = new PDFXrefTable;
         $xref->rebuild([
             1 => 100,
             2 => 200,
@@ -69,7 +67,7 @@ final class PDFXrefTableTest extends TestCase
 
     public function testSerialize(): void
     {
-        $xref = new PDFXrefTable();
+        $xref = new PDFXrefTable;
         $xref->addEntry(1, 100);
         $xref->addEntry(2, 200);
 
@@ -82,7 +80,7 @@ final class PDFXrefTableTest extends TestCase
     public function testParseFromString(): void
     {
         $xrefContent = "0 3\n0000000000 65535 f \n0000000100 00000 n \n0000000200 00000 n \n";
-        $xref = new PDFXrefTable();
+        $xref        = new PDFXrefTable;
         $xref->parseFromString($xrefContent);
 
         $entry1 = $xref->getEntry(1);
@@ -105,7 +103,7 @@ final class PDFXrefTableTest extends TestCase
     {
         // Test with CRLF
         $xrefContent = "0 2\r\n0000000100 00000 n \r\n0000000200 00000 n \r\n";
-        $xref = new PDFXrefTable();
+        $xref        = new PDFXrefTable;
         $xref->parseFromString($xrefContent);
 
         $this->assertNotNull($xref->getEntry(0));
@@ -115,7 +113,7 @@ final class PDFXrefTableTest extends TestCase
 
         // Test with mixed whitespace
         $xrefContent2 = "0 2\n0000000100 00000 n \r0000000200 00000 n \n";
-        $xref2 = new PDFXrefTable();
+        $xref2        = new PDFXrefTable;
         $xref2->parseFromString($xrefContent2);
 
         $this->assertNotNull($xref2->getEntry(0));
@@ -125,7 +123,7 @@ final class PDFXrefTableTest extends TestCase
     public function testParseFromStringWithMultipleSubsections(): void
     {
         $xrefContent = "0 2\n0000000100 00000 n \n0000000200 00000 n \n5 2\n0000000300 00000 n \n0000000400 00000 n \n";
-        $xref = new PDFXrefTable();
+        $xref        = new PDFXrefTable;
         $xref->parseFromString($xrefContent);
 
         $this->assertNotNull($xref->getEntry(0));
@@ -141,7 +139,7 @@ final class PDFXrefTableTest extends TestCase
     public function testParseFromStringWithFreeEntries(): void
     {
         $xrefContent = "0 3\n0000000000 65535 f \n0000000100 00000 n \n0000000000 65535 f \n";
-        $xref = new PDFXrefTable();
+        $xref        = new PDFXrefTable;
         $xref->parseFromString($xrefContent);
 
         $entry0 = $xref->getEntry(0);
@@ -163,7 +161,7 @@ final class PDFXrefTableTest extends TestCase
         // Entries without explicit 'n' should default to in-use
         // This tests the regex pattern that allows optional flag
         $xrefContent = "0 2\n0000000100 00000 \n0000000200 00000 n \n";
-        $xref = new PDFXrefTable();
+        $xref        = new PDFXrefTable;
         $xref->parseFromString($xrefContent);
 
         // The first entry should be treated as a subsection header since it has no flag
@@ -171,7 +169,7 @@ final class PDFXrefTableTest extends TestCase
         // So this test needs to be adjusted - entries must have 'n' or 'f' to be parsed as entries
         // Let's test with proper format
         $xrefContent2 = "0 2\n0000000100 00000 n \n0000000200 00000 n \n";
-        $xref2 = new PDFXrefTable();
+        $xref2        = new PDFXrefTable;
         $xref2->parseFromString($xrefContent2);
 
         $this->assertNotNull($xref2->getEntry(0));
@@ -180,11 +178,11 @@ final class PDFXrefTableTest extends TestCase
 
     public function testMergeEntries(): void
     {
-        $xref1 = new PDFXrefTable();
+        $xref1 = new PDFXrefTable;
         $xref1->addEntry(1, 100, 0, false);
         $xref1->addEntry(2, 200, 0, false);
 
-        $xref2 = new PDFXrefTable();
+        $xref2 = new PDFXrefTable;
         $xref2->addEntry(2, 300, 0, false); // Override entry 2
         $xref2->addEntry(3, 400, 0, false); // New entry
 
@@ -207,10 +205,10 @@ final class PDFXrefTableTest extends TestCase
     public function testMergeEntriesOverridesExisting(): void
     {
         // Test that mergeEntries overrides existing entries (newer entries override older)
-        $xref1 = new PDFXrefTable();
+        $xref1 = new PDFXrefTable;
         $xref1->addEntry(1, 100, 0, false);
 
-        $xref2 = new PDFXrefTable();
+        $xref2 = new PDFXrefTable;
         $xref2->addEntry(1, 200, 0, false); // Should override
 
         $xref1->mergeEntries($xref2);

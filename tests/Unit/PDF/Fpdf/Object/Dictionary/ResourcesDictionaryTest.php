@@ -11,12 +11,12 @@ declare(strict_types=1);
  * @see https://github.com/pxp-sh/pdf
  *
  */
-
 namespace Test\Unit\PDF\Fpdf\Object\Dictionary;
 
-use Test\TestCase;
+use PXP\PDF\Fpdf\Object\Base\PDFArray;
 use PXP\PDF\Fpdf\Object\Base\PDFReference;
 use PXP\PDF\Fpdf\Object\Dictionary\ResourcesDictionary;
+use Test\TestCase;
 
 /**
  * @covers \PXP\PDF\Fpdf\Object\Dictionary\ResourcesDictionary
@@ -25,16 +25,16 @@ final class ResourcesDictionaryTest extends TestCase
 {
     public function testConstructorSetsProcSet(): void
     {
-        $resources = new ResourcesDictionary();
-        $procSet = $resources->getEntry('/ProcSet');
+        $resources = new ResourcesDictionary;
+        $procSet   = $resources->getEntry('/ProcSet');
 
         $this->assertNotNull($procSet);
-        $this->assertInstanceOf(\PXP\PDF\Fpdf\Object\Base\PDFArray::class, $procSet);
+        $this->assertInstanceOf(PDFArray::class, $procSet);
     }
 
     public function testAddFont(): void
     {
-        $resources = new ResourcesDictionary();
+        $resources = new ResourcesDictionary;
         $resources->addFont('/F1', 5);
 
         $fonts = $resources->getFonts();
@@ -46,7 +46,7 @@ final class ResourcesDictionaryTest extends TestCase
 
     public function testAddFontWithReference(): void
     {
-        $resources = new ResourcesDictionary();
+        $resources = new ResourcesDictionary;
         $resources->addFont('/F1', new PDFReference(5));
 
         $fonts = $resources->getFonts();
@@ -55,7 +55,7 @@ final class ResourcesDictionaryTest extends TestCase
 
     public function testAddXObject(): void
     {
-        $resources = new ResourcesDictionary();
+        $resources = new ResourcesDictionary;
         $resources->addXObject('/I1', 10);
 
         $xObjects = $resources->getXObjects();
@@ -67,10 +67,10 @@ final class ResourcesDictionaryTest extends TestCase
 
     public function testSetProcSet(): void
     {
-        $resources = new ResourcesDictionary();
+        $resources = new ResourcesDictionary;
         $resources->setProcSet(['PDF', 'Text']);
 
         $procSet = $resources->getEntry('/ProcSet');
-        $this->assertInstanceOf(\PXP\PDF\Fpdf\Object\Base\PDFArray::class, $procSet);
+        $this->assertInstanceOf(PDFArray::class, $procSet);
     }
 }

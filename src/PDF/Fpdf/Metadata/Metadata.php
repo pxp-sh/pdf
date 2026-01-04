@@ -11,8 +11,15 @@ declare(strict_types=1);
  * @see https://github.com/pxp-sh/pdf
  *
  */
-
 namespace PXP\PDF\Fpdf\Metadata;
+
+use function chr;
+use function date;
+use function function_exists;
+use function iconv;
+use function ord;
+use function strlen;
+use function substr;
 
 final class Metadata
 {
@@ -50,7 +57,7 @@ final class Metadata
 
     public function setCreationDate(int $timestamp): void
     {
-        $date = date('YmdHisO', $timestamp);
+        $date                       = date('YmdHisO', $timestamp);
         $this->data['CreationDate'] = 'D:' . substr($date, 0, -2) . "'" . substr($date, -2) . "'";
     }
 
@@ -66,10 +73,12 @@ final class Metadata
         }
 
         $res = '';
-        $nb = strlen($s);
+        $nb  = strlen($s);
+
         for ($i = 0; $i < $nb; $i++) {
             $c = $s[$i];
             $v = ord($c);
+
             if ($v >= 128) {
                 $res .= chr(0xC0 | ($v >> 6));
                 $res .= chr(0x80 | ($v & 0x3F));

@@ -11,11 +11,29 @@ declare(strict_types=1);
  * @see https://github.com/pxp-sh/pdf
  *
  */
-
 namespace Test\Unit\PDF\Fpdf\Image\Parser;
 
-use PXP\PDF\Fpdf\Image\Parser\PngParser;
+use const STDERR;
+use function function_exists;
+use function fwrite;
+use function gzuncompress;
+use function imagecolorallocate;
+use function imagecolorallocatealpha;
+use function imagecolorat;
+use function imagecreatefrompng;
+use function imagecreatetruecolor;
+use function imagedestroy;
+use function imagefilledrectangle;
+use function imagepng;
+use function imagesavealpha;
+use function imagesetpixel;
+use function print_r;
+use function strlen;
+use function sys_get_temp_dir;
+use function uniqid;
+use function unlink;
 use PXP\PDF\Fpdf\Exception\FpdfException;
+use PXP\PDF\Fpdf\Image\Parser\PngParser;
 use Test\TestCase;
 
 /**
@@ -45,21 +63,20 @@ final class PngParserAlphaTest extends TestCase
         imagepng($im, $file);
         imagedestroy($im);
 
-
         $im2 = imagecreatefrompng($file);
         $a00 = (imagecolorat($im2, 0, 0) >> 24) & 0x7F;
         $a11 = (imagecolorat($im2, 1, 1) >> 24) & 0x7F;
         imagedestroy($im2);
-        fwrite(STDERR, "DEBUG GD alphas (7-bit): $a00, $a11\n");
+        fwrite(STDERR, "DEBUG GD alphas (7-bit): {$a00}, {$a11}\n");
 
         $fileIO = self::createFileIO();
         $parser = new PngParser($fileIO, $fileIO);
-        $info = $parser->parse($file);
+        $info   = $parser->parse($file);
 
         $this->assertArrayHasKey('data', $info);
-        if (!isset($info['smask'])) {
 
-            fwrite(STDERR, "DEBUG parse info: " . print_r($info, true) . "\n");
+        if (!isset($info['smask'])) {
+            fwrite(STDERR, 'DEBUG parse info: ' . print_r($info, true) . "\n");
         }
         $this->assertArrayHasKey('smask', $info);
         $this->assertSame(2, $info['w']);

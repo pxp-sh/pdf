@@ -11,9 +11,14 @@ declare(strict_types=1);
  * @see https://github.com/pxp-sh/pdf
  *
  */
-
 namespace PXP\PDF\Fpdf\Stream;
 
+use function chr;
+use function function_exists;
+use function gzcompress;
+use function ltrim;
+use function strlen;
+use function substr;
 use PXP\PDF\Fpdf\Exception\FpdfException;
 
 /**
@@ -32,24 +37,10 @@ final class StreamEncoder
 
         foreach ($filters as $filter) {
             $filterName = ltrim($filter, '/');
-            $result = $this->encodeWithFilter($result, $filterName);
+            $result     = $this->encodeWithFilter($result, $filterName);
         }
 
         return $result;
-    }
-
-    /**
-     * Encode with a specific filter.
-     */
-    private function encodeWithFilter(string $data, string $filterName): string
-    {
-        return match ($filterName) {
-            'FlateDecode' => $this->encodeFlate($data),
-            'DCTDecode' => $this->encodeDCT($data),
-            'LZWDecode' => $this->encodeLZW($data),
-            'RunLengthDecode' => $this->encodeRunLength($data),
-            default => throw new FpdfException('Unknown filter: ' . $filterName),
-        };
     }
 
     /**
@@ -62,6 +53,7 @@ final class StreamEncoder
         }
 
         $result = @gzcompress($data);
+
         if ($result === false) {
             throw new FpdfException('Failed to encode FlateDecode stream');
         }
@@ -96,10 +88,10 @@ final class StreamEncoder
     {
         $result = '';
         $length = strlen($data);
-        $i = 0;
+        $i      = 0;
 
         while ($i < $length) {
-            $byte = $data[$i];
+            $byte  = $data[$i];
             $count = 1;
 
             // Check for repeated bytes
@@ -141,5 +133,20 @@ final class StreamEncoder
         $result .= "\x80";
 
         return $result;
+    }
+
+    /**
+     * Encode with a specific filter.
+     */
+    private function encodeWithFilter(string $data, string $filterName): string
+    {
+        return match ($filterName) {
+            'FlateDecode'     => $this->encodeFlate($data),
+            'DCTDecode'       => $this->encodeDCT($data),
+            'LZWDecode'       => $this->encodeLZW($data),
+            'RunLengthDecode' => $this->encodeRunLength($data),
+            'CCITTFaxDecode'  => $data, // Pass through - already encoded
+            default           => throw new FpdfException('Unknown filter: ' . $filterName),
+        };
     }
 }

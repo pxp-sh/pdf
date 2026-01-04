@@ -11,8 +11,11 @@ declare(strict_types=1);
  * @see https://github.com/pxp-sh/pdf
  *
  */
-
 namespace PXP\PDF\CCITTFax;
+
+use function count;
+use function sprintf;
+use RuntimeException;
 
 class CCITTFaxModes
 {
@@ -22,6 +25,21 @@ class CCITTFaxModes
     public function __construct()
     {
         $this->modes = $this->getModes();
+    }
+
+    public function getMode(int $b8): ModeCode
+    {
+        foreach ($this->modes as $mode) {
+            if ($mode->matches($b8)) {
+                return $mode;
+            }
+        }
+
+        throw new RuntimeException(sprintf(
+            'bad start: no mode found for byte 0x%02X (binary: %08b)',
+            $b8,
+            $b8,
+        ));
     }
 
     /**
@@ -68,23 +86,12 @@ class CCITTFaxModes
         for ($i = 0; $i < $count; $i++) {
             $bitsUsed = $modeCodes[$i * 3 + 1];
             $value = $modeCodes[$i * 3] << (8 - $bitsUsed);
-            $mask = 0xff << (8 - $bitsUsed);
+            $mask = 0xFF << (8 - $bitsUsed);
             $type = Mode::from($modeCodes[$i * 3 + 2]);
 
             $modes[] = new ModeCode($bitsUsed, $mask, $value, $type);
         }
 
         return $modes;
-    }
-
-    public function getMode(int $b8): ModeCode
-    {
-        foreach ($this->modes as $mode) {
-            if ($mode->matches($b8)) {
-                return $mode;
-            }
-        }
-
-        throw new \RuntimeException('bad start');
     }
 }

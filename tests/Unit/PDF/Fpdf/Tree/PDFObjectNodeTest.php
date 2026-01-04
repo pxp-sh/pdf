@@ -11,14 +11,13 @@ declare(strict_types=1);
  * @see https://github.com/pxp-sh/pdf
  *
  */
-
 namespace Test\Unit\PDF\Fpdf\Tree;
 
-use Test\TestCase;
 use PXP\PDF\Fpdf\Object\Base\PDFDictionary;
 use PXP\PDF\Fpdf\Object\Base\PDFReference;
 use PXP\PDF\Fpdf\Tree\PDFObjectNode;
 use PXP\PDF\Fpdf\Tree\PDFObjectRegistry;
+use Test\TestCase;
 
 /**
  * @covers \PXP\PDF\Fpdf\Tree\PDFObjectNode
@@ -27,7 +26,7 @@ final class PDFObjectNodeTest extends TestCase
 {
     public function testGetObjectNumber(): void
     {
-        $dict = new PDFDictionary();
+        $dict = new PDFDictionary;
         $node = new PDFObjectNode(5, $dict);
 
         $this->assertSame(5, $node->getObjectNumber());
@@ -35,7 +34,7 @@ final class PDFObjectNodeTest extends TestCase
 
     public function testSetObjectNumber(): void
     {
-        $dict = new PDFDictionary();
+        $dict = new PDFDictionary;
         $node = new PDFObjectNode(5, $dict);
         $node->setObjectNumber(10);
 
@@ -44,7 +43,7 @@ final class PDFObjectNodeTest extends TestCase
 
     public function testGetGenerationNumber(): void
     {
-        $dict = new PDFDictionary();
+        $dict = new PDFDictionary;
         $node = new PDFObjectNode(5, $dict, 3);
 
         $this->assertSame(3, $node->getGenerationNumber());
@@ -52,7 +51,7 @@ final class PDFObjectNodeTest extends TestCase
 
     public function testGetValue(): void
     {
-        $dict = new PDFDictionary();
+        $dict = new PDFDictionary;
         $node = new PDFObjectNode(1, $dict);
 
         $this->assertSame($dict, $node->getValue());
@@ -60,9 +59,9 @@ final class PDFObjectNodeTest extends TestCase
 
     public function testSetValue(): void
     {
-        $dict1 = new PDFDictionary();
-        $dict2 = new PDFDictionary();
-        $node = new PDFObjectNode(1, $dict1);
+        $dict1 = new PDFDictionary;
+        $dict2 = new PDFDictionary;
+        $node  = new PDFObjectNode(1, $dict1);
         $node->setValue($dict2);
 
         $this->assertSame($dict2, $node->getValue());
@@ -70,7 +69,7 @@ final class PDFObjectNodeTest extends TestCase
 
     public function testToString(): void
     {
-        $dict = new PDFDictionary();
+        $dict = new PDFDictionary;
         $node = new PDFObjectNode(3, $dict, 0);
 
         $result = (string) $node;
@@ -80,12 +79,12 @@ final class PDFObjectNodeTest extends TestCase
 
     public function testResolveReference(): void
     {
-        $registry = new PDFObjectRegistry();
-        $dict = new PDFDictionary();
-        $node = new PDFObjectNode(5, $dict);
+        $registry = new PDFObjectRegistry;
+        $dict     = new PDFDictionary;
+        $node     = new PDFObjectNode(5, $dict);
         $registry->register($node);
 
-        $ref = new PDFReference(5);
+        $ref      = new PDFReference(5);
         $resolved = $node->resolveReference($ref, $registry);
 
         $this->assertSame($node, $resolved);

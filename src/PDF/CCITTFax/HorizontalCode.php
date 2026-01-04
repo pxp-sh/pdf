@@ -11,7 +11,6 @@ declare(strict_types=1);
  * @see https://github.com/pxp-sh/pdf
  *
  */
-
 namespace PXP\PDF\CCITTFax;
 
 class HorizontalCode
@@ -31,16 +30,36 @@ class HorizontalCode
         int $pixels,
         bool $terminating = false
     ) {
-        $this->bitsUsed = $bitsUsed;
-        $this->mask = $mask;
-        $this->value = $value;
-        $this->color = $color;
-        $this->pixels = $pixels;
+        $this->bitsUsed    = $bitsUsed;
+        $this->mask        = $mask;
+        $this->value       = $value;
+        $this->color       = $color;
+        $this->pixels      = $pixels;
         $this->terminating = $terminating;
     }
 
     public function matches(int $data): bool
     {
         return ($data & $this->mask) === $this->value;
+    }
+
+    public function getBitsUsed(): int
+    {
+        return $this->bitsUsed;
+    }
+
+    public function getRunLength(): int
+    {
+        return $this->pixels;
+    }
+
+    public function isTerminating(): bool
+    {
+        return $this->terminating;
+    }
+
+    public function isMakeup(): bool
+    {
+        return !$this->terminating;
     }
 }

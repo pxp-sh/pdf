@@ -11,8 +11,11 @@ declare(strict_types=1);
  * @see https://github.com/pxp-sh/pdf
  *
  */
-
 namespace PXP\PDF\CCITTFax;
+
+use function ord;
+use function strlen;
+use InvalidArgumentException;
 
 class BitBuffer
 {
@@ -20,6 +23,7 @@ class BitBuffer
     private int $emptyBits;
     private string $source;
     private int $sourcePos;
+    private int $bitsRead = 0;
 
     public function __construct(string $source)
     {
@@ -34,6 +38,7 @@ class BitBuffer
     {
         $this->buffer = ($this->buffer << $count) & 0xFFFFFFFF;
         $this->emptyBits += $count;
+        $this->bitsRead += $count;
         $this->tryFillBuffer();
     }
 
@@ -41,7 +46,7 @@ class BitBuffer
     {
         return [
             ($this->buffer >> 24) & 0xFF,
-            32 - $this->emptyBits
+            32 - $this->emptyBits,
         ];
     }
 
@@ -49,7 +54,7 @@ class BitBuffer
     {
         return [
             ($this->buffer >> 16) & 0xFFFF,
-            32 - $this->emptyBits
+            32 - $this->emptyBits,
         ];
     }
 
@@ -57,7 +62,7 @@ class BitBuffer
     {
         return [
             $this->buffer,
-            32 - $this->emptyBits
+            32 - $this->emptyBits,
         ];
     }
 
@@ -66,6 +71,7 @@ class BitBuffer
         if ($this->emptyBits === 32 && $this->sourcePos >= strlen($this->source)) {
             return false;
         }
+
         return true;
     }
 
@@ -74,6 +80,46 @@ class BitBuffer
         $this->buffer = 0;
         $this->emptyBits = 32;
         $this->sourcePos = 0;
+    }
+
+    public function getBuffer(): int
+    {
+        return $this->buffer;
+    }
+
+    public function getEmptyBits(): int
+    {
+        return $this->emptyBits;
+    }
+
+    public function getBitsRead(): int
+    {
+        return $this->bitsRead;
+    }
+
+    /**
+     * Get the number of bits available in the buffer.
+     * This is the number of valid bits (32 - emptyBits).
+     */
+    public function available(): int
+    {
+        return 32 - $this->emptyBits;
+    }
+
+    /**
+     * Get bits from the buffer without consuming them (peek + getBits combined).
+     */
+    public function getBits(int $count): int
+    {
+        [$value] = match ($count) {
+            8 => $this->peak8(),
+            16 => $this->peak16(),
+            32 => $this->peak32(),
+            default => throw new InvalidArgumentException("Unsupported bit count: {$count}"),
+        };
+        $this->flushBits($count);
+
+        return $value;
     }
 
     private function tryFillBuffer(): void
@@ -93,10 +139,5 @@ class BitBuffer
         $zeroed = (($this->buffer >> (8 + $padRight)) << (8 + $padRight)) & 0xFFFFFFFF;
         $this->buffer = ($zeroed | ($sourceByte << $padRight)) & 0xFFFFFFFF;
         $this->emptyBits -= 8;
-    }
-
-    public function getBuffer(): int
-    {
-        return $this->buffer;
     }
 }

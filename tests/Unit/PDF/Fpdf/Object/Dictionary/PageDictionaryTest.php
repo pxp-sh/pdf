@@ -11,15 +11,15 @@ declare(strict_types=1);
  * @see https://github.com/pxp-sh/pdf
  *
  */
-
 namespace Test\Unit\PDF\Fpdf\Object\Dictionary;
 
-use Test\TestCase;
 use PXP\PDF\Fpdf\Object\Array\MediaBoxArray;
+use PXP\PDF\Fpdf\Object\Base\PDFArray;
+use PXP\PDF\Fpdf\Object\Base\PDFDictionary;
 use PXP\PDF\Fpdf\Object\Base\PDFReference;
 use PXP\PDF\Fpdf\Object\Dictionary\PageDictionary;
-use PXP\PDF\Fpdf\Tree\PDFObjectNode;
 use PXP\PDF\Fpdf\Tree\PDFDocument;
+use Test\TestCase;
 
 /**
  * @covers \PXP\PDF\Fpdf\Object\Dictionary\PageDictionary
@@ -28,7 +28,7 @@ final class PageDictionaryTest extends TestCase
 {
     public function testConstructorSetsType(): void
     {
-        $page = new PageDictionary();
+        $page = new PageDictionary;
         $type = $page->getEntry('/Type');
 
         $this->assertNotNull($type);
@@ -37,11 +37,11 @@ final class PageDictionaryTest extends TestCase
 
     public function testSetParentWithObjectNode(): void
     {
-        $doc = new PDFDocument();
-        $parentDict = new \PXP\PDF\Fpdf\Object\Base\PDFDictionary();
+        $doc        = new PDFDocument;
+        $parentDict = new PDFDictionary;
         $parentNode = $doc->addObject($parentDict, 1);
 
-        $page = new PageDictionary();
+        $page = new PageDictionary;
         $page->setParent($parentNode);
 
         $parent = $page->getEntry('/Parent');
@@ -51,7 +51,7 @@ final class PageDictionaryTest extends TestCase
 
     public function testSetParentWithReference(): void
     {
-        $page = new PageDictionary();
+        $page = new PageDictionary;
         $page->setParent(new PDFReference(1));
 
         $parent = $page->getEntry('/Parent');
@@ -60,7 +60,7 @@ final class PageDictionaryTest extends TestCase
 
     public function testSetParentWithInteger(): void
     {
-        $page = new PageDictionary();
+        $page = new PageDictionary;
         $page->setParent(1);
 
         $parent = $page->getEntry('/Parent');
@@ -69,7 +69,7 @@ final class PageDictionaryTest extends TestCase
 
     public function testSetMediaBox(): void
     {
-        $page = new PageDictionary();
+        $page     = new PageDictionary;
         $mediaBox = new MediaBoxArray([0, 0, 612, 792]);
         $page->setMediaBox($mediaBox);
 
@@ -79,7 +79,7 @@ final class PageDictionaryTest extends TestCase
 
     public function testSetMediaBoxWithArray(): void
     {
-        $page = new PageDictionary();
+        $page = new PageDictionary;
         $page->setMediaBox([0, 0, 612, 792]);
 
         $mb = $page->getMediaBox();
@@ -88,7 +88,7 @@ final class PageDictionaryTest extends TestCase
 
     public function testSetResources(): void
     {
-        $page = new PageDictionary();
+        $page = new PageDictionary;
         $page->setResources(2);
 
         $resources = $page->getEntry('/Resources');
@@ -98,7 +98,7 @@ final class PageDictionaryTest extends TestCase
 
     public function testSetContents(): void
     {
-        $page = new PageDictionary();
+        $page = new PageDictionary;
         $page->setContents(4);
 
         $contents = $page->getEntry('/Contents');
@@ -108,7 +108,7 @@ final class PageDictionaryTest extends TestCase
 
     public function testSetRotate(): void
     {
-        $page = new PageDictionary();
+        $page = new PageDictionary;
         $page->setRotate(90);
 
         $rotate = $page->getEntry('/Rotate');
@@ -118,10 +118,10 @@ final class PageDictionaryTest extends TestCase
 
     public function testSetAnnots(): void
     {
-        $page = new PageDictionary();
+        $page = new PageDictionary;
         $page->setAnnots([5, 6, 7]);
 
         $annots = $page->getEntry('/Annots');
-        $this->assertInstanceOf(\PXP\PDF\Fpdf\Object\Base\PDFArray::class, $annots);
+        $this->assertInstanceOf(PDFArray::class, $annots);
     }
 }

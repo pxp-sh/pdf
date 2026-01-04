@@ -11,15 +11,13 @@ declare(strict_types=1);
  * @see https://github.com/pxp-sh/pdf
  *
  */
-
 namespace Test\Unit\PDF\Fpdf\Object\Base;
 
-use Test\TestCase;
 use PXP\PDF\Fpdf\Object\Base\PDFDictionary;
 use PXP\PDF\Fpdf\Object\Base\PDFName;
 use PXP\PDF\Fpdf\Object\Base\PDFNumber;
-use PXP\PDF\Fpdf\Object\Base\PDFReference;
 use PXP\PDF\Fpdf\Object\Base\PDFString;
+use Test\TestCase;
 
 /**
  * @covers \PXP\PDF\Fpdf\Object\Base\PDFDictionary
@@ -28,7 +26,7 @@ final class PDFDictionaryTest extends TestCase
 {
     public function testToStringWithEmptyDictionary(): void
     {
-        $dict = new PDFDictionary();
+        $dict   = new PDFDictionary;
         $result = (string) $dict;
         $this->assertStringStartsWith('<<', $result);
         $this->assertStringEndsWith('>>', $result);
@@ -36,7 +34,7 @@ final class PDFDictionaryTest extends TestCase
 
     public function testAddEntry(): void
     {
-        $dict = new PDFDictionary();
+        $dict = new PDFDictionary;
         $dict->addEntry('/Type', new PDFName('Page'));
 
         $this->assertTrue($dict->hasEntry('/Type'));
@@ -46,7 +44,7 @@ final class PDFDictionaryTest extends TestCase
 
     public function testAddEntryWithStringKey(): void
     {
-        $dict = new PDFDictionary();
+        $dict = new PDFDictionary;
         $dict->addEntry('Type', new PDFName('Page'));
 
         $this->assertTrue($dict->hasEntry('/Type'));
@@ -54,7 +52,7 @@ final class PDFDictionaryTest extends TestCase
 
     public function testAddEntryAutoConvertsValues(): void
     {
-        $dict = new PDFDictionary();
+        $dict = new PDFDictionary;
         $dict->addEntry('/Count', 42);
         $dict->addEntry('/Title', 'Test');
 
@@ -68,13 +66,13 @@ final class PDFDictionaryTest extends TestCase
 
     public function testGetEntryReturnsNullForMissingKey(): void
     {
-        $dict = new PDFDictionary();
+        $dict = new PDFDictionary;
         $this->assertNull($dict->getEntry('/Missing'));
     }
 
     public function testRemoveEntry(): void
     {
-        $dict = new PDFDictionary();
+        $dict = new PDFDictionary;
         $dict->addEntry('/Type', new PDFName('Page'));
         $dict->removeEntry('/Type');
 
@@ -84,7 +82,7 @@ final class PDFDictionaryTest extends TestCase
     public function testConstructorWithEntries(): void
     {
         $dict = new PDFDictionary([
-            '/Type' => new PDFName('Page'),
+            '/Type'  => new PDFName('Page'),
             '/Count' => new PDFNumber(1),
         ]);
 
@@ -94,7 +92,7 @@ final class PDFDictionaryTest extends TestCase
 
     public function testToStringWithMultipleEntries(): void
     {
-        $dict = new PDFDictionary();
+        $dict = new PDFDictionary;
         $dict->addEntry('/Type', new PDFName('Page'));
         $dict->addEntry('/Count', new PDFNumber(1));
 

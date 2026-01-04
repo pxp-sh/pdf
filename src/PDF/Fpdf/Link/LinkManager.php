@@ -11,17 +11,18 @@ declare(strict_types=1);
  * @see https://github.com/pxp-sh/pdf
  *
  */
-
 namespace PXP\PDF\Fpdf\Link;
+
+use function count;
 
 final class LinkManager
 {
-    private array $links = [];
+    private array $links     = [];
     private array $pageLinks = [];
 
     public function addLink(): int
     {
-        $n = count($this->links) + 1;
+        $n               = count($this->links) + 1;
         $this->links[$n] = [0, 0];
 
         return $n;

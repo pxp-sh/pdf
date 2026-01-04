@@ -11,24 +11,25 @@ declare(strict_types=1);
  * @see https://github.com/pxp-sh/pdf
  *
  */
-
 namespace PXP\PDF\Fpdf\Enum;
+
+use function strtoupper;
+use InvalidArgumentException;
 
 enum OutputDestination: string
 {
-    case INLINE = 'I';
-    case DOWNLOAD = 'D';
-    case FILE = 'F';
-    case STRING = 'S';
-
     public static function fromString(string $dest): self
     {
         return match (strtoupper($dest)) {
-            'I' => self::INLINE,
-            'D' => self::DOWNLOAD,
-            'F' => self::FILE,
-            'S' => self::STRING,
-            default => throw new \InvalidArgumentException('Incorrect output destination: ' . $dest),
+            'I'     => self::INLINE,
+            'D'     => self::DOWNLOAD,
+            'F'     => self::FILE,
+            'S'     => self::STRING,
+            default => throw new InvalidArgumentException('Incorrect output destination: ' . $dest),
         };
     }
+    case INLINE   = 'I';
+    case DOWNLOAD = 'D';
+    case FILE     = 'F';
+    case STRING   = 'S';
 }

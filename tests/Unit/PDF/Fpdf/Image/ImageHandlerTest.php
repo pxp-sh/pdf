@@ -11,13 +11,11 @@ declare(strict_types=1);
  * @see https://github.com/pxp-sh/pdf
  *
  */
-
 namespace Test\Unit\PDF\Fpdf\Image;
 
-use Test\TestCase;
 use PXP\PDF\Fpdf\Exception\FpdfException;
 use PXP\PDF\Fpdf\Image\ImageHandler;
-use PXP\PDF\Fpdf\IO\FileIO;
+use Test\TestCase;
 
 /**
  * @covers \PXP\PDF\Fpdf\Image\ImageHandler
@@ -28,12 +26,12 @@ final class ImageHandlerTest extends TestCase
 
     protected function setUp(): void
     {
-        $fileIO = self::createFileIO();
+        $fileIO             = self::createFileIO();
         $this->imageHandler = new ImageHandler(
             $fileIO,
             $fileIO,
             self::getLogger(),
-            self::getCache()
+            self::getCache(),
         );
     }
 
@@ -60,8 +58,6 @@ final class ImageHandlerTest extends TestCase
 
     public function testAddImageNormalizesJpegToJpg(): void
     {
-
-
         $this->expectException(FpdfException::class);
         $this->expectExceptionMessage('Missing or incorrect image file:');
         $this->imageHandler->addImage('test.jpeg', 'jpeg');
@@ -79,8 +75,6 @@ final class ImageHandlerTest extends TestCase
 
     public function testAddImageReturnsSameInfoForSameFile(): void
     {
-
-
         $this->assertTrue(true);
     }
 }

@@ -11,14 +11,26 @@ declare(strict_types=1);
  * @see https://github.com/pxp-sh/pdf
  *
  */
-
 namespace Test\Feature\PDF;
 
-use Test\TestCase;
+use function count;
+use function file_exists;
+use function file_get_contents;
+use function file_put_contents;
+use function filesize;
+use function gc_collect_cycles;
+use function getenv;
+use function memory_get_peak_usage;
+use function mkdir;
+use function sprintf;
+use function str_repeat;
+use function uniqid;
 use PXP\PDF\Fpdf\FPDF;
+use Test\TestCase;
 
 /**
  * @covers \PXP\PDF\Fpdf\FPDF
+ *
  * @group large
  */
 final class LargePdfMemoryTest extends TestCase
@@ -30,12 +42,12 @@ final class LargePdfMemoryTest extends TestCase
             $this->markTestSkipped('Large tests disabled; set RUN_LARGE_TESTS=1 to enable.');
         }
 
-        $pages = 1200; // +1000 pages
+        $pages          = 1200; // +1000 pages
         $thresholdBytes = 50 * 1024 * 1024; // 50 MB allowed growth for writing to file
 
         // Create small stub font to avoid bundling real font files
         $tmpDir = self::getRootDir() . '/tmp_pf_' . uniqid();
-        mkdir($tmpDir, 0777, true);
+        mkdir($tmpDir, 0o777, true);
         $fontFile = $tmpDir . '/testfont.php';
         file_put_contents($fontFile, '<?php $name="TestFont"; $type="Core"; $cw=[];');
 
@@ -53,6 +65,7 @@ final class LargePdfMemoryTest extends TestCase
 
         for ($p = 0; $p < $pages; $p++) {
             $pdf->addPage();
+
             // Add enough lines to fill the page
             for ($i = 0; $i < 30; $i++) {
                 $pdf->multiCell(0, 6, $sampleLine);
@@ -80,6 +93,7 @@ final class LargePdfMemoryTest extends TestCase
         $referencePdf->addFont('TestFont', '', 'testfont.php', $tmpDir);
         $referencePdf->setFont('TestFont', '', 12);
         $referencePdf->addPage();
+
         for ($i = 0; $i < 30; $i++) {
             $referencePdf->multiCell(0, 6, $sampleLine);
         }
@@ -91,6 +105,7 @@ final class LargePdfMemoryTest extends TestCase
 
         // Clean up artifacts
         self::unlink($referenceFile);
+
         if (file_exists($tmpFile)) {
             self::unlink($tmpFile);
         }
@@ -100,7 +115,7 @@ final class LargePdfMemoryTest extends TestCase
         $this->assertLessThan(
             $thresholdBytes,
             $peakDelta,
-            sprintf('Memory usage increased by %d bytes when writing %d pages to file; expected < %d bytes', $peakDelta, $pages, $thresholdBytes)
+            sprintf('Memory usage increased by %d bytes when writing %d pages to file; expected < %d bytes', $peakDelta, $pages, $thresholdBytes),
         );
     }
 
@@ -116,7 +131,7 @@ final class LargePdfMemoryTest extends TestCase
 
         // Create small stub font to avoid bundling real font files
         $tmpDir = self::getRootDir() . '/tmp_pf_' . uniqid();
-        mkdir($tmpDir, 0777, true);
+        mkdir($tmpDir, 0o777, true);
         $fontFile = $tmpDir . '/testfont.php';
         file_put_contents($fontFile, '<?php $name="TestFont"; $type="Core"; $cw=[];');
 
@@ -133,6 +148,7 @@ final class LargePdfMemoryTest extends TestCase
             // Add page number to make each page unique
             $pdf->cell(0, 10, sprintf('Page %d of %d', $p, $pages));
             $pdf->ln(10);
+
             // Add enough lines to fill the page
             for ($i = 0; $i < 30; $i++) {
                 $pdf->multiCell(0, 6, $sampleLine);
@@ -147,7 +163,7 @@ final class LargePdfMemoryTest extends TestCase
         $this->assertGreaterThan(0, filesize($originalPdf), 'Generated PDF file should not be empty.');
 
         // Split the large PDF into individual pages
-        $outputDir = $tmpDir . '/split';
+        $outputDir  = $tmpDir . '/split';
         $splitFiles = FPDF::splitPdf($originalPdf, $outputDir, 'page_%d.pdf');
 
         // Verify we got the correct number of split files
@@ -170,13 +186,14 @@ final class LargePdfMemoryTest extends TestCase
             $originalPdf,
             $splitFiles,
             0.90,
-            sprintf('All %d split pages should match their corresponding original pages', $pages)
+            sprintf('All %d split pages should match their corresponding original pages', $pages),
         );
 
         // Clean up
         foreach ($splitFiles as $file) {
             self::unlink($file);
         }
+
         if (file_exists($originalPdf)) {
             self::unlink($originalPdf);
         }

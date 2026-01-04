@@ -11,9 +11,17 @@ declare(strict_types=1);
  * @see https://github.com/pxp-sh/pdf
  *
  */
-
 namespace PXP\PDF\Fpdf\Charset;
 
+use function chr;
+use function function_exists;
+use function iconv;
+use function mb_check_encoding;
+use function ord;
+use function preg_match;
+use function str_starts_with;
+use function strlen;
+use function substr;
 use PXP\PDF\Fpdf\Exception\FpdfException;
 
 /**
@@ -33,7 +41,7 @@ final class CharsetHandler
             'MacRomanEncoding', 'MacRoman' => $this->encodeMacRoman($text),
             'ISO-8859-1', 'Latin1' => $this->encodeISO8859_1($text),
             'PDFDocEncoding' => $this->encodePDFDoc($text),
-            default => throw new FpdfException('Unsupported charset: ' . $charset),
+            default          => throw new FpdfException('Unsupported charset: ' . $charset),
         };
     }
 
@@ -49,7 +57,7 @@ final class CharsetHandler
             'MacRomanEncoding', 'MacRoman' => $this->decodeMacRoman($pdfString),
             'ISO-8859-1', 'Latin1' => $this->decodeISO8859_1($pdfString),
             'PDFDocEncoding' => $this->decodePDFDoc($pdfString),
-            default => throw new FpdfException('Unsupported charset: ' . $charset),
+            default          => throw new FpdfException('Unsupported charset: ' . $charset),
         };
     }
 
@@ -83,6 +91,7 @@ final class CharsetHandler
 
         if (function_exists('iconv')) {
             $result = @iconv($from, $to . '//IGNORE', $text);
+
             if ($result !== false) {
                 return $result;
             }
@@ -133,30 +142,31 @@ final class CharsetHandler
         // Manual UTF-8 to UTF-16BE conversion
         $result = "\xFE\xFF";
         $length = strlen($text);
-        $i = 0;
+        $i      = 0;
 
         while ($i < $length) {
             $byte1 = ord($text[$i++]);
+
             if ($byte1 < 0x80) {
                 $result .= "\x00" . chr($byte1);
             } elseif (($byte1 & 0xE0) === 0xC0) {
-                $byte2 = ord($text[$i++]);
+                $byte2     = ord($text[$i++]);
                 $codePoint = (($byte1 & 0x1F) << 6) | ($byte2 & 0x3F);
                 $result .= chr($codePoint >> 8) . chr($codePoint & 0xFF);
             } elseif (($byte1 & 0xF0) === 0xE0) {
-                $byte2 = ord($text[$i++]);
-                $byte3 = ord($text[$i++]);
+                $byte2     = ord($text[$i++]);
+                $byte3     = ord($text[$i++]);
                 $codePoint = (($byte1 & 0x0F) << 12) | (($byte2 & 0x3F) << 6) | ($byte3 & 0x3F);
                 $result .= chr($codePoint >> 8) . chr($codePoint & 0xFF);
             } else {
                 // 4-byte UTF-8 (surrogate pairs)
-                $byte2 = ord($text[$i++]);
-                $byte3 = ord($text[$i++]);
-                $byte4 = ord($text[$i++]);
+                $byte2     = ord($text[$i++]);
+                $byte3     = ord($text[$i++]);
+                $byte4     = ord($text[$i++]);
                 $codePoint = (($byte1 & 0x07) << 18) | (($byte2 & 0x3F) << 12) | (($byte3 & 0x3F) << 6) | ($byte4 & 0x3F);
                 $codePoint -= 0x10000;
                 $high = 0xD800 + ($codePoint >> 10);
-                $low = 0xDC00 + ($codePoint & 0x3FF);
+                $low  = 0xDC00 + ($codePoint & 0x3FF);
                 $result .= chr($high >> 8) . chr($high & 0xFF);
                 $result .= chr($low >> 8) . chr($low & 0xFF);
             }
@@ -183,8 +193,8 @@ final class CharsetHandler
         $length = strlen($text);
 
         for ($i = 0; $i < $length; $i += 2) {
-            $high = ord($text[$i]);
-            $low = ord($text[$i + 1] ?? "\0");
+            $high      = ord($text[$i]);
+            $low       = ord($text[$i + 1] ?? "\0");
             $codePoint = ($high << 8) | $low;
 
             if ($codePoint < 0x80) {
@@ -200,10 +210,10 @@ final class CharsetHandler
                 // Surrogate pair
                 $highSurrogate = $codePoint;
                 $i += 2;
-                $lowHigh = ord($text[$i] ?? "\0");
-                $lowLow = ord($text[$i + 1] ?? "\0");
+                $lowHigh      = ord($text[$i] ?? "\0");
+                $lowLow       = ord($text[$i + 1] ?? "\0");
                 $lowSurrogate = ($lowHigh << 8) | $lowLow;
-                $codePoint = 0x10000 + (($highSurrogate & 0x3FF) << 10) + ($lowSurrogate & 0x3FF);
+                $codePoint    = 0x10000 + (($highSurrogate & 0x3FF) << 10) + ($lowSurrogate & 0x3FF);
 
                 $result .= chr(0xF0 | ($codePoint >> 18));
                 $result .= chr(0x80 | (($codePoint >> 12) & 0x3F));

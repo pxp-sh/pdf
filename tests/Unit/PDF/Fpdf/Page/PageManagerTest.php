@@ -11,12 +11,10 @@ declare(strict_types=1);
  * @see https://github.com/pxp-sh/pdf
  *
  */
-
 namespace Test\Unit\PDF\Fpdf\Page;
 
-use Test\TestCase;
-use PXP\PDF\Fpdf\IO\FileIO;
 use PXP\PDF\Fpdf\Page\PageManager;
+use Test\TestCase;
 
 /**
  * @covers \PXP\PDF\Fpdf\Page\PageManager
@@ -30,7 +28,7 @@ final class PageManagerTest extends TestCase
         $this->pageManager = new PageManager(
             self::createFileIO(),
             self::getLogger(),
-            self::getEventDispatcher()
+            self::getEventDispatcher(),
         );
     }
 

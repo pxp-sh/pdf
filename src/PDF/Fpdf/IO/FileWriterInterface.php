@@ -11,8 +11,9 @@ declare(strict_types=1);
  * @see https://github.com/pxp-sh/pdf
  *
  */
-
 namespace PXP\PDF\Fpdf\IO;
+
+use PXP\PDF\Fpdf\Exception\FpdfException;
 
 /**
  * Interface for file writing operations.
@@ -23,19 +24,21 @@ interface FileWriterInterface
     /**
      * Write entire file contents.
      *
-     * @param string $path File path to write
+     * @param string $path    File path to write
      * @param string $content Content to write
-     * @throws \PXP\PDF\Fpdf\Exception\FpdfException If file cannot be written
+     *
+     * @throws FpdfException If file cannot be written
      */
     public function writeFile(string $path, string $content): void;
 
     /**
      * Write a chunk of content to a file at a specific offset.
      *
-     * @param string $path File path to write
+     * @param string $path    File path to write
      * @param string $content Content chunk to write
-     * @param int $offset Byte offset to start writing at (default: 0)
-     * @throws \PXP\PDF\Fpdf\Exception\FpdfException If file cannot be written
+     * @param int    $offset  Byte offset to start writing at (default: 0)
+     *
+     * @throws FpdfException If file cannot be written
      */
     public function writeFileChunk(string $path, string $content, int $offset = 0): void;
 
@@ -43,8 +46,10 @@ interface FileWriterInterface
      * Open a write stream for the file.
      *
      * @param string $path File path to open
+     *
+     * @throws FpdfException If file cannot be opened
+     *
      * @return resource Stream resource
-     * @throws \PXP\PDF\Fpdf\Exception\FpdfException If file cannot be opened
      */
     public function openWriteStream(string $path);
 }

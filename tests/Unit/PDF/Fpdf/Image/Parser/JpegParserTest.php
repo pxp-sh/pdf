@@ -11,13 +11,16 @@ declare(strict_types=1);
  * @see https://github.com/pxp-sh/pdf
  *
  */
-
 namespace Test\Unit\PDF\Fpdf\Image\Parser;
 
-use Test\TestCase;
+use function file_exists;
+use function file_put_contents;
+use function sys_get_temp_dir;
+use function uniqid;
+use function unlink;
 use PXP\PDF\Fpdf\Exception\FpdfException;
 use PXP\PDF\Fpdf\Image\Parser\JpegParser;
-use PXP\PDF\Fpdf\IO\FileIO;
+use Test\TestCase;
 
 /**
  * @covers \PXP\PDF\Fpdf\Image\Parser\JpegParser
@@ -60,8 +63,6 @@ final class JpegParserTest extends TestCase
 
     public function testParseThrowsExceptionForNonJpegFile(): void
     {
-
-
         $tempFile = sys_get_temp_dir() . '/test_' . uniqid() . '.jpg';
         file_put_contents($tempFile, 'not a jpeg');
 

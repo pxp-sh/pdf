@@ -11,21 +11,23 @@ declare(strict_types=1);
  * @see https://github.com/pxp-sh/pdf
  *
  */
-
 namespace PXP\PDF\Fpdf\Enum;
+
+use function strtolower;
+use InvalidArgumentException;
 
 enum PageOrientation: string
 {
-    case PORTRAIT = 'P';
-    case LANDSCAPE = 'L';
-
     public static function fromString(string $orientation): self
     {
         $orientation = strtolower($orientation);
+
         return match ($orientation) {
             'p', 'portrait' => self::PORTRAIT,
             'l', 'landscape' => self::LANDSCAPE,
-            default => throw new \InvalidArgumentException('Incorrect orientation: ' . $orientation),
+            default => throw new InvalidArgumentException('Incorrect orientation: ' . $orientation),
         };
     }
+    case PORTRAIT  = 'P';
+    case LANDSCAPE = 'L';
 }

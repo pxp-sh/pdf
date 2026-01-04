@@ -11,9 +11,13 @@ declare(strict_types=1);
  * @see https://github.com/pxp-sh/pdf
  *
  */
-
 namespace PXP\PDF\Fpdf\Object\Base;
 
+use function implode;
+use function is_float;
+use function is_int;
+use function is_string;
+use function ltrim;
 use PXP\PDF\Fpdf\Object\PDFObjectInterface;
 
 /**
@@ -22,12 +26,12 @@ use PXP\PDF\Fpdf\Object\PDFObjectInterface;
 class PDFDictionary extends PDFObject
 {
     /**
-     * @var array<string, PDFObjectInterface|string|int|float>
+     * @var array<string, float|int|PDFObjectInterface|string>
      */
     protected array $entries = [];
 
     /**
-     * @param array<string, PDFObjectInterface|string|int|float>|null $entries
+     * @param null|array<string, float|int|PDFObjectInterface|string> $entries
      */
     public function __construct(?array $entries = null)
     {
@@ -38,15 +42,31 @@ class PDFDictionary extends PDFObject
         }
     }
 
+    public function __toString(): string
+    {
+        $parts = [];
+
+        foreach ($this->entries as $key => $value) {
+            $keyObj = new PDFName($key);
+
+            if ($value instanceof PDFObjectInterface) {
+                $parts[] = (string) $keyObj . ' ' . (string) $value;
+            } else {
+                $parts[] = (string) $keyObj . ' ' . (string) $value;
+            }
+        }
+
+        return '<<' . "\n" . implode("\n", $parts) . "\n" . '>>';
+    }
+
     /**
      * Add an entry to the dictionary.
      *
-     * @param PDFName|string $key
-     * @param PDFObjectInterface|string|int|float $value
+     * @param float|int|PDFObjectInterface|string $value
      */
     public function addEntry(PDFName|string $key, mixed $value): self
     {
-        $keyName = $key instanceof PDFName ? $key->getName() : ltrim($key, '/');
+        $keyName                 = $key instanceof PDFName ? $key->getName() : ltrim($key, '/');
         $this->entries[$keyName] = $this->normalizeValue($value);
 
         return $this;
@@ -55,7 +75,7 @@ class PDFDictionary extends PDFObject
     /**
      * Get an entry by key.
      *
-     * @return PDFObjectInterface|string|int|float|null
+     * @return null|float|int|PDFObjectInterface|string
      */
     public function getEntry(string $key): mixed
     {
@@ -88,7 +108,7 @@ class PDFDictionary extends PDFObject
     /**
      * Get all entries.
      *
-     * @return array<string, PDFObjectInterface|string|int|float>
+     * @return array<string, float|int|PDFObjectInterface|string>
      */
     public function getAllEntries(): array
     {
@@ -98,9 +118,9 @@ class PDFDictionary extends PDFObject
     /**
      * Normalize a value to a PDF object.
      *
-     * @param PDFObjectInterface|string|int|float $value
+     * @param float|int|PDFObjectInterface|string $value
      */
-    protected function normalizeValue(mixed $value): PDFObjectInterface|string|int|float
+    protected function normalizeValue(mixed $value): float|int|PDFObjectInterface|string
     {
         if ($value instanceof PDFObjectInterface) {
             return $value;
@@ -115,20 +135,5 @@ class PDFDictionary extends PDFObject
         }
 
         return $value;
-    }
-
-    public function __toString(): string
-    {
-        $parts = [];
-        foreach ($this->entries as $key => $value) {
-            $keyObj = new PDFName($key);
-            if ($value instanceof PDFObjectInterface) {
-                $parts[] = (string) $keyObj . ' ' . (string) $value;
-            } else {
-                $parts[] = (string) $keyObj . ' ' . (string) $value;
-            }
-        }
-
-        return '<<' . "\n" . implode("\n", $parts) . "\n" . '>>';
     }
 }

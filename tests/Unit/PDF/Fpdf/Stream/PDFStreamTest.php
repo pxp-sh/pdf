@@ -11,13 +11,12 @@ declare(strict_types=1);
  * @see https://github.com/pxp-sh/pdf
  *
  */
-
 namespace Test\Unit\PDF\Fpdf\Stream;
 
-use Test\TestCase;
+use function function_exists;
 use PXP\PDF\Fpdf\Object\Base\PDFDictionary;
-use PXP\PDF\Fpdf\Object\Base\PDFName;
 use PXP\PDF\Fpdf\Stream\PDFStream;
+use Test\TestCase;
 
 /**
  * @covers \PXP\PDF\Fpdf\Stream\PDFStream
@@ -26,7 +25,7 @@ final class PDFStreamTest extends TestCase
 {
     public function testGetDecodedData(): void
     {
-        $dict = new PDFDictionary();
+        $dict   = new PDFDictionary;
         $stream = new PDFStream($dict, 'test data', false);
 
         $this->assertSame('test data', $stream->getDecodedData());
@@ -34,7 +33,7 @@ final class PDFStreamTest extends TestCase
 
     public function testSetData(): void
     {
-        $dict = new PDFDictionary();
+        $dict   = new PDFDictionary;
         $stream = new PDFStream($dict, 'old data', false);
         $stream->setData('new data');
 
@@ -47,7 +46,7 @@ final class PDFStreamTest extends TestCase
             $this->markTestSkipped('zlib extension not available');
         }
 
-        $dict = new PDFDictionary();
+        $dict   = new PDFDictionary;
         $stream = new PDFStream($dict, 'test data', false);
         $stream->addFilter('FlateDecode');
 
@@ -58,7 +57,7 @@ final class PDFStreamTest extends TestCase
 
     public function testRemoveFilter(): void
     {
-        $dict = new PDFDictionary();
+        $dict   = new PDFDictionary;
         $stream = new PDFStream($dict, 'test data', false);
         $stream->addFilter('FlateDecode');
         $stream->removeFilter('FlateDecode');
@@ -68,7 +67,7 @@ final class PDFStreamTest extends TestCase
 
     public function testToStringIncludesStream(): void
     {
-        $dict = new PDFDictionary();
+        $dict   = new PDFDictionary;
         $stream = new PDFStream($dict, 'test data', false);
 
         $result = (string) $stream;
@@ -83,7 +82,7 @@ final class PDFStreamTest extends TestCase
             $this->markTestSkipped('zlib extension not available');
         }
 
-        $dict = new PDFDictionary();
+        $dict   = new PDFDictionary;
         $stream = new PDFStream($dict, 'test data', false);
         $stream->addFilter('FlateDecode');
 

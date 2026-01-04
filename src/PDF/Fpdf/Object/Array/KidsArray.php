@@ -11,7 +11,6 @@ declare(strict_types=1);
  * @see https://github.com/pxp-sh/pdf
  *
  */
-
 namespace PXP\PDF\Fpdf\Object\Array;
 
 use PXP\PDF\Fpdf\Object\Base\PDFArray;
@@ -50,6 +49,7 @@ final class KidsArray extends PDFArray
     public function getPageNumbers(): array
     {
         $numbers = [];
+
         foreach ($this->getAll() as $item) {
             if ($item instanceof PDFReference) {
                 $numbers[] = $item->getObjectNumber();

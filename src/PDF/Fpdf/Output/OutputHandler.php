@@ -11,9 +11,15 @@ declare(strict_types=1);
  * @see https://github.com/pxp-sh/pdf
  *
  */
-
 namespace PXP\PDF\Fpdf\Output;
 
+use const PHP_SAPI;
+use function header;
+use function headers_sent;
+use function ob_clean;
+use function ob_get_contents;
+use function ob_get_length;
+use function preg_match;
 use PXP\PDF\Fpdf\Enum\OutputDestination;
 use PXP\PDF\Fpdf\Exception\FpdfException;
 use PXP\PDF\Fpdf\IO\FileWriterInterface;
@@ -32,10 +38,10 @@ final class OutputHandler
         $this->checkOutput();
 
         return match ($dest) {
-            OutputDestination::INLINE => $this->outputInline($buffer, $name, $isUTF8),
+            OutputDestination::INLINE   => $this->outputInline($buffer, $name, $isUTF8),
             OutputDestination::DOWNLOAD => $this->outputDownload($buffer, $name, $isUTF8),
-            OutputDestination::FILE => $this->outputFile($buffer, $name),
-            OutputDestination::STRING => $buffer,
+            OutputDestination::FILE     => $this->outputFile($buffer, $name),
+            OutputDestination::STRING   => $buffer,
         };
     }
 
@@ -48,7 +54,7 @@ final class OutputHandler
             header('Pragma: public');
         }
 
-        echo $buffer;
+        print $buffer;
 
         return '';
     }
@@ -59,7 +65,7 @@ final class OutputHandler
         header('Content-Disposition: attachment; ' . $this->textRenderer->httpEncode('filename', $name, $isUTF8));
         header('Cache-Control: private, max-age=0, must-revalidate');
         header('Pragma: public');
-        echo $buffer;
+        print $buffer;
 
         return '';
     }
@@ -75,12 +81,13 @@ final class OutputHandler
     {
         if (PHP_SAPI !== 'cli') {
             if (headers_sent($file, $line)) {
-                throw new FpdfException("Some data has already been output, can't send PDF file (output started at $file:$line)");
+                throw new FpdfException("Some data has already been output, can't send PDF file (output started at {$file}:{$line})");
             }
         }
 
         if (ob_get_length()) {
             $contents = ob_get_contents();
+
             if (preg_match('/^(\xEF\xBB\xBF)?\s*$/', $contents)) {
                 ob_clean();
             } else {

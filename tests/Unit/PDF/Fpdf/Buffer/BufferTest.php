@@ -11,14 +11,11 @@ declare(strict_types=1);
  * @see https://github.com/pxp-sh/pdf
  *
  */
-
 namespace Test\Unit\PDF\Fpdf\Buffer;
 
-use Test\TestCase;
 use PXP\PDF\Fpdf\Buffer\Buffer;
+use Test\TestCase;
 
-/**
- */
 /**
  * @covers \PXP\PDF\Fpdf\Buffer\Buffer
  */
@@ -26,7 +23,7 @@ final class BufferTest extends TestCase
 {
     public function testAppendAddsLineWithNewline(): void
     {
-        $buffer = new Buffer();
+        $buffer = new Buffer;
         $buffer->append('test line');
 
         $content = $buffer->getContent();
@@ -35,7 +32,7 @@ final class BufferTest extends TestCase
 
     public function testAppendMultipleLines(): void
     {
-        $buffer = new Buffer();
+        $buffer = new Buffer;
         $buffer->append('line 1');
         $buffer->append('line 2');
         $buffer->append('line 3');
@@ -46,26 +43,26 @@ final class BufferTest extends TestCase
 
     public function testGetContentReturnsEmptyStringInitially(): void
     {
-        $buffer = new Buffer();
+        $buffer = new Buffer;
         $this->assertSame('', $buffer->getContent());
     }
 
     public function testGetLengthReturnsZeroInitially(): void
     {
-        $buffer = new Buffer();
+        $buffer = new Buffer;
         $this->assertSame(0, $buffer->getLength());
     }
 
     public function testGetLengthReturnsCorrectLength(): void
     {
-        $buffer = new Buffer();
+        $buffer = new Buffer;
         $buffer->append('test');
         $this->assertSame(5, $buffer->getLength());
     }
 
     public function testGetLengthWithMultipleLines(): void
     {
-        $buffer = new Buffer();
+        $buffer = new Buffer;
         $buffer->append('line 1');
         $buffer->append('line 2');
         $this->assertSame(14, $buffer->getLength());
@@ -73,7 +70,7 @@ final class BufferTest extends TestCase
 
     public function testClearResetsContent(): void
     {
-        $buffer = new Buffer();
+        $buffer = new Buffer;
         $buffer->append('test line');
         $buffer->clear();
 
@@ -83,7 +80,7 @@ final class BufferTest extends TestCase
 
     public function testClearAfterMultipleAppends(): void
     {
-        $buffer = new Buffer();
+        $buffer = new Buffer;
         $buffer->append('line 1');
         $buffer->append('line 2');
         $buffer->append('line 3');
@@ -95,7 +92,7 @@ final class BufferTest extends TestCase
 
     public function testAppendAfterClear(): void
     {
-        $buffer = new Buffer();
+        $buffer = new Buffer;
         $buffer->append('old line');
         $buffer->clear();
         $buffer->append('new line');
@@ -105,7 +102,7 @@ final class BufferTest extends TestCase
 
     public function testAppendEmptyString(): void
     {
-        $buffer = new Buffer();
+        $buffer = new Buffer;
         $buffer->append('');
 
         $this->assertSame("\n", $buffer->getContent());
@@ -114,7 +111,7 @@ final class BufferTest extends TestCase
 
     public function testAppendSpecialCharacters(): void
     {
-        $buffer = new Buffer();
+        $buffer = new Buffer;
         $buffer->append('test with "quotes" and \'apostrophes\'');
 
         $content = $buffer->getContent();

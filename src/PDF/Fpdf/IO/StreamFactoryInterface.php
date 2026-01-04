@@ -11,8 +11,9 @@ declare(strict_types=1);
  * @see https://github.com/pxp-sh/pdf
  *
  */
-
 namespace PXP\PDF\Fpdf\IO;
+
+use PXP\PDF\Fpdf\Exception\FpdfException;
 
 /**
  * Interface for stream creation operations.
@@ -24,8 +25,10 @@ interface StreamFactoryInterface
      * Create a temporary stream.
      *
      * @param string $mode Stream mode (default: 'rb+')
+     *
+     * @throws FpdfException If stream cannot be created
+     *
      * @return resource Stream resource
-     * @throws \PXP\PDF\Fpdf\Exception\FpdfException If stream cannot be created
      */
     public function createTempStream(string $mode = 'rb+');
 }

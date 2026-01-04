@@ -11,11 +11,11 @@ declare(strict_types=1);
  * @see https://github.com/pxp-sh/pdf
  *
  */
-
 namespace Test\Unit\PDF\Fpdf\Font;
 
-use Test\TestCase;
 use PXP\PDF\Fpdf\Font\FontInfo;
+use ReflectionClass;
+use Test\TestCase;
 
 /**
  * @covers \PXP\PDF\Fpdf\Font\FontInfo
@@ -24,7 +24,7 @@ final class FontInfoTest extends TestCase
 {
     public function testFontInfoIsReadonly(): void
     {
-        $reflection = new \ReflectionClass(FontInfo::class);
+        $reflection = new ReflectionClass(FontInfo::class);
         $this->assertTrue($reflection->isReadOnly());
     }
 
@@ -34,7 +34,7 @@ final class FontInfoTest extends TestCase
             name: 'Arial',
             type: 'TrueType',
             cw: ['a' => 500, 'b' => 600],
-            i: 1
+            i: 1,
         );
 
         $this->assertSame('Arial', $fontInfo->name);
@@ -56,8 +56,8 @@ final class FontInfoTest extends TestCase
 
     public function testFontInfoWithAllProperties(): void
     {
-        $desc = ['Ascent' => 800, 'Descent' => -200];
-        $uv = [65 => 65, 66 => 66];
+        $desc     = ['Ascent' => 800, 'Descent' => -200];
+        $uv       = [65 => 65, 66 => 66];
         $fontInfo = new FontInfo(
             name: 'Helvetica',
             type: 'Type1',
@@ -73,7 +73,7 @@ final class FontInfoTest extends TestCase
             ut: 50,
             originalsize: 12345,
             size1: 1000,
-            size2: 2000
+            size2: 2000,
         );
 
         $this->assertSame('Helvetica', $fontInfo->name);

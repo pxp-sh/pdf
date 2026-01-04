@@ -11,23 +11,25 @@ declare(strict_types=1);
  * @see https://github.com/pxp-sh/pdf
  *
  */
-
 namespace PXP\PDF\Fpdf\Tree;
 
+use PXP\PDF\Fpdf\Object\Base\PDFArray;
 use PXP\PDF\Fpdf\Object\Base\PDFDictionary;
 use PXP\PDF\Fpdf\Object\Base\PDFReference;
+use PXP\PDF\Fpdf\Object\Base\PDFString;
 
 /**
  * Represents the PDF trailer dictionary.
  */
 final class PDFTrailer
 {
-    private int $size = 0;
-    private ?PDFReference $root = null;
-    private ?PDFReference $info = null;
+    private int $size              = 0;
+    private ?PDFReference $root    = null;
+    private ?PDFReference $info    = null;
     private ?PDFReference $encrypt = null;
+
     /**
-     * @var array{0: string, 1: string}|null
+     * @var null|array{0: string, 1: string}
      */
     private ?array $id = null;
 
@@ -72,7 +74,7 @@ final class PDFTrailer
     }
 
     /**
-     * @return array{0: string, 1: string}|null
+     * @return null|array{0: string, 1: string}
      */
     public function getId(): ?array
     {
@@ -80,7 +82,7 @@ final class PDFTrailer
     }
 
     /**
-     * @param array{0: string, 1: string}|null $id
+     * @param null|array{0: string, 1: string} $id
      */
     public function setId(?array $id): void
     {
@@ -92,7 +94,7 @@ final class PDFTrailer
      */
     public function toDictionary(): PDFDictionary
     {
-        $dict = new PDFDictionary();
+        $dict = new PDFDictionary;
         $dict->addEntry('/Size', $this->size);
 
         if ($this->root !== null) {
@@ -108,9 +110,9 @@ final class PDFTrailer
         }
 
         if ($this->id !== null) {
-            $idArray = new \PXP\PDF\Fpdf\Object\Base\PDFArray([
-                new \PXP\PDF\Fpdf\Object\Base\PDFString($this->id[0], true),
-                new \PXP\PDF\Fpdf\Object\Base\PDFString($this->id[1], true),
+            $idArray = new PDFArray([
+                new PDFString($this->id[0], true),
+                new PDFString($this->id[1], true),
             ]);
             $dict->addEntry('/ID', $idArray);
         }

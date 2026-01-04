@@ -11,8 +11,16 @@ declare(strict_types=1);
  * @see https://github.com/pxp-sh/pdf
  *
  */
-
 namespace PXP\PDF\Fpdf\Xref;
+
+use function array_keys;
+use function count;
+use function ltrim;
+use function preg_match;
+use function preg_split;
+use function sort;
+use function sprintf;
+use function trim;
 
 /**
  * Manages the PDF cross-reference table.
@@ -33,7 +41,7 @@ final class PDFXrefTable
     }
 
     /**
-     * Add a compressed entry pointing to an object stored inside an ObjStm
+     * Add a compressed entry pointing to an object stored inside an ObjStm.
      */
     public function addCompressedEntry(int $objectNumber, int $objectStreamNumber, int $index): void
     {
@@ -47,7 +55,7 @@ final class PDFXrefTable
      * Get compressed entry details for a given object number.
      * Returns null if not compressed or entry does not exist.
      *
-     * @return array{stream: int, index: int}|null
+     * @return null|array{stream: int, index: int}
      */
     public function getCompressedEntry(int $objectNumber): ?array
     {
@@ -55,9 +63,11 @@ final class PDFXrefTable
             return null;
         }
         $entry = $this->entries[$objectNumber];
+
         if ($entry->isCompressed()) {
             return ['stream' => $entry->getCompressedObjectStream(), 'index' => $entry->getCompressedIndex()];
         }
+
         return null;
     }
 
@@ -105,6 +115,7 @@ final class PDFXrefTable
     public function rebuild(array $objectOffsets): void
     {
         $this->entries = [];
+
         foreach ($objectOffsets as $objectNumber => $offset) {
             $this->addEntry($objectNumber, $offset);
         }
@@ -120,29 +131,32 @@ final class PDFXrefTable
 
         // Split into lines supporting CRLF, CR, LF
         $lines = preg_split('/\r\n|\r|\n/', $xrefContent);
+
         if (false === $lines) {
             return;
         }
 
         $lineCount = count($lines);
-        $i = 0;
+        $i         = 0;
 
         while ($i < $lineCount) {
             $line = trim($lines[$i]);
 
             if ($line === '') {
                 $i++;
+
                 continue;
             }
 
             // Subsection header: "start count"
             if (preg_match('/^([0-9]+)\s+([0-9]+)$/', $line, $headerMatches) === 1) {
                 $startObj = (int) $headerMatches[1];
-                $count = (int) $headerMatches[2];
+                $count    = (int) $headerMatches[2];
 
                 // Read the next $count lines as entries
                 for ($j = 0; $j < $count; $j++) {
                     $i++;
+
                     if ($i >= $lineCount) {
                         break 2; // premature end
                     }
@@ -151,11 +165,12 @@ final class PDFXrefTable
 
                     // Entry format: 10-digit offset, 5-digit generation, flag n|f (flag required)
                     if (preg_match('/^([0-9]{10})\s+([0-9]{5})\s+([nf])\s*$/', $entryLine, $entryMatches) === 1) {
-                        $offsetNum = (int) ltrim($entryMatches[1], '0');
+                        $offsetNum  = (int) ltrim($entryMatches[1], '0');
                         $generation = (int) $entryMatches[2];
-                        $flag = $entryMatches[3];
+                        $flag       = $entryMatches[3];
 
                         $objNum = $startObj + $j;
+
                         if ('n' === $flag) {
                             $this->addEntry($objNum, $offsetNum, $generation, false);
                         } else {
@@ -165,11 +180,12 @@ final class PDFXrefTable
                         // If the line doesn't match an entry, treat it as subsection header or stop
                         // To be tolerant, try to parse a more permissive entry pattern (allow variable digit counts)
                         if (preg_match('/^([0-9]+)\s+([0-9]+)\s+([nf])\s*$/', $entryLine, $entryMatches2) === 1) {
-                            $offsetNum = (int) $entryMatches2[1];
+                            $offsetNum  = (int) $entryMatches2[1];
                             $generation = (int) $entryMatches2[2];
-                            $flag = $entryMatches2[3];
+                            $flag       = $entryMatches2[3];
 
                             $objNum = $startObj + $j;
+
                             if ('n' === $flag) {
                                 $this->addEntry($objNum, $offsetNum, $generation, false);
                             } else {
@@ -183,6 +199,7 @@ final class PDFXrefTable
                 }
 
                 $i++;
+
                 continue;
             }
 
@@ -198,7 +215,7 @@ final class PDFXrefTable
      *
      * @param PDFXrefTable $otherTable The xref table to merge from (older entries from Prev reference)
      */
-    public function mergeEntries(PDFXrefTable $otherTable): void
+    public function mergeEntries(self $otherTable): void
     {
         foreach ($otherTable->getAllEntries() as $objectNumber => $entry) {
             // Merge entries from another table; entries from the other table override existing ones.
@@ -219,18 +236,20 @@ final class PDFXrefTable
         $subsections = $this->groupIntoSubsections();
 
         $result = "xref\n";
+
         foreach ($subsections as $subsection) {
             $startObj = $subsection['start'];
-            $count = $subsection['count'];
+            $count    = $subsection['count'];
             $result .= sprintf("%d %d\n", $startObj, $count);
 
             for ($i = 0; $i < $count; $i++) {
                 $objNum = $startObj + $i;
+
                 if (isset($this->entries[$objNum])) {
                     $result .= (string) $this->entries[$objNum] . "\n";
                 } else {
                     // Free entry
-                    $result .= sprintf("0000000000 65535 f \n");
+                    $result .= "0000000000 65535 f \n";
                 }
             }
         }
@@ -245,7 +264,7 @@ final class PDFXrefTable
      */
     private function groupIntoSubsections(): array
     {
-        $subsections = [];
+        $subsections   = [];
         $objectNumbers = array_keys($this->entries);
         sort($objectNumbers);
 
@@ -261,8 +280,8 @@ final class PDFXrefTable
                 $currentCount++;
             } else {
                 $subsections[] = ['start' => $currentStart, 'count' => $currentCount];
-                $currentStart = $objectNumbers[$i];
-                $currentCount = 1;
+                $currentStart  = $objectNumbers[$i];
+                $currentCount  = 1;
             }
         }
 

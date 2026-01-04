@@ -11,11 +11,10 @@ declare(strict_types=1);
  * @see https://github.com/pxp-sh/pdf
  *
  */
-
 namespace Test\Unit\PDF\Fpdf\Tree;
 
-use Test\TestCase;
 use PXP\PDF\Fpdf\Tree\PDFHeader;
+use Test\TestCase;
 
 /**
  * @covers \PXP\PDF\Fpdf\Tree\PDFHeader
@@ -24,7 +23,7 @@ final class PDFHeaderTest extends TestCase
 {
     public function testConstructorWithDefaultVersion(): void
     {
-        $header = new PDFHeader();
+        $header = new PDFHeader;
         $this->assertSame('1.3', $header->getVersion());
     }
 
@@ -36,7 +35,7 @@ final class PDFHeaderTest extends TestCase
 
     public function testSetVersion(): void
     {
-        $header = new PDFHeader();
+        $header = new PDFHeader;
         $header->setVersion('1.5');
         $this->assertSame('1.5', $header->getVersion());
     }
@@ -52,7 +51,7 @@ final class PDFHeaderTest extends TestCase
     public function testParse(): void
     {
         $content = '%PDF-1.4\n';
-        $header = PDFHeader::parse($content);
+        $header  = PDFHeader::parse($content);
 
         $this->assertNotNull($header);
         $this->assertSame('1.4', $header->getVersion());
@@ -61,7 +60,7 @@ final class PDFHeaderTest extends TestCase
     public function testParseReturnsNullForInvalidContent(): void
     {
         $content = 'Invalid content';
-        $header = PDFHeader::parse($content);
+        $header  = PDFHeader::parse($content);
 
         $this->assertNull($header);
     }

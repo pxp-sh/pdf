@@ -11,13 +11,12 @@ declare(strict_types=1);
  * @see https://github.com/pxp-sh/pdf
  *
  */
-
 namespace Test\Unit\PDF\Fpdf\Xref;
 
-use Test\TestCase;
 use PXP\PDF\Fpdf\Exception\FpdfException;
 use PXP\PDF\Fpdf\Xref\PDFXrefTable;
 use PXP\PDF\Fpdf\Xref\XrefStreamParser;
+use Test\TestCase;
 
 /**
  * @covers \PXP\PDF\Fpdf\Xref\XrefStreamParser
@@ -29,12 +28,12 @@ final class XrefStreamParserTest extends TestCase
     protected function setUp(): void
     {
         parent::setUp();
-        $this->parser = new XrefStreamParser();
+        $this->parser = new XrefStreamParser;
     }
 
     public function testParseStreamWithType1Entries(): void
     {
-        $xrefTable = new PDFXrefTable();
+        $xrefTable = new PDFXrefTable;
 
         // Simple stream with type 1 entries (in-use, uncompressed)
         // W = [1, 2, 2] means: 1 byte for type, 2 bytes for field1 (offset), 2 bytes for field2 (generation)
@@ -73,7 +72,7 @@ final class XrefStreamParserTest extends TestCase
 
     public function testParseStreamWithFreeEntries(): void
     {
-        $xrefTable = new PDFXrefTable();
+        $xrefTable = new PDFXrefTable;
 
         // Stream with type 0 (free) and type 1 (in-use) entries
         $streamData = "\x00\x00\x00\x00\x00\x01\x00\x64\x00\x00";
@@ -107,7 +106,7 @@ final class XrefStreamParserTest extends TestCase
 
     public function testParseStreamWithMultipleSubsections(): void
     {
-        $xrefTable = new PDFXrefTable();
+        $xrefTable = new PDFXrefTable;
 
         // Stream with Index [0, 2, 5, 2] meaning: objects 0-1, then objects 5-6
         $streamData = "\x01\x00\x64\x00\x00\x01\x00\xC8\x00\x00\x01\x01\x2C\x00\x00\x01\x01\x90\x00\x00";
@@ -140,7 +139,7 @@ final class XrefStreamParserTest extends TestCase
 
     public function testParseStreamWithPrevOffset(): void
     {
-        $xrefTable = new PDFXrefTable();
+        $xrefTable = new PDFXrefTable;
 
         $streamData = "\x01\x00\x64\x00\x00";
 
@@ -164,7 +163,7 @@ final class XrefStreamParserTest extends TestCase
 
     public function testParseStreamThrowsExceptionForInvalidType(): void
     {
-        $xrefTable = new PDFXrefTable();
+        $xrefTable = new PDFXrefTable;
 
         $streamData = "\x01\x00\x64\x00\x00";
 
@@ -181,7 +180,7 @@ final class XrefStreamParserTest extends TestCase
 
     public function testParseStreamThrowsExceptionForInvalidW(): void
     {
-        $xrefTable = new PDFXrefTable();
+        $xrefTable = new PDFXrefTable;
 
         $streamData = "\x01\x00\x64\x00\x00";
 
@@ -205,7 +204,7 @@ final class XrefStreamParserTest extends TestCase
     {
         // This test would require actual PNG predictor encoded data
         // For now, we'll test that the method doesn't crash with predictor settings
-        $xrefTable = new PDFXrefTable();
+        $xrefTable = new PDFXrefTable;
 
         $streamData = "\x01\x00\x64\x00\x00";
 
@@ -243,7 +242,7 @@ final class XrefStreamParserTest extends TestCase
 
     public function testParseStreamWithZeroWidthFields(): void
     {
-        $xrefTable = new PDFXrefTable();
+        $xrefTable = new PDFXrefTable;
 
         // W = [0, 2, 2] means type defaults to 1
         $streamData = "\x00\x64\x00\x00\x00\xC8\x00\x00";

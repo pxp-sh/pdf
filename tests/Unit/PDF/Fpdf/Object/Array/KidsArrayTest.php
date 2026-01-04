@@ -11,12 +11,11 @@ declare(strict_types=1);
  * @see https://github.com/pxp-sh/pdf
  *
  */
-
 namespace Test\Unit\PDF\Fpdf\Object\Array;
 
-use Test\TestCase;
 use PXP\PDF\Fpdf\Object\Array\KidsArray;
 use PXP\PDF\Fpdf\Object\Base\PDFReference;
+use Test\TestCase;
 
 /**
  * @covers \PXP\PDF\Fpdf\Object\Array\KidsArray
@@ -25,7 +24,7 @@ final class KidsArrayTest extends TestCase
 {
     public function testAddPage(): void
     {
-        $kids = new KidsArray();
+        $kids = new KidsArray;
         $kids->addPage(3);
 
         $this->assertSame(1, $kids->count());
@@ -36,7 +35,7 @@ final class KidsArrayTest extends TestCase
 
     public function testAddPageWithGeneration(): void
     {
-        $kids = new KidsArray();
+        $kids = new KidsArray;
         $kids->addPage(3, 5);
 
         $page = $kids->getPage(0);
@@ -45,7 +44,7 @@ final class KidsArrayTest extends TestCase
 
     public function testGetPageNumbers(): void
     {
-        $kids = new KidsArray();
+        $kids = new KidsArray;
         $kids->addPage(3);
         $kids->addPage(5);
         $kids->addPage(7);
@@ -56,7 +55,7 @@ final class KidsArrayTest extends TestCase
 
     public function testGetPageReturnsNullForInvalidIndex(): void
     {
-        $kids = new KidsArray();
+        $kids = new KidsArray;
         $this->assertNull($kids->getPage(999));
     }
 }

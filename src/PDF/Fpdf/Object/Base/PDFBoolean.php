@@ -11,7 +11,6 @@ declare(strict_types=1);
  * @see https://github.com/pxp-sh/pdf
  *
  */
-
 namespace PXP\PDF\Fpdf\Object\Base;
 
 /**
@@ -24,13 +23,13 @@ final class PDFBoolean extends PDFObject
     ) {
     }
 
-    public function getValue(): bool
-    {
-        return $this->value;
-    }
-
     public function __toString(): string
     {
         return $this->value ? 'true' : 'false';
+    }
+
+    public function getValue(): bool
+    {
+        return $this->value;
     }
 }

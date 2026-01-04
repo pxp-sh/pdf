@@ -11,29 +11,38 @@ declare(strict_types=1);
  * @see https://github.com/pxp-sh/pdf
  *
  */
-
 namespace Test\Feature\PDF;
 
-use Test\TestCase;
-use PXP\PDF\Fpdf\Splitter\PDFMerger;
+use function array_merge;
+use function array_unique;
+use function dirname;
+use function is_file;
+use function mkdir;
+use function preg_match_all;
+use function sprintf;
+use function uniqid;
 use PXP\PDF\Fpdf\IO\FileIO;
-use PXP\PDF\Fpdf\Stream\PDFStream;
-use PXP\PDF\Fpdf\Tree\PDFDocument;
+use PXP\PDF\Fpdf\Object\Base\PDFArray;
 use PXP\PDF\Fpdf\Object\Base\PDFDictionary;
 use PXP\PDF\Fpdf\Object\Base\PDFReference;
+use PXP\PDF\Fpdf\Object\Parser\PDFParser;
+use PXP\PDF\Fpdf\Splitter\PDFMerger;
+use PXP\PDF\Fpdf\Stream\PDFStream;
+use Test\TestCase;
 
 final class MergeResourcesTest extends TestCase
 {
     public function test_merged_page_resources_are_copied(): void
     {
         $inputDir = dirname(__DIR__, 2) . '/resources/input';
-        $srcPdf = $inputDir . '/2402.04367v1.pdf';
+        $srcPdf   = $inputDir . '/2402.04367v1.pdf';
+
         if (!is_file($srcPdf)) {
             $this->markTestSkipped('Test PDF not available: ' . $srcPdf);
         }
 
         $tmpDir = self::getRootDir() . '/tmp_merge_' . uniqid();
-        mkdir($tmpDir, 0777, true);
+        mkdir($tmpDir, 0o777, true);
         $out = $tmpDir . '/merged.pdf';
 
         $fileIO = new FileIO(self::getLogger());
@@ -42,15 +51,16 @@ final class MergeResourcesTest extends TestCase
         $this->assertFileExists($out);
 
         // Parse merged PDF and inspect first page resources using full parser
-        $parser = new \PXP\PDF\Fpdf\Object\Parser\PDFParser(self::getLogger(), self::getCache());
-        $doc = $parser->parseDocumentFromFile($out, new \PXP\PDF\Fpdf\IO\FileIO(self::getLogger()));
-        $page = $doc->getPage(1);
+        $parser = new PDFParser(self::getLogger(), self::getCache());
+        $doc    = $parser->parseDocumentFromFile($out, new FileIO(self::getLogger()));
+        $page   = $doc->getPage(1);
         $this->assertNotNull($page, 'Merged PDF should contain at least one page (parsed)');
 
         $pageDict = $page->getValue();
         $this->assertInstanceOf(PDFDictionary::class, $pageDict);
 
         $resources = $pageDict->getEntry('/Resources');
+
         if ($resources instanceof PDFReference) {
             $resourcesNode = $doc->getObject($resources->getObjectNumber());
             $this->assertNotNull($resourcesNode, 'Resources reference must resolve');
@@ -61,19 +71,21 @@ final class MergeResourcesTest extends TestCase
 
         // Extract content stream data
         $contents = $pageDict->getEntry('/Contents');
-        $data = '';
+        $data     = '';
+
         if ($contents instanceof PDFReference) {
             $node = $doc->getObject($contents->getObjectNumber());
             $this->assertNotNull($node);
             $obj = $node->getValue();
             $this->assertInstanceOf(PDFStream::class, $obj);
             $data .= $obj->getDecodedData();
-        } elseif ($contents instanceof \PXP\PDF\Fpdf\Object\Base\PDFArray) {
+        } elseif ($contents instanceof PDFArray) {
             foreach ($contents->getAll() as $item) {
                 if ($item instanceof PDFReference) {
                     $node = $doc->getObject($item->getObjectNumber());
                     $this->assertNotNull($node);
                     $obj = $node->getValue();
+
                     if ($obj instanceof PDFStream) {
                         $data .= $obj->getDecodedData();
                     }
@@ -97,9 +109,11 @@ final class MergeResourcesTest extends TestCase
 
         foreach ($usedResources as $rname) {
             $found = false;
+
             if ($fontTable instanceof PDFDictionary && $fontTable->hasEntry('/' . $rname)) {
                 $found = true;
             }
+
             if ($xobjTable instanceof PDFDictionary && $xobjTable->hasEntry('/' . $rname)) {
                 $found = true;
             }
@@ -114,13 +128,14 @@ final class MergeResourcesTest extends TestCase
     public function test_merge_file_with_previously_zero_pages_yields_pages(): void
     {
         $inputDir = dirname(__DIR__, 2) . '/resources/input';
-        $srcPdf = $inputDir . '/3722041.3723104.pdf';
+        $srcPdf   = $inputDir . '/3722041.3723104.pdf';
+
         if (!is_file($srcPdf)) {
             $this->markTestSkipped('Test PDF not available: ' . $srcPdf);
         }
 
         $tmpDir = self::getRootDir() . '/tmp_merge_' . uniqid();
-        mkdir($tmpDir, 0777, true);
+        mkdir($tmpDir, 0o777, true);
         $out = $tmpDir . '/merged.pdf';
 
         $fileIO = new FileIO(self::getLogger());
@@ -129,7 +144,7 @@ final class MergeResourcesTest extends TestCase
         $this->assertFileExists($out);
 
         $expected = self::getPdfPageCount($srcPdf);
-        $actual = self::getPdfPageCount($out);
+        $actual   = self::getPdfPageCount($out);
 
         $this->assertEquals($expected, $actual, 'Merged PDF should have same page count as source');
 

@@ -11,11 +11,14 @@ declare(strict_types=1);
  * @see https://github.com/pxp-sh/pdf
  *
  */
-
 namespace Test\Feature\PDF;
 
-use Test\TestCase;
+use function file_get_contents;
+use function filesize;
+use function mkdir;
+use function uniqid;
 use PXP\PDF\Fpdf\FPDF;
+use Test\TestCase;
 
 /**
  * @covers \PXP\PDF\Fpdf\FPDF
@@ -30,7 +33,7 @@ final class SplitPdfTest extends TestCase
         $pdf->setCompression(false);
 
         $tmpDir = self::getRootDir() . '/tmp_pf_' . uniqid();
-        mkdir($tmpDir, 0777, true);
+        mkdir($tmpDir, 0o777, true);
         // Use built-in Helvetica font (standard PDF core font for image rendering)
         $pdf->setFont('Helvetica', '', 12);
 
@@ -51,7 +54,7 @@ final class SplitPdfTest extends TestCase
         $this->assertFileExists($originalPdf);
 
         // Split the PDF
-        $outputDir = $tmpDir . '/split';
+        $outputDir  = $tmpDir . '/split';
         $splitFiles = FPDF::splitPdf($originalPdf, $outputDir, 'page_%d.pdf');
 
         // Verify we got 3 files
@@ -85,7 +88,7 @@ final class SplitPdfTest extends TestCase
         $pdf->setCompression(false);
 
         $tmpDir = self::getRootDir() . '/tmp_pf_' . uniqid();
-        mkdir($tmpDir, 0777, true);
+        mkdir($tmpDir, 0o777, true);
         // Use built-in Helvetica font (standard PDF core font for image rendering)
         $pdf->setFont('Helvetica', '', 12);
 
@@ -131,7 +134,7 @@ final class SplitPdfTest extends TestCase
         $pdf->setCompression(false);
 
         $tmpDir = self::getRootDir() . '/tmp_pf_' . uniqid();
-        mkdir($tmpDir, 0777, true);
+        mkdir($tmpDir, 0o777, true);
         // Use built-in Helvetica font (standard PDF core font for image rendering)
         $pdf->setFont('Helvetica', '', 12);
 
@@ -144,7 +147,7 @@ final class SplitPdfTest extends TestCase
         $pdf->output('F', $originalPdf);
 
         // Split with custom pattern
-        $outputDir = $tmpDir . '/split';
+        $outputDir  = $tmpDir . '/split';
         $splitFiles = FPDF::splitPdf($originalPdf, $outputDir, 'document_page_%d.pdf');
 
         $this->assertCount(2, $splitFiles);

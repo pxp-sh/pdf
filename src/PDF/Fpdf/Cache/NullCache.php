@@ -11,12 +11,12 @@ declare(strict_types=1);
  * @see https://github.com/pxp-sh/pdf
  *
  */
-
 namespace PXP\PDF\Fpdf\Cache;
 
+use DateInterval;
+use DateTimeInterface;
 use Psr\Cache\CacheItemInterface;
 use Psr\Cache\CacheItemPoolInterface;
-use Psr\Cache\InvalidArgumentException;
 
 /**
  * Null cache implementation that does nothing.
@@ -31,14 +31,17 @@ final class NullCache implements CacheItemPoolInterface
 
     /**
      * @param string[] $keys
+     *
      * @return iterable<string, CacheItemInterface>
      */
     public function getItems(array $keys = []): iterable
     {
         $items = [];
+
         foreach ($keys as $key) {
             $items[$key] = new NullCacheItem($key);
         }
+
         return $items;
     }
 
@@ -111,12 +114,12 @@ final class NullCacheItem implements CacheItemInterface
         return $this;
     }
 
-    public function expiresAt(?\DateTimeInterface $expiration): static
+    public function expiresAt(?DateTimeInterface $expiration): static
     {
         return $this;
     }
 
-    public function expiresAfter(int|\DateInterval|null $time): static
+    public function expiresAfter(null|DateInterval|int $time): static
     {
         return $this;
     }

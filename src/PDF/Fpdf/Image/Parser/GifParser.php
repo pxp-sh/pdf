@@ -11,9 +11,21 @@ declare(strict_types=1);
  * @see https://github.com/pxp-sh/pdf
  *
  */
-
 namespace PXP\PDF\Fpdf\Image\Parser;
 
+use function fclose;
+use function function_exists;
+use function fwrite;
+use function imagecreatefromgif;
+use function imagedestroy;
+use function imageinterlace;
+use function imagepng;
+use function is_file;
+use function is_readable;
+use function ob_get_clean;
+use function ob_start;
+use function rewind;
+use function strtolower;
 use PXP\PDF\Fpdf\Exception\FpdfException;
 use PXP\PDF\Fpdf\IO\StreamFactoryInterface;
 
@@ -40,6 +52,7 @@ final class GifParser implements ImageParserInterface
         }
 
         $im = @imagecreatefromgif($file);
+
         if (!$im) {
             throw new FpdfException('Missing or incorrect image file: ' . $file);
         }
@@ -49,7 +62,6 @@ final class GifParser implements ImageParserInterface
         imagepng($im);
         $data = ob_get_clean();
         imagedestroy($im);
-
 
         $tempStream = $this->streamFactory->createTempStream('rb+');
 

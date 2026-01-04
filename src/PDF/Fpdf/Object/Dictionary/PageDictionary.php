@@ -11,11 +11,12 @@ declare(strict_types=1);
  * @see https://github.com/pxp-sh/pdf
  *
  */
-
 namespace PXP\PDF\Fpdf\Object\Dictionary;
 
-use PXP\PDF\Fpdf\Object\Array\KidsArray;
+use function is_array;
+use function is_int;
 use PXP\PDF\Fpdf\Object\Array\MediaBoxArray;
+use PXP\PDF\Fpdf\Object\Base\PDFArray;
 use PXP\PDF\Fpdf\Object\Base\PDFDictionary;
 use PXP\PDF\Fpdf\Object\Base\PDFName;
 use PXP\PDF\Fpdf\Object\Base\PDFNumber;
@@ -36,7 +37,7 @@ final class PageDictionary extends PDFDictionary
     /**
      * Set parent pages object reference.
      */
-    public function setParent(PDFObjectNode|PDFReference|int $parent): self
+    public function setParent(int|PDFObjectNode|PDFReference $parent): self
     {
         if ($parent instanceof PDFObjectNode) {
             $parent = new PDFReference($parent->getObjectNumber());
@@ -52,9 +53,9 @@ final class PageDictionary extends PDFDictionary
     /**
      * Set MediaBox.
      *
-     * @param MediaBoxArray|array{0: float, 1: float, 2: float, 3: float} $mediaBox
+     * @param array{0: float, 1: float, 2: float, 3: float}|MediaBoxArray $mediaBox
      */
-    public function setMediaBox(MediaBoxArray|array $mediaBox): self
+    public function setMediaBox(array|MediaBoxArray $mediaBox): self
     {
         if (is_array($mediaBox)) {
             $mediaBox = new MediaBoxArray($mediaBox);
@@ -78,7 +79,7 @@ final class PageDictionary extends PDFDictionary
     /**
      * Set Resources reference.
      */
-    public function setResources(PDFObjectNode|PDFReference|int $resources): self
+    public function setResources(int|PDFObjectNode|PDFReference $resources): self
     {
         if ($resources instanceof PDFObjectNode) {
             $resources = new PDFReference($resources->getObjectNumber());
@@ -94,7 +95,7 @@ final class PageDictionary extends PDFDictionary
     /**
      * Set Contents reference.
      */
-    public function setContents(PDFObjectNode|PDFReference|int $contents): self
+    public function setContents(int|PDFObjectNode|PDFReference $contents): self
     {
         if ($contents instanceof PDFObjectNode) {
             $contents = new PDFReference($contents->getObjectNumber());
@@ -124,7 +125,8 @@ final class PageDictionary extends PDFDictionary
      */
     public function setAnnots(array $annotObjectNumbers): self
     {
-        $annots = new \PXP\PDF\Fpdf\Object\Base\PDFArray();
+        $annots = new PDFArray;
+
         foreach ($annotObjectNumbers as $objNum) {
             $annots->add(new PDFReference($objNum));
         }

@@ -11,9 +11,13 @@ declare(strict_types=1);
  * @see https://github.com/pxp-sh/pdf
  *
  */
-
 namespace PXP\PDF\Fpdf\Object\Base;
 
+use function count;
+use function implode;
+use function is_float;
+use function is_int;
+use function is_string;
 use PXP\PDF\Fpdf\Object\PDFObjectInterface;
 
 /**
@@ -22,12 +26,12 @@ use PXP\PDF\Fpdf\Object\PDFObjectInterface;
 class PDFArray extends PDFObject
 {
     /**
-     * @var array<int, PDFObjectInterface|string|int|float>
+     * @var array<int, float|int|PDFObjectInterface|string>
      */
     protected array $items = [];
 
     /**
-     * @param array<int, PDFObjectInterface|string|int|float>|null $items
+     * @param null|array<int, float|int|PDFObjectInterface|string> $items
      */
     public function __construct(?array $items = null)
     {
@@ -38,10 +42,25 @@ class PDFArray extends PDFObject
         }
     }
 
+    public function __toString(): string
+    {
+        $parts = [];
+
+        foreach ($this->items as $item) {
+            if ($item instanceof PDFObjectInterface) {
+                $parts[] = (string) $item;
+            } else {
+                $parts[] = (string) $item;
+            }
+        }
+
+        return '[' . implode(' ', $parts) . ']';
+    }
+
     /**
      * Add an item to the array.
      *
-     * @param PDFObjectInterface|string|int|float $item
+     * @param float|int|PDFObjectInterface|string $item
      */
     public function add(mixed $item): self
     {
@@ -53,7 +72,7 @@ class PDFArray extends PDFObject
     /**
      * Get an item by index.
      *
-     * @return PDFObjectInterface|string|int|float|null
+     * @return null|float|int|PDFObjectInterface|string
      */
     public function get(int $index): mixed
     {
@@ -63,7 +82,7 @@ class PDFArray extends PDFObject
     /**
      * Set an item at a specific index.
      *
-     * @param PDFObjectInterface|string|int|float $item
+     * @param float|int|PDFObjectInterface|string $item
      */
     public function set(int $index, mixed $item): self
     {
@@ -75,7 +94,7 @@ class PDFArray extends PDFObject
     /**
      * Get all items.
      *
-     * @return array<int, PDFObjectInterface|string|int|float>
+     * @return array<int, float|int|PDFObjectInterface|string>
      */
     public function getAll(): array
     {
@@ -93,9 +112,9 @@ class PDFArray extends PDFObject
     /**
      * Normalize an item to a PDF object.
      *
-     * @param PDFObjectInterface|string|int|float $item
+     * @param float|int|PDFObjectInterface|string $item
      */
-    protected function normalizeItem(mixed $item): PDFObjectInterface|string|int|float
+    protected function normalizeItem(mixed $item): float|int|PDFObjectInterface|string
     {
         if ($item instanceof PDFObjectInterface) {
             return $item;
@@ -110,19 +129,5 @@ class PDFArray extends PDFObject
         }
 
         return $item;
-    }
-
-    public function __toString(): string
-    {
-        $parts = [];
-        foreach ($this->items as $item) {
-            if ($item instanceof PDFObjectInterface) {
-                $parts[] = (string) $item;
-            } else {
-                $parts[] = (string) $item;
-            }
-        }
-
-        return '[' . implode(' ', $parts) . ']';
     }
 }

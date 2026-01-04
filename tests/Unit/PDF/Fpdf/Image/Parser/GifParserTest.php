@@ -11,14 +11,13 @@ declare(strict_types=1);
  * @see https://github.com/pxp-sh/pdf
  *
  */
-
 namespace Test\Unit\PDF\Fpdf\Image\Parser;
 
-use Test\TestCase;
+use function function_exists;
 use PXP\PDF\Fpdf\Exception\FpdfException;
 use PXP\PDF\Fpdf\Image\Parser\GifParser;
 use PXP\PDF\Fpdf\Image\Parser\PngParser;
-use PXP\PDF\Fpdf\IO\FileIO;
+use Test\TestCase;
 
 /**
  * @covers \PXP\PDF\Fpdf\Image\Parser\GifParser
@@ -29,8 +28,8 @@ final class GifParserTest extends TestCase
 
     protected function setUp(): void
     {
-        $fileIO = self::createFileIO();
-        $pngParser = new PngParser($fileIO, $fileIO);
+        $fileIO       = self::createFileIO();
+        $pngParser    = new PngParser($fileIO, $fileIO);
         $this->parser = new GifParser($pngParser, $fileIO);
     }
 

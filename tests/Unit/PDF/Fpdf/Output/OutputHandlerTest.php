@@ -11,15 +11,22 @@ declare(strict_types=1);
  * @see https://github.com/pxp-sh/pdf
  *
  */
-
 namespace Test\Unit\PDF\Fpdf\Output;
 
-use Test\TestCase;
+use const PHP_OS_FAMILY;
+use const PHP_SAPI;
+use function file_exists;
+use function file_get_contents;
+use function ob_get_clean;
+use function ob_start;
+use function sys_get_temp_dir;
+use function uniqid;
+use function unlink;
 use PXP\PDF\Fpdf\Enum\OutputDestination;
 use PXP\PDF\Fpdf\Exception\FpdfException;
-use PXP\PDF\Fpdf\IO\FileIO;
 use PXP\PDF\Fpdf\Output\OutputHandler;
 use PXP\PDF\Fpdf\Text\TextRenderer;
+use Test\TestCase;
 
 /**
  * @covers \PXP\PDF\Fpdf\Output\OutputHandler
@@ -30,7 +37,7 @@ final class OutputHandlerTest extends TestCase
 
     protected function setUp(): void
     {
-        $this->outputHandler = new OutputHandler(new TextRenderer(), self::createFileIO());
+        $this->outputHandler = new OutputHandler(new TextRenderer, self::createFileIO());
     }
 
     public function testOutputWithStringDestination(): void
@@ -43,7 +50,7 @@ final class OutputHandlerTest extends TestCase
     public function testOutputWithFileDestination(): void
     {
         $tempFile = sys_get_temp_dir() . '/test_' . uniqid() . '.pdf';
-        $buffer = 'test pdf content';
+        $buffer   = 'test pdf content';
 
         try {
             $result = $this->outputHandler->output($buffer, OutputDestination::FILE, $tempFile);
@@ -71,7 +78,6 @@ final class OutputHandlerTest extends TestCase
     public function testOutputWithInlineDestination(): void
     {
         if (PHP_SAPI === 'cli') {
-
             $buffer = 'test pdf content';
             ob_start();
             $result = $this->outputHandler->output($buffer, OutputDestination::INLINE, 'test.pdf');
@@ -103,7 +109,6 @@ final class OutputHandlerTest extends TestCase
             $this->markTestSkipped('Headers are not sent in CLI mode');
         }
 
-
         $this->assertTrue(true);
     }
 
@@ -112,7 +117,6 @@ final class OutputHandlerTest extends TestCase
         if (PHP_SAPI === 'cli') {
             $this->markTestSkipped('Output buffer handling differs in CLI mode');
         }
-
 
         $this->assertTrue(true);
     }

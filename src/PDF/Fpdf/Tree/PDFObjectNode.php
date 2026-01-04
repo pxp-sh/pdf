@@ -11,9 +11,11 @@ declare(strict_types=1);
  * @see https://github.com/pxp-sh/pdf
  *
  */
-
 namespace PXP\PDF\Fpdf\Tree;
 
+use function sprintf;
+use PXP\PDF\Fpdf\Object\Base\PDFArray;
+use PXP\PDF\Fpdf\Object\Base\PDFDictionary;
 use PXP\PDF\Fpdf\Object\Base\PDFReference;
 use PXP\PDF\Fpdf\Object\PDFObjectInterface;
 
@@ -39,10 +41,22 @@ final class PDFObjectNode
         int $generationNumber = 0,
         ?int $offset = null,
     ) {
-        $this->objectNumber = $objectNumber;
+        $this->objectNumber     = $objectNumber;
         $this->generationNumber = $generationNumber;
-        $this->object = $object;
-        $this->offset = $offset;
+        $this->object           = $object;
+        $this->offset           = $offset;
+    }
+
+    /**
+     * Serialize this object node to PDF format.
+     */
+    public function __toString(): string
+    {
+        $result = sprintf('%d %d obj', $this->objectNumber, $this->generationNumber) . "\n";
+        $result .= (string) $this->object . "\n";
+        $result .= 'endobj';
+
+        return $result;
     }
 
     public function getObjectNumber(): int
@@ -89,7 +103,7 @@ final class PDFObjectNode
      * Resolve a reference to an object node.
      * This method should be called with the document's registry.
      */
-    public function resolveReference(PDFReference $ref, PDFObjectRegistry $registry): ?PDFObjectNode
+    public function resolveReference(PDFReference $ref, PDFObjectRegistry $registry): ?self
     {
         return $registry->get($ref->getObjectNumber());
     }
@@ -117,34 +131,23 @@ final class PDFObjectNode
     {
         if ($obj instanceof PDFReference) {
             $child = $registry->get($obj->getObjectNumber());
+
             if ($child !== null && !isset($children[$child->getObjectNumber()])) {
                 $children[$child->getObjectNumber()] = $child;
                 $this->collectReferences($child->getValue(), $registry, $children);
             }
-        } elseif ($obj instanceof \PXP\PDF\Fpdf\Object\Base\PDFDictionary) {
+        } elseif ($obj instanceof PDFDictionary) {
             foreach ($obj->getAllEntries() as $value) {
                 if ($value instanceof PDFObjectInterface) {
                     $this->collectReferences($value, $registry, $children);
                 }
             }
-        } elseif ($obj instanceof \PXP\PDF\Fpdf\Object\Base\PDFArray) {
+        } elseif ($obj instanceof PDFArray) {
             foreach ($obj->getAll() as $item) {
                 if ($item instanceof PDFObjectInterface) {
                     $this->collectReferences($item, $registry, $children);
                 }
             }
         }
-    }
-
-    /**
-     * Serialize this object node to PDF format.
-     */
-    public function __toString(): string
-    {
-        $result = sprintf('%d %d obj', $this->objectNumber, $this->generationNumber) . "\n";
-        $result .= (string) $this->object . "\n";
-        $result .= 'endobj';
-
-        return $result;
     }
 }

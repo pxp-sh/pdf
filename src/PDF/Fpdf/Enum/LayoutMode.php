@@ -11,24 +11,25 @@ declare(strict_types=1);
  * @see https://github.com/pxp-sh/pdf
  *
  */
-
 namespace PXP\PDF\Fpdf\Enum;
+
+use function strtolower;
+use InvalidArgumentException;
 
 enum LayoutMode: string
 {
-    case SINGLE = 'single';
-    case CONTINUOUS = 'continuous';
-    case TWO = 'two';
-    case DEFAULT = 'default';
-
     public static function fromString(string $layout): self
     {
         return match (strtolower($layout)) {
-            'single' => self::SINGLE,
+            'single'     => self::SINGLE,
             'continuous' => self::CONTINUOUS,
-            'two' => self::TWO,
-            'default' => self::DEFAULT,
-            default => throw new \InvalidArgumentException('Incorrect layout display mode: ' . $layout),
+            'two'        => self::TWO,
+            'default'    => self::DEFAULT,
+            default      => throw new InvalidArgumentException('Incorrect layout display mode: ' . $layout),
         };
     }
+    case SINGLE     = 'single';
+    case CONTINUOUS = 'continuous';
+    case TWO        = 'two';
+    case DEFAULT    = 'default';
 }

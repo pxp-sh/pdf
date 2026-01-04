@@ -11,12 +11,12 @@ declare(strict_types=1);
  * @see https://github.com/pxp-sh/pdf
  *
  */
-
 namespace Test\Unit\PDF\Fpdf\Charset;
 
-use Test\TestCase;
+use function iconv;
 use PXP\PDF\Fpdf\Charset\CharsetHandler;
 use PXP\PDF\Fpdf\Exception\FpdfException;
+use Test\TestCase;
 
 /**
  * @covers \PXP\PDF\Fpdf\Charset\CharsetHandler
@@ -27,19 +27,19 @@ final class CharsetHandlerTest extends TestCase
 
     protected function setUp(): void
     {
-        $this->handler = new CharsetHandler();
+        $this->handler = new CharsetHandler;
     }
 
     public function testEncodeToPDFWithUTF8(): void
     {
-        $text = 'test';
+        $text    = 'test';
         $encoded = $this->handler->encodeToPDF($text, 'UTF-8');
         $this->assertIsString($encoded);
     }
 
     public function testEncodeToPDFWithUTF16BE(): void
     {
-        $text = 'test';
+        $text    = 'test';
         $encoded = $this->handler->encodeToPDF($text, 'UTF-16BE');
         $this->assertStringStartsWith("\xFE\xFF", $encoded);
     }
@@ -53,21 +53,21 @@ final class CharsetHandlerTest extends TestCase
 
     public function testDetectCharsetWithUTF16BOM(): void
     {
-        $text = "\xFE\xFFtest";
+        $text    = "\xFE\xFFtest";
         $charset = $this->handler->detectCharset($text);
         $this->assertSame('UTF-16BE', $charset);
     }
 
     public function testDetectCharsetWithUTF8(): void
     {
-        $text = 'test';
+        $text    = 'test';
         $charset = $this->handler->detectCharset($text);
         $this->assertSame('UTF-8', $charset);
     }
 
     public function testConvertCharset(): void
     {
-        $text = 'test';
+        $text      = 'test';
         $converted = $this->handler->convertCharset($text, 'UTF-8', 'UTF-8');
         $this->assertSame($text, $converted);
     }

@@ -11,32 +11,45 @@ declare(strict_types=1);
  * @see https://github.com/pxp-sh/pdf
  *
  */
-
 namespace PXP\PDF\Fpdf\Page;
 
-use PXP\PDF\Fpdf\Enum\PageOrientation;
-use PXP\PDF\Fpdf\Event\NullDispatcher;
-use PXP\PDF\Fpdf\IO\FileIOInterface;
-use PXP\PDF\Fpdf\Log\NullLogger;
-use PXP\PDF\Fpdf\ValueObject\PageSize;
+use function count;
+use function file_exists;
+use function gc_collect_cycles;
+use function gettype;
+use function is_dir;
+use function mkdir;
+use function rmdir;
+use function str_replace;
+use function strlen;
+use function sys_get_temp_dir;
+use function uniqid;
+use function unlink;
 use Psr\EventDispatcher\EventDispatcherInterface;
 use Psr\Log\LoggerInterface;
+use PXP\PDF\Fpdf\Event\NullDispatcher;
+use PXP\PDF\Fpdf\Exception\FpdfException;
+use PXP\PDF\Fpdf\IO\FileIOInterface;
+use PXP\PDF\Fpdf\Log\NullLogger;
+use RuntimeException;
 
 final class PageManager
 {
     private int $currentPage = 0;
-    private array $pages = [];
-    private array $pageInfo = [];
+    private array $pages     = [];
+    private array $pageInfo  = [];
     private ?string $tempDir = null;
     private array $tempFiles = [];
+    private LoggerInterface $logger;
+    private EventDispatcherInterface $dispatcher;
 
     public function __construct(
         private FileIOInterface $fileIO,
         ?LoggerInterface $logger = null,
         ?EventDispatcherInterface $dispatcher = null,
     ) {
-        $this->logger = $logger ?? new NullLogger();
-        $this->dispatcher = $dispatcher ?? new NullDispatcher();
+        $this->logger     = $logger ?? new NullLogger;
+        $this->dispatcher = $dispatcher ?? new NullDispatcher;
 
         // Create temporary directory for page storage
         $this->tempDir = sys_get_temp_dir() . '/pxp_pdf_' . uniqid('', true);
@@ -45,17 +58,20 @@ final class PageManager
         ]);
 
         if (!is_dir($this->tempDir)) {
-            if (!mkdir($this->tempDir, 0777, true) && !is_dir($this->tempDir)) {
+            if (!mkdir($this->tempDir, 0o777, true) && !is_dir($this->tempDir)) {
                 $this->logger->error('Failed to create temporary directory for PDF pages', [
                     'temp_dir' => $this->tempDir,
                 ]);
-                throw new \RuntimeException('Failed to create temporary directory for PDF pages: ' . $this->tempDir);
+
+                throw new RuntimeException('Failed to create temporary directory for PDF pages: ' . $this->tempDir);
             }
         }
     }
 
-    private LoggerInterface $logger;
-    private EventDispatcherInterface $dispatcher;
+    public function __destruct()
+    {
+        $this->cleanup();
+    }
 
     public function addPage(): int
     {
@@ -65,7 +81,7 @@ final class PageManager
         }
 
         $this->currentPage++;
-        $this->pages[$this->currentPage] = '';
+        $this->pages[$this->currentPage]    = '';
         $this->pageInfo[$this->currentPage] = [];
 
         $this->logger->debug('Page added', [
@@ -89,8 +105,8 @@ final class PageManager
         $this->pages[$page] .= $content . "\n";
 
         $this->logger->debug('Page content appended', [
-            'page_number' => $page,
-            'content_length' => strlen($content),
+            'page_number'       => $page,
+            'content_length'    => strlen($content),
             'total_page_length' => strlen($this->pages[$page]),
         ]);
     }
@@ -101,17 +117,19 @@ final class PageManager
         if (isset($this->tempFiles[$page]) && file_exists($this->tempFiles[$page])) {
             $this->logger->debug('Page content retrieved from file', [
                 'page_number' => $page,
-                'file_path' => $this->tempFiles[$page],
-                'source' => 'file',
+                'file_path'   => $this->tempFiles[$page],
+                'source'      => 'file',
             ]);
+
             try {
                 return $this->fileIO->readFile($this->tempFiles[$page]);
-            } catch (\PXP\PDF\Fpdf\Exception\FpdfException $e) {
+            } catch (FpdfException $e) {
                 $this->logger->warning('Failed to read page content from file', [
                     'page_number' => $page,
-                    'file_path' => $this->tempFiles[$page],
-                    'error' => $e->getMessage(),
+                    'file_path'   => $this->tempFiles[$page],
+                    'error'       => $e->getMessage(),
                 ]);
+
                 return '';
             }
         }
@@ -119,10 +137,11 @@ final class PageManager
         // Otherwise, return from memory buffer
         $content = $this->pages[$page] ?? '';
         $this->logger->debug('Page content retrieved from memory', [
-            'page_number' => $page,
+            'page_number'    => $page,
             'content_length' => strlen($content),
-            'source' => 'memory',
+            'source'         => 'memory',
         ]);
+
         return $content;
     }
 
@@ -135,6 +154,7 @@ final class PageManager
 
         // Read all pages from temp files
         $allPages = [];
+
         for ($i = 1; $i <= $this->currentPage; $i++) {
             $allPages[$i] = $this->getPageContent($i);
         }
@@ -152,8 +172,8 @@ final class PageManager
 
         $this->logger->debug('Page info updated', [
             'page_number' => $page,
-            'key' => $key,
-            'value_type' => gettype($value),
+            'key'         => $key,
+            'value_type'  => gettype($value),
         ]);
     }
 
@@ -175,7 +195,7 @@ final class PageManager
                 $content = $this->fileIO->readFile($this->tempFiles[$page]);
                 $content = str_replace($search, $replace, $content);
                 $this->fileIO->writeFile($this->tempFiles[$page], $content);
-            } catch (\PXP\PDF\Fpdf\Exception\FpdfException $e) {
+            } catch (FpdfException $e) {
                 // Ignore errors, fall through to memory check
             }
         } elseif (isset($this->pages[$page])) {
@@ -185,47 +205,7 @@ final class PageManager
     }
 
     /**
-     * Finalize a page by writing it to a temporary file and clearing it from memory
-     */
-    private function finalizePage(int $page): void
-    {
-        if (!isset($this->pages[$page]) || $this->pages[$page] === '') {
-            return;
-        }
-
-        $contentLength = strlen($this->pages[$page]);
-        $tempFile = $this->tempDir . '/page_' . $page . '.tmp';
-
-        $this->logger->debug('Finalizing page', [
-            'page_number' => $page,
-            'content_length' => $contentLength,
-            'temp_file' => $tempFile,
-        ]);
-
-        // Write page content to temp file
-        $this->fileIO->writeFile($tempFile, $this->pages[$page]);
-        $this->tempFiles[$page] = $tempFile;
-
-        // Clear from memory to free up space
-        unset($this->pages[$page]);
-
-        $this->logger->debug('Page finalized and written to temp file', [
-            'page_number' => $page,
-            'temp_file' => $tempFile,
-            'content_length' => $contentLength,
-        ]);
-
-        // Force garbage collection hint
-        if ($page % 10 === 0) {
-            gc_collect_cycles();
-            $this->logger->debug('Garbage collection triggered', [
-                'page_number' => $page,
-            ]);
-        }
-    }
-
-    /**
-     * Finalize the current page (called when document is closed)
+     * Finalize the current page (called when document is closed).
      */
     public function finalizeCurrentPage(): void
     {
@@ -235,13 +215,13 @@ final class PageManager
     }
 
     /**
-     * Clean up temporary files
+     * Clean up temporary files.
      */
     public function cleanup(): void
     {
         $fileCount = count($this->tempFiles);
         $this->logger->debug('Cleaning up temporary files', [
-            'temp_dir' => $this->tempDir,
+            'temp_dir'   => $this->tempDir,
             'file_count' => $fileCount,
         ]);
 
@@ -264,11 +244,46 @@ final class PageManager
         }
 
         $this->tempFiles = [];
-        $this->tempDir = null;
+        $this->tempDir   = null;
     }
 
-    public function __destruct()
+    /**
+     * Finalize a page by writing it to a temporary file and clearing it from memory.
+     */
+    private function finalizePage(int $page): void
     {
-        $this->cleanup();
+        if (!isset($this->pages[$page]) || $this->pages[$page] === '') {
+            return;
+        }
+
+        $contentLength = strlen($this->pages[$page]);
+        $tempFile      = $this->tempDir . '/page_' . $page . '.tmp';
+
+        $this->logger->debug('Finalizing page', [
+            'page_number'    => $page,
+            'content_length' => $contentLength,
+            'temp_file'      => $tempFile,
+        ]);
+
+        // Write page content to temp file
+        $this->fileIO->writeFile($tempFile, $this->pages[$page]);
+        $this->tempFiles[$page] = $tempFile;
+
+        // Clear from memory to free up space
+        unset($this->pages[$page]);
+
+        $this->logger->debug('Page finalized and written to temp file', [
+            'page_number'    => $page,
+            'temp_file'      => $tempFile,
+            'content_length' => $contentLength,
+        ]);
+
+        // Force garbage collection hint
+        if ($page % 10 === 0) {
+            gc_collect_cycles();
+            $this->logger->debug('Garbage collection triggered', [
+                'page_number' => $page,
+            ]);
+        }
     }
 }

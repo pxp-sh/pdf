@@ -11,9 +11,13 @@ declare(strict_types=1);
  * @see https://github.com/pxp-sh/pdf
  *
  */
-
 namespace PXP\PDF\Fpdf\Image\Parser;
 
+use function getimagesize;
+use function in_array;
+use function is_file;
+use function is_readable;
+use function strtolower;
 use PXP\PDF\Fpdf\Exception\FpdfException;
 use PXP\PDF\Fpdf\IO\FileReaderInterface;
 
@@ -31,6 +35,7 @@ final class JpegParser implements ImageParserInterface
         }
 
         $a = @getimagesize($file);
+
         if (!$a) {
             throw new FpdfException('Missing or incorrect image file: ' . $file);
         }
@@ -48,6 +53,7 @@ final class JpegParser implements ImageParserInterface
         }
 
         $bpc = $a['bits'] ?? 8;
+
         try {
             $data = $this->fileReader->readFile($file);
         } catch (FpdfException $e) {
@@ -55,11 +61,11 @@ final class JpegParser implements ImageParserInterface
         }
 
         return [
-            'w' => $a[0],
-            'h' => $a[1],
-            'cs' => $colspace,
-            'bpc' => $bpc,
-            'f' => 'DCTDecode',
+            'w'    => $a[0],
+            'h'    => $a[1],
+            'cs'   => $colspace,
+            'bpc'  => $bpc,
+            'f'    => 'DCTDecode',
             'data' => $data,
         ];
     }

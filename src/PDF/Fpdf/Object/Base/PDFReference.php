@@ -11,8 +11,9 @@ declare(strict_types=1);
  * @see https://github.com/pxp-sh/pdf
  *
  */
-
 namespace PXP\PDF\Fpdf\Object\Base;
+
+use function sprintf;
 
 /**
  * Represents a PDF object reference (e.g., "3 0 R").
@@ -25,6 +26,11 @@ final class PDFReference extends PDFObject
     ) {
     }
 
+    public function __toString(): string
+    {
+        return sprintf('%d %d R', $this->objectNumber, $this->generationNumber);
+    }
+
     public function getObjectNumber(): int
     {
         return $this->objectNumber;
@@ -33,10 +39,5 @@ final class PDFReference extends PDFObject
     public function getGenerationNumber(): int
     {
         return $this->generationNumber;
-    }
-
-    public function __toString(): string
-    {
-        return sprintf('%d %d R', $this->objectNumber, $this->generationNumber);
     }
 }

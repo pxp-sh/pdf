@@ -11,11 +11,10 @@ declare(strict_types=1);
  * @see https://github.com/pxp-sh/pdf
  *
  */
-
 namespace Test\Unit\PDF\Fpdf\Object\Base;
 
-use Test\TestCase;
 use PXP\PDF\Fpdf\Object\Base\PDFNull;
+use Test\TestCase;
 
 /**
  * @covers \PXP\PDF\Fpdf\Object\Base\PDFNull
@@ -24,7 +23,7 @@ final class PDFNullTest extends TestCase
 {
     public function testToString(): void
     {
-        $null = new PDFNull();
+        $null = new PDFNull;
         $this->assertSame('null', (string) $null);
     }
 }

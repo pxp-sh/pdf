@@ -11,8 +11,11 @@ declare(strict_types=1);
  * @see https://github.com/pxp-sh/pdf
  *
  */
-
 namespace PXP\PDF\CCITTFax;
+
+use function count;
+use function usort;
+use RuntimeException;
 
 class CCITTFaxCodes
 {
@@ -25,6 +28,44 @@ class CCITTFaxCodes
 
     /** @var HorizontalCode[] */
     private array $blackCodes;
+
+    /**
+     * Static helper for finding matches with optional type filtering (for Group 3 1D decoding).
+     *
+     * @param int  $data       16-bit data to match
+     * @param bool $white      True for white codes, false for black codes
+     * @param bool $makeupOnly If true, only match make-up codes (>=64 pixels); if false, only match terminating codes (0-63 pixels)
+     *
+     * @return null|HorizontalCode Matching code or null if no match
+     */
+    public static function findCode(int $data, bool $white, bool $makeupOnly): ?HorizontalCode
+    {
+        static $instance = null;
+
+        if ($instance === null) {
+            $instance = new self;
+        }
+
+        $lookup = $white ? $instance->whiteCodes : $instance->blackCodes;
+
+        foreach ($lookup as $code) {
+            // Filter by type: makeupOnly=true means we want ONLY make-up codes
+            // makeupOnly=false means we want ONLY terminating codes
+            if ($makeupOnly && $code->isTerminating()) {
+                continue; // Skip terminating codes when looking for make-up
+            }
+
+            if (!$makeupOnly && $code->isMakeup()) {
+                continue; // Skip make-up codes when looking for terminating
+            }
+
+            if ($code->matches($data)) {
+                return $code;
+            }
+        }
+
+        return null;
+    }
 
     public function __construct()
     {
@@ -47,7 +88,7 @@ class CCITTFaxCodes
             }
         }
 
-        throw new \RuntimeException('bad horizontal');
+        throw new RuntimeException('bad horizontal');
     }
 
     private function loadWhiteCodes(): array
@@ -61,13 +102,13 @@ class CCITTFaxCodes
             4,
             0x08,
             4,
-            0x0b,
+            0x0B,
             4,
-            0x0c,
+            0x0C,
             4,
-            0x0e,
+            0x0E,
             4,
-            0x0f,
+            0x0F,
             4,
             0x13,
             5,
@@ -85,13 +126,13 @@ class CCITTFaxCodes
             6,
             0x35,
             6,
-            0x2a,
+            0x2A,
             6,
-            0x2b,
+            0x2B,
             6,
             0x27,
             7,
-            0x0c,
+            0x0C,
             7,
             0x08,
             7,
@@ -103,7 +144,7 @@ class CCITTFaxCodes
             7,
             0x28,
             7,
-            0x2b,
+            0x2B,
             7,
             0x13,
             7,
@@ -115,9 +156,9 @@ class CCITTFaxCodes
             8,
             0x03,
             8,
-            0x1a,
+            0x1A,
             8,
-            0x1b,
+            0x1B,
             8,
             0x12,
             8,
@@ -135,21 +176,21 @@ class CCITTFaxCodes
             8,
             0x29,
             8,
-            0x2a,
+            0x2A,
             8,
-            0x2b,
+            0x2B,
             8,
-            0x2c,
+            0x2C,
             8,
-            0x2d,
+            0x2D,
             8,
             0x04,
             8,
             0x05,
             8,
-            0x0a,
+            0x0A,
             8,
-            0x0b,
+            0x0B,
             8,
             0x52,
             8,
@@ -167,13 +208,13 @@ class CCITTFaxCodes
             8,
             0x59,
             8,
-            0x5a,
+            0x5A,
             8,
-            0x5b,
+            0x5B,
             8,
-            0x4a,
+            0x4A,
             8,
-            0x4b,
+            0x4B,
             8,
             0x32,
             8,
@@ -184,7 +225,7 @@ class CCITTFaxCodes
         ];
 
         $whiteMakeUpCodes = [
-            0x1b,
+            0x1B,
             5,
             0x12,
             5,
@@ -204,48 +245,48 @@ class CCITTFaxCodes
             8,
             0x67,
             8,
-            0xcc,
+            0xCC,
             9,
-            0xcd,
+            0xCD,
             9,
-            0xd2,
+            0xD2,
             9,
-            0xd3,
+            0xD3,
             9,
-            0xd4,
+            0xD4,
             9,
-            0xd5,
+            0xD5,
             9,
-            0xd6,
+            0xD6,
             9,
-            0xd7,
+            0xD7,
             9,
-            0xd8,
+            0xD8,
             9,
-            0xd9,
+            0xD9,
             9,
-            0xda,
+            0xDA,
             9,
-            0xdb,
+            0xDB,
             9,
             0x98,
             9,
             0x99,
             9,
-            0x9a,
+            0x9A,
             9,
             0x18,
             6,
-            0x9b,
+            0x9B,
             9,
         ];
 
         $commonMakeUpCodes = [
             0x08,
             11,
-            0x0c,
+            0x0C,
             11,
-            0x0d,
+            0x0D,
             11,
             0x12,
             12,
@@ -259,13 +300,13 @@ class CCITTFaxCodes
             12,
             0x17,
             12,
-            0x1c,
+            0x1C,
             12,
-            0x1d,
+            0x1D,
             12,
-            0x1e,
+            0x1E,
             12,
-            0x1f,
+            0x1F,
             12,
         ];
 
@@ -275,7 +316,7 @@ class CCITTFaxCodes
         for ($i = 0; $i < count($whiteTermCodes) / 2; $i++) {
             $bitsUsed = $whiteTermCodes[$i * 2 + 1];
             $value = $whiteTermCodes[$i * 2] << (16 - $bitsUsed);
-            $mask = 0xffff << (16 - $bitsUsed);
+            $mask = 0xFFFF << (16 - $bitsUsed);
 
             $codes[] = new HorizontalCode(
                 $bitsUsed,
@@ -283,7 +324,7 @@ class CCITTFaxCodes
                 $value,
                 self::COLOR_WHITE,
                 $i,
-                true
+                true,
             );
         }
 
@@ -291,7 +332,7 @@ class CCITTFaxCodes
         for ($i = 0; $i < count($whiteMakeUpCodes) / 2; $i++) {
             $bitsUsed = $whiteMakeUpCodes[$i * 2 + 1];
             $value = $whiteMakeUpCodes[$i * 2] << (16 - $bitsUsed);
-            $mask = 0xffff << (16 - $bitsUsed);
+            $mask = 0xFFFF << (16 - $bitsUsed);
 
             $codes[] = new HorizontalCode(
                 $bitsUsed,
@@ -299,7 +340,7 @@ class CCITTFaxCodes
                 $value,
                 self::COLOR_WHITE,
                 ($i + 1) * 64,
-                false
+                false,
             );
         }
 
@@ -307,7 +348,7 @@ class CCITTFaxCodes
         for ($i = 0; $i < count($commonMakeUpCodes) / 2; $i++) {
             $bitsUsed = $commonMakeUpCodes[$i * 2 + 1];
             $value = $commonMakeUpCodes[$i * 2] << (16 - $bitsUsed);
-            $mask = 0xffff << (16 - $bitsUsed);
+            $mask = 0xFFFF << (16 - $bitsUsed);
 
             $codes[] = new HorizontalCode(
                 $bitsUsed,
@@ -315,12 +356,12 @@ class CCITTFaxCodes
                 $value,
                 self::COLOR_BOTH,
                 ($i + 1) * 64 + 1728,
-                false
+                false,
             );
         }
 
         // Sort by bits used (descending)
-        usort($codes, fn($a, $b) => $b->bitsUsed <=> $a->bitsUsed);
+        usort($codes, static fn($a, $b) => $b->bitsUsed <=> $a->bitsUsed);
 
         return $codes;
     }
@@ -370,7 +411,7 @@ class CCITTFaxCodes
             11,
             0x68,
             11,
-            0x6c,
+            0x6C,
             11,
             0x37,
             11,
@@ -380,41 +421,41 @@ class CCITTFaxCodes
             11,
             0x18,
             11,
-            0xca,
+            0xCA,
             12,
-            0xcb,
+            0xCB,
             12,
-            0xcc,
+            0xCC,
             12,
-            0xcd,
+            0xCD,
             12,
             0x68,
             12,
             0x69,
             12,
-            0x6a,
+            0x6A,
             12,
-            0x6b,
+            0x6B,
             12,
-            0xd2,
+            0xD2,
             12,
-            0xd3,
+            0xD3,
             12,
-            0xd4,
+            0xD4,
             12,
-            0xd5,
+            0xD5,
             12,
-            0xd6,
+            0xD6,
             12,
-            0xd7,
+            0xD7,
             12,
-            0x6c,
+            0x6C,
             12,
-            0x6d,
+            0x6D,
             12,
-            0xda,
+            0xDA,
             12,
-            0xdb,
+            0xDB,
             12,
             0x54,
             12,
@@ -446,11 +487,11 @@ class CCITTFaxCodes
             12,
             0x59,
             12,
-            0x2b,
+            0x2B,
             12,
-            0x2c,
+            0x2C,
             12,
-            0x5a,
+            0x5A,
             12,
             0x66,
             12,
@@ -459,13 +500,13 @@ class CCITTFaxCodes
         ];
 
         $blackMakeUpCodes = [
-            0x0f,
+            0x0F,
             10,
-            0xc8,
+            0xC8,
             12,
-            0xc9,
+            0xC9,
             12,
-            0x5b,
+            0x5B,
             12,
             0x33,
             12,
@@ -473,17 +514,17 @@ class CCITTFaxCodes
             12,
             0x35,
             12,
-            0x6c,
+            0x6C,
             13,
-            0x6d,
+            0x6D,
             13,
-            0x4a,
+            0x4A,
             13,
-            0x4b,
+            0x4B,
             13,
-            0x4c,
+            0x4C,
             13,
-            0x4d,
+            0x4D,
             13,
             0x72,
             13,
@@ -505,9 +546,9 @@ class CCITTFaxCodes
             13,
             0x55,
             13,
-            0x5a,
+            0x5A,
             13,
-            0x5b,
+            0x5B,
             13,
             0x64,
             13,
@@ -518,9 +559,9 @@ class CCITTFaxCodes
         $commonMakeUpCodes = [
             0x08,
             11,
-            0x0c,
+            0x0C,
             11,
-            0x0d,
+            0x0D,
             11,
             0x12,
             12,
@@ -534,13 +575,13 @@ class CCITTFaxCodes
             12,
             0x17,
             12,
-            0x1c,
+            0x1C,
             12,
-            0x1d,
+            0x1D,
             12,
-            0x1e,
+            0x1E,
             12,
-            0x1f,
+            0x1F,
             12,
         ];
 
@@ -550,7 +591,7 @@ class CCITTFaxCodes
         for ($i = 0; $i < count($blackTermCodes) / 2; $i++) {
             $bitsUsed = $blackTermCodes[$i * 2 + 1];
             $value = $blackTermCodes[$i * 2] << (16 - $bitsUsed);
-            $mask = 0xffff << (16 - $bitsUsed);
+            $mask = 0xFFFF << (16 - $bitsUsed);
 
             $codes[] = new HorizontalCode(
                 $bitsUsed,
@@ -558,7 +599,7 @@ class CCITTFaxCodes
                 $value,
                 self::COLOR_BLACK,
                 $i,
-                true
+                true,
             );
         }
 
@@ -566,7 +607,7 @@ class CCITTFaxCodes
         for ($i = 0; $i < count($blackMakeUpCodes) / 2; $i++) {
             $bitsUsed = $blackMakeUpCodes[$i * 2 + 1];
             $value = $blackMakeUpCodes[$i * 2] << (16 - $bitsUsed);
-            $mask = 0xffff << (16 - $bitsUsed);
+            $mask = 0xFFFF << (16 - $bitsUsed);
 
             $codes[] = new HorizontalCode(
                 $bitsUsed,
@@ -574,7 +615,7 @@ class CCITTFaxCodes
                 $value,
                 self::COLOR_BLACK,
                 ($i + 1) * 64,
-                false
+                false,
             );
         }
 
@@ -582,7 +623,7 @@ class CCITTFaxCodes
         for ($i = 0; $i < count($commonMakeUpCodes) / 2; $i++) {
             $bitsUsed = $commonMakeUpCodes[$i * 2 + 1];
             $value = $commonMakeUpCodes[$i * 2] << (16 - $bitsUsed);
-            $mask = 0xffff << (16 - $bitsUsed);
+            $mask = 0xFFFF << (16 - $bitsUsed);
 
             $codes[] = new HorizontalCode(
                 $bitsUsed,
@@ -590,12 +631,12 @@ class CCITTFaxCodes
                 $value,
                 self::COLOR_BOTH,
                 ($i + 1) * 64 + 1728,
-                false
+                false,
             );
         }
 
         // Sort by bits used (descending)
-        usort($codes, fn($a, $b) => $b->bitsUsed <=> $a->bitsUsed);
+        usort($codes, static fn($a, $b) => $b->bitsUsed <=> $a->bitsUsed);
 
         return $codes;
     }

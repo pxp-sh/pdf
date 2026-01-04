@@ -11,14 +11,15 @@ declare(strict_types=1);
  * @see https://github.com/pxp-sh/pdf
  *
  */
-
 namespace PXP\PDF\Fpdf\Object;
+
+use Stringable;
 
 /**
  * Base interface for all PDF objects.
  * All PDF objects must be stringable to convert to PDF format.
  */
-interface PDFObjectInterface extends \Stringable
+interface PDFObjectInterface extends Stringable
 {
     /**
      * Convert the object to PDF string format.

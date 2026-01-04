@@ -11,11 +11,11 @@ declare(strict_types=1);
  * @see https://github.com/pxp-sh/pdf
  *
  */
-
 namespace Test\Unit\PDF\Fpdf\Metadata;
 
-use Test\TestCase;
+use function time;
 use PXP\PDF\Fpdf\Metadata\Metadata;
+use Test\TestCase;
 
 /**
  * @covers \PXP\PDF\Fpdf\Metadata\Metadata
@@ -137,7 +137,6 @@ final class MetadataTest extends TestCase
 
     public function testEncodeUtf8WithNonAsciiCharacters(): void
     {
-
         $this->metadata->setTitle('Café');
         $data = $this->metadata->getAll();
         $this->assertArrayHasKey('Title', $data);

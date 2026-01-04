@@ -11,11 +11,10 @@ declare(strict_types=1);
  * @see https://github.com/pxp-sh/pdf
  *
  */
-
 namespace Test\Unit\PDF\Fpdf\Color;
 
-use Test\TestCase;
 use PXP\PDF\Fpdf\Color\ColorManager;
+use Test\TestCase;
 
 /**
  * @covers \PXP\PDF\Fpdf\Color\ColorManager
@@ -26,7 +25,7 @@ final class ColorManagerTest extends TestCase
 
     protected function setUp(): void
     {
-        $this->colorManager = new ColorManager();
+        $this->colorManager = new ColorManager;
     }
 
     public function testInitialState(): void

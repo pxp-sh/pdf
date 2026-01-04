@@ -11,9 +11,15 @@ declare(strict_types=1);
  * @see https://github.com/pxp-sh/pdf
  *
  */
-
 namespace PXP\PDF\Fpdf\Stream;
 
+use function array_filter;
+use function array_values;
+use function count;
+use function in_array;
+use function ltrim;
+use function strlen;
+use PXP\PDF\Fpdf\Object\Base\PDFArray;
 use PXP\PDF\Fpdf\Object\Base\PDFDictionary;
 use PXP\PDF\Fpdf\Object\Base\PDFName;
 use PXP\PDF\Fpdf\Object\Base\PDFNumber;
@@ -27,10 +33,11 @@ final class PDFStream extends PDFObject
     private PDFDictionary $dictionary;
     private string $data;
     private ?string $encodedData = null;
+
     /**
      * @var array<string>
      */
-    private array $filters = [];
+    private array $filters      = [];
     private bool $dataIsEncoded = false;
 
     public function __construct(
@@ -38,10 +45,31 @@ final class PDFStream extends PDFObject
         string $data,
         bool $dataIsEncoded = false,
     ) {
-        $this->dictionary = $dictionary;
-        $this->data = $data;
+        $this->dictionary    = $dictionary;
+        $this->data          = $data;
         $this->dataIsEncoded = $dataIsEncoded;
         $this->updateFiltersFromDictionary();
+    }
+
+    public function __toString(): string
+    {
+        $this->updateDictionary();
+        $encodedData = $this->getEncodedData();
+
+        $result = (string) $this->dictionary . "\n";
+        $result .= "stream\n";
+        $result .= $encodedData . "\n";
+        $result .= 'endstream';
+
+        // Free heavy buffers after serializing to reduce peak memory usage during large merges.
+        $this->encodedData = null;
+
+        // Clear raw data when it was encoded to free the memory used by large streams.
+        if ($this->dataIsEncoded) {
+            $this->data = '';
+        }
+
+        return $result;
     }
 
     /**
@@ -58,7 +86,8 @@ final class PDFStream extends PDFObject
     public function getDecodedData(): string
     {
         if ($this->dataIsEncoded) {
-            $decoder = new StreamDecoder();
+            $decoder = new StreamDecoder;
+
             return $decoder->decode($this->data, $this->dictionary);
         }
 
@@ -70,9 +99,9 @@ final class PDFStream extends PDFObject
      */
     public function setData(string $data): void
     {
-        $this->data = $data;
+        $this->data          = $data;
         $this->dataIsEncoded = false;
-        $this->encodedData = null;
+        $this->encodedData   = null;
     }
 
     /**
@@ -80,7 +109,7 @@ final class PDFStream extends PDFObject
      */
     public function setEncodedData(string $encoded): void
     {
-        $this->encodedData = $encoded;
+        $this->encodedData   = $encoded;
         $this->dataIsEncoded = true;
         // Keep $this->data as-is (raw encoded data) but ensure getEncodedData returns the provided value
     }
@@ -98,13 +127,14 @@ final class PDFStream extends PDFObject
         // return the raw data directly without re-encoding to avoid unnecessary memory usage.
         if ($this->dataIsEncoded) {
             $this->encodedData = $this->data;
+
             return $this->encodedData;
         }
 
         if (empty($this->filters)) {
             $this->encodedData = $this->data;
         } else {
-            $encoder = new StreamEncoder();
+            $encoder           = new StreamEncoder;
             $this->encodedData = $encoder->encode($this->data, $this->filters);
         }
 
@@ -117,6 +147,7 @@ final class PDFStream extends PDFObject
     public function addFilter(string $filterName, ?PDFDictionary $params = null): void
     {
         $filterName = ltrim($filterName, '/');
+
         if (!in_array($filterName, $this->filters, true)) {
             $this->filters[] = $filterName;
         }
@@ -130,8 +161,8 @@ final class PDFStream extends PDFObject
      */
     public function removeFilter(string $filterName): void
     {
-        $filterName = ltrim($filterName, '/');
-        $this->filters = array_values(array_filter($this->filters, fn($f) => $f !== $filterName));
+        $filterName    = ltrim($filterName, '/');
+        $this->filters = array_values(array_filter($this->filters, static fn ($f) => $f !== $filterName));
         $this->updateDictionary();
         $this->encodedData = null; // Invalidate cache
     }
@@ -161,12 +192,12 @@ final class PDFStream extends PDFObject
      */
     private function updateFiltersFromDictionary(): void
     {
-        $filter = $this->dictionary->getEntry('/Filter');
+        $filter        = $this->dictionary->getEntry('/Filter');
         $this->filters = [];
 
         if ($filter instanceof PDFName) {
             $this->filters[] = ltrim($filter->getName(), '/');
-        } elseif ($filter instanceof \PXP\PDF\Fpdf\Object\Base\PDFArray) {
+        } elseif ($filter instanceof PDFArray) {
             foreach ($filter->getAll() as $filterItem) {
                 if ($filterItem instanceof PDFName) {
                     $this->filters[] = ltrim($filterItem->getName(), '/');
@@ -186,7 +217,8 @@ final class PDFStream extends PDFObject
         } elseif (count($this->filters) === 1) {
             $this->dictionary->addEntry('/Filter', new PDFName($this->filters[0]));
         } else {
-            $filterArray = new \PXP\PDF\Fpdf\Object\Base\PDFArray();
+            $filterArray = new PDFArray;
+
             foreach ($this->filters as $filter) {
                 $filterArray->add(new PDFName($filter));
             }
@@ -205,29 +237,9 @@ final class PDFStream extends PDFObject
         } else {
             // Filters present and data not encoded: encode to determine length.
             $encodedData = $this->getEncodedData();
-            $length = strlen($encodedData);
+            $length      = strlen($encodedData);
         }
 
         $this->dictionary->addEntry('/Length', new PDFNumber($length));
-    }
-
-    public function __toString(): string
-    {
-        $this->updateDictionary();
-        $encodedData = $this->getEncodedData();
-
-        $result = (string) $this->dictionary . "\n";
-        $result .= "stream\n";
-        $result .= $encodedData . "\n";
-        $result .= "endstream";
-
-        // Free heavy buffers after serializing to reduce peak memory usage during large merges.
-        $this->encodedData = null;
-        // Clear raw data when it was encoded to free the memory used by large streams.
-        if ($this->dataIsEncoded) {
-            $this->data = '';
-        }
-
-        return $result;
     }
 }

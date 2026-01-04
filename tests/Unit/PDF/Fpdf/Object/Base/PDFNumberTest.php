@@ -11,11 +11,10 @@ declare(strict_types=1);
  * @see https://github.com/pxp-sh/pdf
  *
  */
-
 namespace Test\Unit\PDF\Fpdf\Object\Base;
 
-use Test\TestCase;
 use PXP\PDF\Fpdf\Object\Base\PDFNumber;
+use Test\TestCase;
 
 /**
  * @covers \PXP\PDF\Fpdf\Object\Base\PDFNumber

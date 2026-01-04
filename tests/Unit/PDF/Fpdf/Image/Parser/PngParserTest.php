@@ -11,13 +11,20 @@ declare(strict_types=1);
  * @see https://github.com/pxp-sh/pdf
  *
  */
-
 namespace Test\Unit\PDF\Fpdf\Image\Parser;
 
-use Test\TestCase;
+use function fclose;
+use function file_exists;
+use function file_put_contents;
+use function fopen;
+use function fwrite;
+use function rewind;
+use function sys_get_temp_dir;
+use function uniqid;
+use function unlink;
 use PXP\PDF\Fpdf\Exception\FpdfException;
 use PXP\PDF\Fpdf\Image\Parser\PngParser;
-use PXP\PDF\Fpdf\IO\FileIO;
+use Test\TestCase;
 
 /**
  * @covers \PXP\PDF\Fpdf\Image\Parser\PngParser
@@ -28,7 +35,7 @@ final class PngParserTest extends TestCase
 
     protected function setUp(): void
     {
-        $fileIO = self::createFileIO();
+        $fileIO       = self::createFileIO();
         $this->parser = new PngParser($fileIO, $fileIO);
     }
 
@@ -72,6 +79,7 @@ final class PngParserTest extends TestCase
     public function testParseStreamThrowsExceptionForInvalidSignature(): void
     {
         $stream = fopen('php://temp', 'rb+');
+
         if ($stream === false) {
             $this->markTestSkipped('Could not create stream');
         }

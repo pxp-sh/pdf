@@ -11,8 +11,11 @@ declare(strict_types=1);
  * @see https://github.com/pxp-sh/pdf
  *
  */
-
 namespace PXP\PDF\Fpdf\Object\Base;
+
+use function str_replace;
+use function str_starts_with;
+use function substr;
 
 /**
  * Represents a PDF name object (e.g., /Type, /Page).
@@ -30,20 +33,20 @@ final class PDFName extends PDFObject
         $this->name = $name;
     }
 
-    public function getName(): string
-    {
-        return $this->name;
-    }
-
     public function __toString(): string
     {
         // Escape special characters in name
         $escaped = str_replace(
             ['#', '(', ')', '<', '>', '[', ']', '{', '}', '/', '%'],
             ['#23', '#28', '#29', '#3C', '#3E', '#5B', '#5D', '#7B', '#7D', '#2F', '#25'],
-            $this->name
+            $this->name,
         );
 
         return '/' . $escaped;
+    }
+
+    public function getName(): string
+    {
+        return $this->name;
     }
 }

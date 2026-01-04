@@ -11,12 +11,21 @@ declare(strict_types=1);
  * @see https://github.com/pxp-sh/pdf
  *
  */
-
 namespace Test\Unit\PDF\Fpdf\Font;
 
-use Test\TestCase;
+use function array_diff;
+use function file_put_contents;
+use function is_dir;
+use function mkdir;
+use function rmdir;
+use function rtrim;
+use function scandir;
+use function sys_get_temp_dir;
+use function uniqid;
+use function unlink;
 use PXP\PDF\Fpdf\Exception\FpdfException;
 use PXP\PDF\Fpdf\Font\FontManager;
+use Test\TestCase;
 
 /**
  * @covers \PXP\PDF\Fpdf\Font\FontManager
@@ -28,7 +37,7 @@ final class FontManagerTest extends TestCase
     protected function setUp(): void
     {
         $this->tempDir = sys_get_temp_dir() . '/font_test_' . uniqid();
-        mkdir($this->tempDir, 0777, true);
+        mkdir($this->tempDir, 0o777, true);
     }
 
     protected function tearDown(): void
@@ -144,7 +153,7 @@ final class FontManagerTest extends TestCase
         file_put_contents($fontFile, '<?php $name="Helvetica"; $type="Core"; $cw=[];');
 
         $fontManager = new FontManager($this->tempDir);
-        $font = $fontManager->getFont('arial');
+        $font        = $fontManager->getFont('arial');
 
         $this->assertNotNull($font);
         $this->assertArrayHasKey('name', $font);
@@ -168,8 +177,6 @@ final class FontManagerTest extends TestCase
 
     public function testGetFontNormalizesStyleIB(): void
     {
-
-
         $fontManager = new FontManager($this->tempDir);
         $this->expectException(FpdfException::class);
         $this->expectExceptionMessage('Could not include font definition file:');
@@ -178,7 +185,6 @@ final class FontManagerTest extends TestCase
 
     public function testGetFontWithSymbolRemovesStyle(): void
     {
-
         $fontManager = new FontManager($this->tempDir);
         $this->expectException(FpdfException::class);
         $this->expectExceptionMessage('Could not include font definition file:');
@@ -208,7 +214,7 @@ final class FontManagerTest extends TestCase
     public function testAddFontWithCustomDirectory(): void
     {
         $customDir = $this->tempDir . '/custom';
-        mkdir($customDir, 0777, true);
+        mkdir($customDir, 0o777, true);
         $fontFile = $customDir . '/test.php';
         file_put_contents($fontFile, '<?php $name="TestFont"; $type="Core"; $cw=[];');
 
@@ -222,7 +228,7 @@ final class FontManagerTest extends TestCase
     public function testAddFontWithDirectoryWithoutTrailingSlash(): void
     {
         $customDir = $this->tempDir . '/custom';
-        mkdir($customDir, 0777, true);
+        mkdir($customDir, 0o777, true);
         $fontFile = $customDir . '/test.php';
         file_put_contents($fontFile, '<?php $name="TestFont"; $type="Core"; $cw=[];');
 
@@ -240,6 +246,7 @@ final class FontManagerTest extends TestCase
         }
 
         $files = array_diff(scandir($dir), ['.', '..']);
+
         foreach ($files as $file) {
             $path = $dir . '/' . $file;
             is_dir($path) ? $this->removeDirectory($path) : unlink($path);

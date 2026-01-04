@@ -11,14 +11,31 @@ declare(strict_types=1);
  * @see https://github.com/pxp-sh/pdf
  *
  */
-
 namespace PXP\PDF\Fpdf\Tree;
 
+use function array_merge;
+use function array_values;
+use function count;
+use function implode;
+use function ksort;
+use function preg_match;
+use function reset;
+use function strlen;
+use function strpos;
+use function strrpos;
+use function substr;
+use Exception;
 use PXP\PDF\Fpdf\Exception\FpdfException;
+use PXP\PDF\Fpdf\IO\FileIO;
 use PXP\PDF\Fpdf\IO\FileReaderInterface;
+use PXP\PDF\Fpdf\Object\Base\PDFArray;
+use PXP\PDF\Fpdf\Object\Base\PDFDictionary;
+use PXP\PDF\Fpdf\Object\Base\PDFName;
+use PXP\PDF\Fpdf\Object\Base\PDFNumber;
 use PXP\PDF\Fpdf\Object\Base\PDFReference;
 use PXP\PDF\Fpdf\Object\PDFObjectInterface;
 use PXP\PDF\Fpdf\Xref\PDFXrefTable;
+use ReflectionClass;
 
 /**
  * Root document class representing a complete PDF as a tree structure.
@@ -31,12 +48,69 @@ final class PDFDocument
     private PDFObjectRegistry $objectRegistry;
     private ?PDFObjectNode $rootNode = null;
 
+    /**
+     * Parse PDF from file.
+     */
+    public static function parseFromFile(string $filePath, ?FileReaderInterface $fileReader = null): self
+    {
+        if ($fileReader === null) {
+            $fileReader = new FileIO;
+        }
+
+        $content = $fileReader->readFile($filePath);
+
+        return self::parseFromString($content);
+    }
+
+    /**
+     * Parse PDF from string content.
+     * This is a basic implementation - full parsing will be handled by PDFParser.
+     */
+    public static function parseFromString(string $content): self
+    {
+        $document = new self;
+
+        // Parse header
+        $header = PDFHeader::parse($content);
+
+        if ($header !== null) {
+            $document->header = $header;
+        }
+
+        // Basic xref parsing (full parsing will be in PDFParser)
+        $xrefPos = strrpos($content, 'xref');
+
+        if ($xrefPos !== false) {
+            $xrefEnd = strpos($content, 'trailer', $xrefPos);
+
+            if ($xrefEnd !== false) {
+                $xrefContent = substr($content, $xrefPos + 4, $xrefEnd - $xrefPos - 4);
+                $document->xrefTable->parseFromString($xrefContent);
+            }
+        }
+
+        // Parse trailer
+        $trailerPos = strrpos($content, 'trailer');
+
+        if ($trailerPos !== false) {
+            $trailerSection = substr($content, $trailerPos);
+            $rootMatch      = [];
+
+            if (preg_match('/\/Root\s+(\d+)\s+(\d+)\s+R/', $trailerSection, $rootMatch)) {
+                $rootObjNum = (int) $rootMatch[1];
+                // Root will be set when objects are parsed
+            }
+        }
+
+        return $document;
+    }
+
     public function __construct(string $version = '1.3', ?PDFObjectRegistry $objectRegistry = null)
     {
-        $this->header = new PDFHeader($version);
-        $this->xrefTable = new PDFXrefTable();
-        $this->trailer = new PDFTrailer();
-        $this->objectRegistry = $objectRegistry ?? new PDFObjectRegistry();
+        $this->header         = new PDFHeader($version);
+        $this->xrefTable      = new PDFXrefTable;
+        $this->trailer        = new PDFTrailer;
+        $this->objectRegistry = $objectRegistry ?? new PDFObjectRegistry;
     }
 
     public function getHeader(): PDFHeader
@@ -95,8 +169,9 @@ final class PDFDocument
      * Write an object directly to stream and track its offset WITHOUT storing in registry.
      * This enables true streaming where objects are written immediately and released from memory.
      *
-     * @param callable $writer Function that accepts string chunks to write
-     * @param int $currentOffset Current byte offset in the output stream
+     * @param callable $writer        Function that accepts string chunks to write
+     * @param int      $currentOffset Current byte offset in the output stream
+     *
      * @return int New offset after writing this object
      */
     public function writeObjectToStream(
@@ -105,7 +180,7 @@ final class PDFDocument
         callable $writer,
         int $currentOffset
     ): int {
-        $node = new PDFObjectNode($objectNumber, $object);
+        $node   = new PDFObjectNode($objectNumber, $object);
         $objStr = (string) $node . "\n";
         $writer($objStr);
 
@@ -127,24 +202,6 @@ final class PDFDocument
     {
         $this->rootNode = $rootNode;
         $this->trailer->setRoot(new PDFReference($rootNode->getObjectNumber()));
-    }
-
-    /**
-     * Get the object type from a node's dictionary.
-     */
-    private function getObjectType(PDFObjectNode $node): ?string
-    {
-        $value = $node->getValue();
-        if (!$value instanceof \PXP\PDF\Fpdf\Object\Base\PDFDictionary) {
-            return null;
-        }
-
-        $typeEntry = $value->getEntry('/Type');
-        if ($typeEntry instanceof \PXP\PDF\Fpdf\Object\Base\PDFName) {
-            return $typeEntry->getName();
-        }
-
-        return null;
     }
 
     /**
@@ -171,6 +228,7 @@ final class PDFDocument
 
         foreach ($loadedObjects as $node) {
             $nodeType = $this->getObjectType($node);
+
             if ($nodeType === $type) {
                 $objects[] = $node;
             }
@@ -180,81 +238,13 @@ final class PDFDocument
     }
 
     /**
-     * Get all pages recursively from a Pages object.
-     *
-     * @param PDFObjectNode $pagesNode The Pages object node
-     * @param bool $deep If true, recursively traverse nested Pages objects
-     * @return array<PDFObjectNode> Array of Page nodes
-     */
-    private function getAllPagesFromPages(PDFObjectNode $pagesNode, bool $deep = true): array
-    {
-        $pagesDict = $pagesNode->getValue();
-        if (!$pagesDict instanceof \PXP\PDF\Fpdf\Object\Base\PDFDictionary) {
-            return [];
-        }
-
-        $kids = $pagesDict->getEntry('/Kids');
-        if (!$kids instanceof \PXP\PDF\Fpdf\Object\Base\PDFArray) {
-            return [];
-        }
-
-        if (!$deep) {
-            // Return direct kids without recursion
-            $directPages = [];
-            foreach ($kids->getAll() as $kid) {
-                if ($kid instanceof PDFReference) {
-                    $kidNode = $this->getObject($kid->getObjectNumber());
-                    if ($kidNode !== null) {
-                        $directPages[] = $kidNode;
-                    }
-                }
-            }
-            return $directPages;
-        }
-
-        // Recursive traversal
-        $pages = [];
-        foreach ($kids->getAll() as $kid) {
-            if ($kid instanceof PDFReference) {
-                $kidNode = $this->getObject($kid->getObjectNumber());
-                if ($kidNode === null) {
-                    continue;
-                }
-
-                $kidType = $this->getObjectType($kidNode);
-                if ($kidType === 'Pages') {
-                    // Recursively get pages from nested Pages object
-                    $pages = array_merge($pages, $this->getAllPagesFromPages($kidNode, true));
-                } elseif ($kidType === 'Page') {
-                    // Direct Page object
-                    $pages[] = $kidNode;
-                } else {
-                    // If Type is missing or unknown, check if it has a Kids array (might be a Pages object without Type)
-                    // or if it has Contents (might be a Page object without Type)
-                    $kidValue = $kidNode->getValue();
-                    if ($kidValue instanceof \PXP\PDF\Fpdf\Object\Base\PDFDictionary) {
-                        $kidKids = $kidValue->getEntry('/Kids');
-                        if ($kidKids instanceof \PXP\PDF\Fpdf\Object\Base\PDFArray) {
-                            // Has Kids array, treat as Pages object
-                            $pages = array_merge($pages, $this->getAllPagesFromPages($kidNode, true));
-                        } elseif ($kidValue->hasEntry('/Contents') || $kidValue->hasEntry('/MediaBox')) {
-                            // Has Contents or MediaBox, likely a Page object
-                            $pages[] = $kidNode;
-                        }
-                    }
-                }
-            }
-        }
-
-        return $pages;
-    }
-
-    /**
      * Get all pages in the document using hierarchical traversal with fallbacks.
      *
      * @param bool $deep If true, recursively traverse nested Pages objects
-     * @return array<PDFObjectNode> Array of Page nodes
+     *
      * @throws FpdfException If no pages are found
+     *
+     * @return array<PDFObjectNode> Array of Page nodes
      */
     public function getAllPages(bool $deep = true): array
     {
@@ -264,8 +254,10 @@ final class PDFDocument
         // If root isn't set but trailer has root reference, try to load it
         if ($root === null) {
             $rootRef = $this->trailer->getRoot();
+
             if ($rootRef !== null) {
                 $root = $this->getObject($rootRef->getObjectNumber());
+
                 if ($root !== null) {
                     $this->setRoot($root);
                 }
@@ -274,10 +266,13 @@ final class PDFDocument
 
         if ($root !== null) {
             $rootDict = $root->getValue();
-            if ($rootDict instanceof \PXP\PDF\Fpdf\Object\Base\PDFDictionary) {
+
+            if ($rootDict instanceof PDFDictionary) {
                 $pagesRef = $rootDict->getEntry('/Pages');
+
                 if ($pagesRef instanceof PDFReference) {
                     $pagesNode = $this->getObject($pagesRef->getObjectNumber());
+
                     if ($pagesNode !== null) {
                         return $this->getAllPagesFromPages($pagesNode, $deep);
                     }
@@ -288,13 +283,17 @@ final class PDFDocument
         // Fallback 1: Try Catalog → Pages (only checks already-loaded objects)
         if ($this->hasObjectsByType('Catalog')) {
             $catalogs = $this->getObjectsByType('Catalog');
-            $catalog = reset($catalogs);
+            $catalog  = reset($catalogs);
+
             if ($catalog !== false) {
                 $catalogDict = $catalog->getValue();
-                if ($catalogDict instanceof \PXP\PDF\Fpdf\Object\Base\PDFDictionary) {
+
+                if ($catalogDict instanceof PDFDictionary) {
                     $pagesRef = $catalogDict->getEntry('/Pages');
+
                     if ($pagesRef instanceof PDFReference) {
                         $pagesNode = $this->getObject($pagesRef->getObjectNumber());
+
                         if ($pagesNode !== null) {
                             return $this->getAllPagesFromPages($pagesNode, $deep);
                         }
@@ -306,14 +305,15 @@ final class PDFDocument
         // Fallback 2: If no Catalog, try to find Pages by loading objects from xref table
         // This handles cases where root isn't set but Pages objects exist
         $pagesNode = $this->getPages();
+
         if ($pagesNode !== null) {
             return $this->getAllPagesFromPages($pagesNode, $deep);
         }
 
         // Fallback 2: If root can't be loaded, try to find Pages by checking xref table
         // This handles PDFs where root is compressed or in object streams
-        $registryReflection = new \ReflectionClass($this->objectRegistry);
-        $xrefTableProp = $registryReflection->getProperty('xrefTable');
+        $registryReflection = new ReflectionClass($this->objectRegistry);
+        $xrefTableProp      = $registryReflection->getProperty('xrefTable');
         $xrefTableProp->setAccessible(true);
         $xrefTable = $xrefTableProp->getValue($this->objectRegistry);
 
@@ -321,14 +321,15 @@ final class PDFDocument
             $allEntries = $xrefTable->getAllEntries();
             // Try to find Pages objects by loading objects that have /Kids (characteristic of Pages)
             // Limit to first 100 objects to avoid memory issues
-            $checked = 0;
-            $maxChecks = 100;
+            $checked      = 0;
+            $maxChecks    = 100;
             $pagesObjects = [];
 
             foreach ($allEntries as $objectNumber => $entry) {
                 if ($checked >= $maxChecks) {
                     break;
                 }
+
                 if ($entry->isFree()) {
                     continue;
                 }
@@ -336,15 +337,19 @@ final class PDFDocument
                 // Try to load the object
                 try {
                     $node = $this->getObject($objectNumber);
+
                     if ($node !== null) {
                         $checked++;
                         $nodeValue = $node->getValue();
-                        if ($nodeValue instanceof \PXP\PDF\Fpdf\Object\Base\PDFDictionary) {
+
+                        if ($nodeValue instanceof PDFDictionary) {
                             // Check if it has /Kids (Pages objects have Kids arrays)
                             $kids = $nodeValue->getEntry('/Kids');
-                            if ($kids instanceof \PXP\PDF\Fpdf\Object\Base\PDFArray) {
+
+                            if ($kids instanceof PDFArray) {
                                 // This looks like a Pages object
                                 $nodeType = $this->getObjectType($node);
+
                                 if ($nodeType === 'Pages' || $nodeType === null) {
                                     // If type is Pages or missing (some PDFs omit Type), treat as Pages
                                     $pagesObjects[] = $node;
@@ -352,7 +357,7 @@ final class PDFDocument
                             }
                         }
                     }
-                } catch (\Exception $e) {
+                } catch (Exception $e) {
                     // Skip objects that can't be loaded (e.g., compressed)
                     continue;
                 }
@@ -360,10 +365,12 @@ final class PDFDocument
 
             if (!empty($pagesObjects)) {
                 $allPages = [];
+
                 foreach ($pagesObjects as $pagesNode) {
-                    $pages = $this->getAllPagesFromPages($pagesNode, $deep);
+                    $pages    = $this->getAllPagesFromPages($pagesNode, $deep);
                     $allPages = array_merge($allPages, $pages);
                 }
+
                 if (!empty($allPages)) {
                     return $allPages;
                 }
@@ -374,11 +381,13 @@ final class PDFDocument
         // Only checks already-loaded objects to avoid memory explosion
         if ($this->hasObjectsByType('Pages')) {
             $pagesObjects = $this->getObjectsByType('Pages');
-            $allPages = [];
+            $allPages     = [];
+
             foreach ($pagesObjects as $pagesNode) {
-                $pages = $this->getAllPagesFromPages($pagesNode, $deep);
+                $pages    = $this->getAllPagesFromPages($pagesNode, $deep);
                 $allPages = array_merge($allPages, $pages);
             }
+
             if (!empty($allPages)) {
                 return $allPages;
             }
@@ -390,32 +399,35 @@ final class PDFDocument
         // Get xref table if not already available
         if (empty($allPages) && $root === null) {
             if ($xrefTable === null) {
-                $registryReflection = new \ReflectionClass($this->objectRegistry);
-                $xrefTableProp = $registryReflection->getProperty('xrefTable');
+                $registryReflection = new ReflectionClass($this->objectRegistry);
+                $xrefTableProp      = $registryReflection->getProperty('xrefTable');
                 $xrefTableProp->setAccessible(true);
                 $xrefTable = $xrefTableProp->getValue($this->objectRegistry);
             }
 
             if ($xrefTable !== null) {
-                $allEntries = $xrefTable->getAllEntries();
+                $allEntries  = $xrefTable->getAllEntries();
                 $pageObjects = [];
-                $checked = 0;
-                $maxChecks = 200; // Check more objects to find pages
+                $checked     = 0;
+                $maxChecks   = 200; // Check more objects to find pages
 
                 foreach ($allEntries as $objectNumber => $entry) {
                     if ($checked >= $maxChecks) {
                         break;
                     }
+
                     if ($entry->isFree()) {
                         continue;
                     }
 
                     try {
                         $node = $this->getObject($objectNumber);
+
                         if ($node !== null) {
                             $checked++;
                             $nodeValue = $node->getValue();
-                            if ($nodeValue instanceof \PXP\PDF\Fpdf\Object\Base\PDFDictionary) {
+
+                            if ($nodeValue instanceof PDFDictionary) {
                                 $nodeType = $this->getObjectType($node);
 
                                 // Only include if Type is explicitly Page (be very strict)
@@ -424,7 +436,7 @@ final class PDFDocument
                                 }
                             }
                         }
-                    } catch (\Exception $e) {
+                    } catch (Exception $e) {
                         // Skip objects that can't be loaded (e.g., compressed)
                         continue;
                     }
@@ -440,6 +452,7 @@ final class PDFDocument
         // Only checks already-loaded objects to avoid memory explosion
         if ($this->hasObjectsByType('Page')) {
             $pages = $this->getObjectsByType('Page');
+
             return array_values($pages);
         }
 
@@ -453,21 +466,26 @@ final class PDFDocument
     public function getPages(): ?PDFObjectNode
     {
         $root = $this->getRoot();
+
         if ($root === null) {
             // Fallback: Try to find Pages objects directly
             if ($this->hasObjectsByType('Pages')) {
                 $pagesObjects = $this->getObjectsByType('Pages');
+
                 return reset($pagesObjects) ?: null;
             }
+
             return null;
         }
 
         $rootDict = $root->getValue();
-        if (!$rootDict instanceof \PXP\PDF\Fpdf\Object\Base\PDFDictionary) {
+
+        if (!$rootDict instanceof PDFDictionary) {
             return null;
         }
 
         $pagesRef = $rootDict->getEntry('/Pages');
+
         if (!$pagesRef instanceof PDFReference) {
             return null;
         }
@@ -481,47 +499,52 @@ final class PDFDocument
     public function getPage(int $pageNumber): ?PDFObjectNode
     {
         try {
-            $allPages = $this->getAllPages(true);
+            $allPages  = $this->getAllPages(true);
             $pageIndex = $pageNumber - 1;
+
             if ($pageIndex >= 0 && $pageIndex < count($allPages)) {
                 return $allPages[$pageIndex];
             }
         } catch (FpdfException $e) {
             // getAllPages failed, try fallback: find Pages objects and traverse them
             // This handles PDFs where normal traversal fails due to compressed root
-            $registryReflection = new \ReflectionClass($this->objectRegistry);
-            $xrefTableProp = $registryReflection->getProperty('xrefTable');
+            $registryReflection = new ReflectionClass($this->objectRegistry);
+            $xrefTableProp      = $registryReflection->getProperty('xrefTable');
             $xrefTableProp->setAccessible(true);
             $xrefTable = $xrefTableProp->getValue($this->objectRegistry);
 
             if ($xrefTable !== null) {
                 // First try to find Pages objects (more reliable than finding Page objects directly)
-                $allEntries = $xrefTable->getAllEntries();
+                $allEntries   = $xrefTable->getAllEntries();
                 $pagesObjects = [];
-                $checked = 0;
-                $maxChecks = 300; // Check more objects to find Pages
+                $checked      = 0;
+                $maxChecks    = 300; // Check more objects to find Pages
 
                 foreach ($allEntries as $objectNumber => $entry) {
                     if ($checked >= $maxChecks) {
                         break;
                     }
+
                     if ($entry->isFree()) {
                         continue;
                     }
 
                     try {
                         $node = $this->getObject($objectNumber);
+
                         if ($node !== null) {
                             $checked++;
                             $nodeValue = $node->getValue();
-                            if ($nodeValue instanceof \PXP\PDF\Fpdf\Object\Base\PDFDictionary) {
+
+                            if ($nodeValue instanceof PDFDictionary) {
                                 $nodeType = $this->getObjectType($node);
+
                                 if ($nodeType === 'Pages') {
                                     $pagesObjects[] = $node;
                                 }
                             }
                         }
-                    } catch (\Exception $ex) {
+                    } catch (Exception $ex) {
                         continue;
                     }
                 }
@@ -531,21 +554,25 @@ final class PDFDocument
                 if (!empty($pagesObjects)) {
                     // Try to find the root Pages by checking which one has the highest /Count
                     $rootPagesNode = null;
-                    $maxCount = 0;
+                    $maxCount      = 0;
+
                     foreach ($pagesObjects as $pagesNode) {
                         try {
                             $pagesDict = $pagesNode->getValue();
-                            if ($pagesDict instanceof \PXP\PDF\Fpdf\Object\Base\PDFDictionary) {
+
+                            if ($pagesDict instanceof PDFDictionary) {
                                 $countEntry = $pagesDict->getEntry('/Count');
-                                if ($countEntry instanceof \PXP\PDF\Fpdf\Object\Base\PDFNumber) {
+
+                                if ($countEntry instanceof PDFNumber) {
                                     $count = (int) $countEntry->getValue();
+
                                     if ($count > $maxCount) {
-                                        $maxCount = $count;
+                                        $maxCount      = $count;
                                         $rootPagesNode = $pagesNode;
                                     }
                                 }
                             }
-                        } catch (\Exception $ex) {
+                        } catch (Exception $ex) {
                             continue;
                         }
                     }
@@ -553,12 +580,13 @@ final class PDFDocument
                     // If we found a root Pages object, traverse it
                     if ($rootPagesNode !== null) {
                         try {
-                            $allPages = $this->getAllPagesFromPages($rootPagesNode, true);
+                            $allPages  = $this->getAllPagesFromPages($rootPagesNode, true);
                             $pageIndex = $pageNumber - 1;
+
                             if ($pageIndex >= 0 && $pageIndex < count($allPages)) {
                                 return $allPages[$pageIndex];
                             }
-                        } catch (\Exception $ex) {
+                        } catch (Exception $ex) {
                             // Fall through to Page objects search
                         }
                     }
@@ -566,36 +594,41 @@ final class PDFDocument
 
                 // Last resort: Find Page objects directly (less reliable, order may be wrong)
                 $pageObjects = [];
-                $checked = 0;
-                $maxChecks = 300; // Check more objects
+                $checked     = 0;
+                $maxChecks   = 300; // Check more objects
 
                 foreach ($allEntries as $objectNumber => $entry) {
                     if ($checked >= $maxChecks) {
                         break;
                     }
+
                     if ($entry->isFree()) {
                         continue;
                     }
 
                     try {
                         $node = $this->getObject($objectNumber);
+
                         if ($node !== null) {
                             $checked++;
                             $nodeValue = $node->getValue();
-                            if ($nodeValue instanceof \PXP\PDF\Fpdf\Object\Base\PDFDictionary) {
+
+                            if ($nodeValue instanceof PDFDictionary) {
                                 $nodeType = $this->getObjectType($node);
+
                                 if ($nodeType === 'Page') {
                                     $pageObjects[] = $node;
                                 }
                             }
                         }
-                    } catch (\Exception $ex) {
+                    } catch (Exception $ex) {
                         continue;
                     }
                 }
 
                 // Return the requested page if available
                 $pageIndex = $pageNumber - 1;
+
                 if ($pageIndex >= 0 && $pageIndex < count($pageObjects)) {
                     return $pageObjects[$pageIndex];
                 }
@@ -606,65 +639,14 @@ final class PDFDocument
     }
 
     /**
-     * Parse PDF from file.
-     */
-    public static function parseFromFile(string $filePath, ?FileReaderInterface $fileReader = null): self
-    {
-        if ($fileReader === null) {
-            $fileReader = new \PXP\PDF\Fpdf\IO\FileIO();
-        }
-
-        $content = $fileReader->readFile($filePath);
-
-        return self::parseFromString($content);
-    }
-
-    /**
-     * Parse PDF from string content.
-     * This is a basic implementation - full parsing will be handled by PDFParser.
-     */
-    public static function parseFromString(string $content): self
-    {
-        $document = new self();
-
-        // Parse header
-        $header = PDFHeader::parse($content);
-        if ($header !== null) {
-            $document->header = $header;
-        }
-
-        // Basic xref parsing (full parsing will be in PDFParser)
-        $xrefPos = strrpos($content, 'xref');
-        if ($xrefPos !== false) {
-            $xrefEnd = strpos($content, 'trailer', $xrefPos);
-            if ($xrefEnd !== false) {
-                $xrefContent = substr($content, $xrefPos + 4, $xrefEnd - $xrefPos - 4);
-                $document->xrefTable->parseFromString($xrefContent);
-            }
-        }
-
-        // Parse trailer
-        $trailerPos = strrpos($content, 'trailer');
-        if ($trailerPos !== false) {
-            $trailerSection = substr($content, $trailerPos);
-            $rootMatch = [];
-            if (preg_match('/\/Root\s+(\d+)\s+(\d+)\s+R/', $trailerSection, $rootMatch)) {
-                $rootObjNum = (int) $rootMatch[1];
-                // Root will be set when objects are parsed
-            }
-        }
-
-        return $document;
-    }
-
-    /**
      * Serialize the document to PDF format.
      */
     public function serialize(): string
     {
         // Backwards-compatible wrapper that collects the whole PDF into memory.
         $parts = [];
-        $this->serializeToStream(function (string $chunk) use (&$parts) {
+        $this->serializeToStream(static function (string $chunk) use (&$parts): void
+        {
             $parts[] = $chunk;
         });
 
@@ -678,7 +660,7 @@ final class PDFDocument
     public function serializeToStream(callable $writer): void
     {
         $offsets = [];
-        $offset = 0;
+        $offset  = 0;
 
         // Header
         $headerStr = (string) $this->header;
@@ -691,7 +673,7 @@ final class PDFDocument
 
         foreach ($objects as $objectNumber => $node) {
             $offsets[$objectNumber] = $offset;
-            $objStr = (string) $node . "\n";
+            $objStr                 = (string) $node . "\n";
             $writer($objStr);
             $offset += strlen($objStr);
         }
@@ -701,7 +683,7 @@ final class PDFDocument
 
         // Xref table
         $xrefOffset = $offset;
-        $xrefStr = $this->xrefTable->serialize();
+        $xrefStr    = $this->xrefTable->serialize();
         $writer($xrefStr);
         $offset += strlen($xrefStr);
 
@@ -709,5 +691,106 @@ final class PDFDocument
         $this->trailer->setSize($this->objectRegistry->getMaxObjectNumber() + 1);
         $trailerStr = $this->trailer->serialize($xrefOffset);
         $writer($trailerStr);
+    }
+
+    /**
+     * Get the object type from a node's dictionary.
+     */
+    private function getObjectType(PDFObjectNode $node): ?string
+    {
+        $value = $node->getValue();
+
+        if (!$value instanceof PDFDictionary) {
+            return null;
+        }
+
+        $typeEntry = $value->getEntry('/Type');
+
+        if ($typeEntry instanceof PDFName) {
+            return $typeEntry->getName();
+        }
+
+        return null;
+    }
+
+    /**
+     * Get all pages recursively from a Pages object.
+     *
+     * @param PDFObjectNode $pagesNode The Pages object node
+     * @param bool          $deep      If true, recursively traverse nested Pages objects
+     *
+     * @return array<PDFObjectNode> Array of Page nodes
+     */
+    private function getAllPagesFromPages(PDFObjectNode $pagesNode, bool $deep = true): array
+    {
+        $pagesDict = $pagesNode->getValue();
+
+        if (!$pagesDict instanceof PDFDictionary) {
+            return [];
+        }
+
+        $kids = $pagesDict->getEntry('/Kids');
+
+        if (!$kids instanceof PDFArray) {
+            return [];
+        }
+
+        if (!$deep) {
+            // Return direct kids without recursion
+            $directPages = [];
+
+            foreach ($kids->getAll() as $kid) {
+                if ($kid instanceof PDFReference) {
+                    $kidNode = $this->getObject($kid->getObjectNumber());
+
+                    if ($kidNode !== null) {
+                        $directPages[] = $kidNode;
+                    }
+                }
+            }
+
+            return $directPages;
+        }
+
+        // Recursive traversal
+        $pages = [];
+
+        foreach ($kids->getAll() as $kid) {
+            if ($kid instanceof PDFReference) {
+                $kidNode = $this->getObject($kid->getObjectNumber());
+
+                if ($kidNode === null) {
+                    continue;
+                }
+
+                $kidType = $this->getObjectType($kidNode);
+
+                if ($kidType === 'Pages') {
+                    // Recursively get pages from nested Pages object
+                    $pages = array_merge($pages, $this->getAllPagesFromPages($kidNode, true));
+                } elseif ($kidType === 'Page') {
+                    // Direct Page object
+                    $pages[] = $kidNode;
+                } else {
+                    // If Type is missing or unknown, check if it has a Kids array (might be a Pages object without Type)
+                    // or if it has Contents (might be a Page object without Type)
+                    $kidValue = $kidNode->getValue();
+
+                    if ($kidValue instanceof PDFDictionary) {
+                        $kidKids = $kidValue->getEntry('/Kids');
+
+                        if ($kidKids instanceof PDFArray) {
+                            // Has Kids array, treat as Pages object
+                            $pages = array_merge($pages, $this->getAllPagesFromPages($kidNode, true));
+                        } elseif ($kidValue->hasEntry('/Contents') || $kidValue->hasEntry('/MediaBox')) {
+                            // Has Contents or MediaBox, likely a Page object
+                            $pages[] = $kidNode;
+                        }
+                    }
+                }
+            }
+        }
+
+        return $pages;
     }
 }

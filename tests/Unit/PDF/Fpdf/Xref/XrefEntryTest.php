@@ -11,11 +11,10 @@ declare(strict_types=1);
  * @see https://github.com/pxp-sh/pdf
  *
  */
-
 namespace Test\Unit\PDF\Fpdf\Xref;
 
-use Test\TestCase;
 use PXP\PDF\Fpdf\Xref\XrefEntry;
+use Test\TestCase;
 
 /**
  * @covers \PXP\PDF\Fpdf\Xref\XrefEntry
@@ -52,7 +51,7 @@ final class XrefEntryTest extends TestCase
 
     public function testToStringForNormalEntry(): void
     {
-        $entry = new XrefEntry(100, 0, false);
+        $entry  = new XrefEntry(100, 0, false);
         $result = (string) $entry;
         $this->assertStringContainsString('100', $result);
         $this->assertStringContainsString('n', $result);
@@ -60,7 +59,7 @@ final class XrefEntryTest extends TestCase
 
     public function testToStringForFreeEntry(): void
     {
-        $entry = new XrefEntry(100, 0, true);
+        $entry  = new XrefEntry(100, 0, true);
         $result = (string) $entry;
         $this->assertStringContainsString('f', $result);
     }

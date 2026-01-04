@@ -11,17 +11,15 @@ declare(strict_types=1);
  * @see https://github.com/pxp-sh/pdf
  *
  */
-
 namespace PXP\PDF\Fpdf\Enum;
+
+use function is_float;
+use function strtolower;
+use InvalidArgumentException;
 
 enum ZoomMode: string
 {
-    case FULLPAGE = 'fullpage';
-    case FULLWIDTH = 'fullwidth';
-    case REAL = 'real';
-    case DEFAULT = 'default';
-
-    public static function fromValue(string|float $value): string|float
+    public static function fromValue(float|string $value): float|string
     {
         if (is_float($value)) {
             return $value;
@@ -29,7 +27,11 @@ enum ZoomMode: string
 
         return match (strtolower($value)) {
             'fullpage', 'fullwidth', 'real', 'default' => strtolower($value),
-            default => throw new \InvalidArgumentException('Incorrect zoom display mode: ' . $value),
+            default => throw new InvalidArgumentException('Incorrect zoom display mode: ' . $value),
         };
     }
+    case FULLPAGE  = 'fullpage';
+    case FULLWIDTH = 'fullwidth';
+    case REAL      = 'real';
+    case DEFAULT   = 'default';
 }

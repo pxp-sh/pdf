@@ -11,16 +11,13 @@ declare(strict_types=1);
  * @see https://github.com/pxp-sh/pdf
  *
  */
-
 namespace PXP\PDF\Fpdf\Enum;
+
+use function strtolower;
+use InvalidArgumentException;
 
 enum Unit: string
 {
-    case POINT = 'pt';
-    case MILLIMETER = 'mm';
-    case CENTIMETER = 'cm';
-    case INCH = 'in';
-
     public static function fromString(string $unit): self
     {
         return match (strtolower($unit)) {
@@ -28,17 +25,21 @@ enum Unit: string
             'mm', 'millimeter' => self::MILLIMETER,
             'cm', 'centimeter' => self::CENTIMETER,
             'in', 'inch' => self::INCH,
-            default => throw new \InvalidArgumentException('Incorrect unit: ' . $unit),
+            default => throw new InvalidArgumentException('Incorrect unit: ' . $unit),
         };
     }
 
     public function getScaleFactor(): float
     {
         return match ($this) {
-            self::POINT => 1.0,
+            self::POINT      => 1.0,
             self::MILLIMETER => 72.0 / 25.4,
             self::CENTIMETER => 72.0 / 2.54,
-            self::INCH => 72.0,
+            self::INCH       => 72.0,
         };
     }
+    case POINT      = 'pt';
+    case MILLIMETER = 'mm';
+    case CENTIMETER = 'cm';
+    case INCH       = 'in';
 }

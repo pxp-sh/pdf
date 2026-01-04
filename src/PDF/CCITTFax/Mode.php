@@ -11,19 +11,18 @@ declare(strict_types=1);
  * @see https://github.com/pxp-sh/pdf
  *
  */
-
 namespace PXP\PDF\CCITTFax;
 
 enum Mode: int
 {
-    case Pass = 1;
-    case Horizontal = 2;
+    case Pass         = 1;
+    case Horizontal   = 2;
     case VerticalZero = 3;
-    case VerticalR1 = 4;
-    case VerticalR2 = 5;
-    case VerticalR3 = 6;
-    case VerticalL1 = 7;
-    case VerticalL2 = 8;
-    case VerticalL3 = 9;
-    case Extension = 10;
+    case VerticalR1   = 4;
+    case VerticalR2   = 5;
+    case VerticalR3   = 6;
+    case VerticalL1   = 7;
+    case VerticalL2   = 8;
+    case VerticalL3   = 9;
+    case Extension    = 10;
 }

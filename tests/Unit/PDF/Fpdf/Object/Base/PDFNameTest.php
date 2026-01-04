@@ -11,11 +11,10 @@ declare(strict_types=1);
  * @see https://github.com/pxp-sh/pdf
  *
  */
-
 namespace Test\Unit\PDF\Fpdf\Object\Base;
 
-use Test\TestCase;
 use PXP\PDF\Fpdf\Object\Base\PDFName;
+use Test\TestCase;
 
 /**
  * @covers \PXP\PDF\Fpdf\Object\Base\PDFName
@@ -48,7 +47,7 @@ final class PDFNameTest extends TestCase
 
     public function testEscapesAllSpecialCharacters(): void
     {
-        $name = new PDFName('Test#(Name)');
+        $name   = new PDFName('Test#(Name)');
         $result = (string) $name;
         $this->assertStringContainsString('#23', $result);
         $this->assertStringContainsString('#28', $result);

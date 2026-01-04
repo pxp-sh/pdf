@@ -11,15 +11,16 @@ declare(strict_types=1);
  * @see https://github.com/pxp-sh/pdf
  *
  */
-
 namespace PXP\PDF\Fpdf\Color;
+
+use function sprintf;
 
 final class ColorManager
 {
     private string $drawColor = '0 G';
     private string $fillColor = '0 g';
     private string $textColor = '0 g';
-    private bool $colorFlag = false;
+    private bool $colorFlag   = false;
 
     public function setDrawColor(int $r, ?int $g = null, ?int $b = null): string
     {

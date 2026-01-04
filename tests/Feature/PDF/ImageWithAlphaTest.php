@@ -11,11 +11,27 @@ declare(strict_types=1);
  * @see https://github.com/pxp-sh/pdf
  *
  */
-
 namespace Test\Feature\PDF;
 
+use function extension_loaded;
+use function function_exists;
+use function imagecolorallocatealpha;
+use function imagecolorat;
+use function imagecreatefrompng;
+use function imagecreatetruecolor;
+use function imagedestroy;
+use function imagefilledrectangle;
+use function imagepng;
+use function imagesavealpha;
+use function imagesetpixel;
+use function imagesx;
+use function imagesy;
+use function max;
+use function preg_match;
+use function uniqid;
+use function unlink;
+use RuntimeException;
 use Test\TestCase;
-use PXP\PDF\Fpdf\FPDF;
 
 /**
  * @covers \PXP\PDF\Fpdf\FPDF
@@ -27,7 +43,6 @@ final class ImageWithAlphaTest extends TestCase
         if (!function_exists('imagecreatetruecolor')) {
             $this->markTestSkipped('GD not available');
         }
-
 
         $im = imagecreatetruecolor(2, 2);
         imagesavealpha($im, true);
@@ -57,7 +72,7 @@ final class ImageWithAlphaTest extends TestCase
 
         // Verify visual correctness - save to file and verify alpha channel is preserved
         $tmpFile = self::getRootDir() . '/alpha_test_pdf_' . uniqid() . '.pdf';
-        $pdf2 = self::createFPDF();
+        $pdf2    = self::createFPDF();
         $pdf2->setCompression(false);
         $pdf2->addPage();
         $pdf2->image($file, 10, 10, 10, 10, 'png');
@@ -73,45 +88,54 @@ final class ImageWithAlphaTest extends TestCase
 
         // If both rendered pages appear blank on this environment, skip visual comparison
         try {
-            $imgA = self::pdfToImage($referenceFile, 1);
-            $imgB = self::pdfToImage($tmpFile, 1);
+            $imgA      = self::pdfToImage($referenceFile, 1);
+            $imgB      = self::pdfToImage($tmpFile, 1);
             $bothBlank = false;
+
             if (extension_loaded('gd')) {
                 $bothBlank = true;
+
                 foreach ([$imgA, $imgB] as $imgPath) {
                     $gd = @imagecreatefrompng($imgPath);
+
                     if ($gd === false) {
                         $bothBlank = false;
+
                         break;
                     }
-                    $w = imagesx($gd);
-                    $h = imagesy($gd);
+                    $w        = imagesx($gd);
+                    $h        = imagesy($gd);
                     $nonWhite = 0;
-                    $total = $w * $h;
+                    $total    = $w * $h;
+
                     for ($x = 0; $x < $w; $x++) {
                         for ($y = 0; $y < $h; $y++) {
                             $rgb = imagecolorat($gd, $x, $y);
-                            $r = ($rgb >> 16) & 0xFF;
-                            $g = ($rgb >> 8) & 0xFF;
-                            $b = $rgb & 0xFF;
+                            $r   = ($rgb >> 16) & 0xFF;
+                            $g   = ($rgb >> 8) & 0xFF;
+                            $b   = $rgb & 0xFF;
+
                             if (!($r >= 250 && $g >= 250 && $b >= 250)) {
                                 $nonWhite++;
                             }
                         }
                     }
                     imagedestroy($gd);
+
                     if ($nonWhite / max(1, $total) > 0.01) {
                         $bothBlank = false;
+
                         break;
                     }
                 }
             }
             @unlink($imgA);
             @unlink($imgB);
+
             if ($bothBlank) {
                 $this->markTestSkipped('Rendered PDFs are blank on this environment; skipping visual comparison');
             }
-        } catch (\RuntimeException $e) {
+        } catch (RuntimeException $e) {
             $this->markTestSkipped('PDF to image conversion failed: ' . $e->getMessage());
         }
 

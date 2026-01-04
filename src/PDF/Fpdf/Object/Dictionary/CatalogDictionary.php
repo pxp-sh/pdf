@@ -11,12 +11,14 @@ declare(strict_types=1);
  * @see https://github.com/pxp-sh/pdf
  *
  */
-
 namespace PXP\PDF\Fpdf\Object\Dictionary;
 
+use function count;
+use function is_int;
 use PXP\PDF\Fpdf\Object\Base\PDFArray;
 use PXP\PDF\Fpdf\Object\Base\PDFDictionary;
 use PXP\PDF\Fpdf\Object\Base\PDFName;
+use PXP\PDF\Fpdf\Object\Base\PDFNull;
 use PXP\PDF\Fpdf\Object\Base\PDFNumber;
 use PXP\PDF\Fpdf\Object\Base\PDFReference;
 use PXP\PDF\Fpdf\Tree\PDFObjectNode;
@@ -35,7 +37,7 @@ final class CatalogDictionary extends PDFDictionary
     /**
      * Set Pages reference.
      */
-    public function setPages(PDFObjectNode|PDFReference|int $pages): self
+    public function setPages(int|PDFObjectNode|PDFReference $pages): self
     {
         if ($pages instanceof PDFObjectNode) {
             $pages = new PDFReference($pages->getObjectNumber());
@@ -51,11 +53,12 @@ final class CatalogDictionary extends PDFDictionary
     /**
      * Set OpenAction (viewer preferences).
      *
-     * @param array{0: PDFReference|int, 1: string, 2?: float|null, 3?: float|null, 4?: float|null} $action
+     * @param array{0: int|PDFReference, 1: string, 2?: null|float, 3?: null|float, 4?: null|float} $action
      */
     public function setOpenAction(array $action): self
     {
-        $actionArray = new PDFArray();
+        $actionArray = new PDFArray;
+
         // Page reference
         if (is_int($action[0])) {
             $actionArray->add(new PDFReference($action[0]));
@@ -69,7 +72,7 @@ final class CatalogDictionary extends PDFDictionary
         // Optional parameters
         for ($i = 2; $i < count($action); $i++) {
             if ($action[$i] === null) {
-                $actionArray->add(new \PXP\PDF\Fpdf\Object\Base\PDFNull());
+                $actionArray->add(new PDFNull);
             } else {
                 $actionArray->add(new PDFNumber($action[$i]));
             }

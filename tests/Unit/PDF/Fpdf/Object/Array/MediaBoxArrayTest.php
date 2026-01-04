@@ -11,11 +11,10 @@ declare(strict_types=1);
  * @see https://github.com/pxp-sh/pdf
  *
  */
-
 namespace Test\Unit\PDF\Fpdf\Object\Array;
 
-use Test\TestCase;
 use PXP\PDF\Fpdf\Object\Array\MediaBoxArray;
+use Test\TestCase;
 
 /**
  * @covers \PXP\PDF\Fpdf\Object\Array\MediaBoxArray
@@ -24,8 +23,8 @@ final class MediaBoxArrayTest extends TestCase
 {
     public function testConstructorWithDefaultValues(): void
     {
-        $mediaBox = new MediaBoxArray();
-        $values = $mediaBox->getValues();
+        $mediaBox = new MediaBoxArray;
+        $values   = $mediaBox->getValues();
 
         $this->assertSame([0.0, 0.0, 612.0, 792.0], $values);
     }
@@ -33,14 +32,14 @@ final class MediaBoxArrayTest extends TestCase
     public function testConstructorWithCustomValues(): void
     {
         $mediaBox = new MediaBoxArray([10.0, 20.0, 800.0, 1000.0]);
-        $values = $mediaBox->getValues();
+        $values   = $mediaBox->getValues();
 
         $this->assertSame([10.0, 20.0, 800.0, 1000.0], $values);
     }
 
     public function testSetValues(): void
     {
-        $mediaBox = new MediaBoxArray();
+        $mediaBox = new MediaBoxArray;
         $mediaBox->setValues([5.0, 10.0, 500.0, 600.0]);
 
         $values = $mediaBox->getValues();

@@ -11,9 +11,35 @@ declare(strict_types=1);
  * @see https://github.com/pxp-sh/pdf
  *
  */
-
 namespace PXP\PDF\Fpdf\Debug;
 
+use const ARRAY_FILTER_USE_KEY;
+use function abs;
+use function array_column;
+use function array_filter;
+use function array_sum;
+use function count;
+use function end;
+use function floor;
+use function gc_collect_cycles;
+use function get_debug_type;
+use function ini_get;
+use function log;
+use function max;
+use function memory_get_peak_usage;
+use function memory_get_usage;
+use function microtime;
+use function min;
+use function reset;
+use function round;
+use function serialize;
+use function sprintf;
+use function str_pad;
+use function str_starts_with;
+use function strlen;
+use function strtolower;
+use function trim;
+use InvalidArgumentException;
 use Psr\Log\LoggerInterface;
 use Psr\Log\NullLogger;
 
@@ -30,20 +56,18 @@ final class MemoryProfiler
 
     /** @var array<string, int> */
     private array $snapshotCounts = [];
-
     private int $startMemory;
     private int $startPeak;
     private float $startTime;
-
     private bool $enableDetailed;
 
     public function __construct(?LoggerInterface $logger = null, bool $enableDetailed = false)
     {
-        $this->logger = $logger ?? new NullLogger();
+        $this->logger         = $logger ?? new NullLogger;
         $this->enableDetailed = $enableDetailed;
-        $this->startMemory = memory_get_usage(true);
-        $this->startPeak = memory_get_peak_usage(true);
-        $this->startTime = microtime(true);
+        $this->startMemory    = memory_get_usage(true);
+        $this->startPeak      = memory_get_peak_usage(true);
+        $this->startTime      = microtime(true);
 
         $this->checkpoint('start', 'Profiling started');
     }
@@ -53,21 +77,21 @@ final class MemoryProfiler
      */
     public function checkpoint(string $label, ?string $message = null): void
     {
-        $memory = memory_get_usage(true);
-        $peak = memory_get_peak_usage(true);
+        $memory    = memory_get_usage(true);
+        $peak      = memory_get_peak_usage(true);
         $timestamp = microtime(true);
 
         $this->checkpoints[$label] = [
             'timestamp' => $timestamp,
-            'memory' => $memory,
-            'peak' => $peak,
+            'memory'    => $memory,
+            'peak'      => $peak,
         ];
 
         if ($message !== null) {
             $this->logger->debug($message, [
-                'checkpoint' => $label,
-                'memory' => $this->formatBytes($memory),
-                'peak' => $this->formatBytes($peak),
+                'checkpoint'       => $label,
+                'memory'           => $this->formatBytes($memory),
+                'peak'             => $this->formatBytes($peak),
                 'delta_from_start' => $this->formatBytes($memory - $this->startMemory),
             ]);
         }
@@ -80,7 +104,7 @@ final class MemoryProfiler
     public function snapshot(string $context, array $metadata = []): array
     {
         $memory = memory_get_usage(true);
-        $peak = memory_get_peak_usage(true);
+        $peak   = memory_get_peak_usage(true);
 
         if (!isset($this->snapshotCounts[$context])) {
             $this->snapshotCounts[$context] = 0;
@@ -88,14 +112,14 @@ final class MemoryProfiler
         $this->snapshotCounts[$context]++;
 
         $snapshot = [
-            'context' => $context,
-            'count' => $this->snapshotCounts[$context],
-            'memory' => $memory,
+            'context'          => $context,
+            'count'            => $this->snapshotCounts[$context],
+            'memory'           => $memory,
             'memory_formatted' => $this->formatBytes($memory),
-            'peak' => $peak,
-            'peak_formatted' => $this->formatBytes($peak),
-            'timestamp' => microtime(true),
-            'metadata' => $metadata,
+            'peak'             => $peak,
+            'peak_formatted'   => $this->formatBytes($peak),
+            'timestamp'        => microtime(true),
+            'metadata'         => $metadata,
         ];
 
         if ($this->enableDetailed) {
@@ -111,18 +135,19 @@ final class MemoryProfiler
     public function getDetailedMemoryInfo(): array
     {
         $info = [
-            'current_usage' => memory_get_usage(false),
+            'current_usage'      => memory_get_usage(false),
             'current_usage_real' => memory_get_usage(true),
-            'peak_usage' => memory_get_peak_usage(false),
-            'peak_usage_real' => memory_get_peak_usage(true),
-            'limit' => ini_get('memory_limit'),
+            'peak_usage'         => memory_get_peak_usage(false),
+            'peak_usage_real'    => memory_get_peak_usage(true),
+            'limit'              => ini_get('memory_limit'),
         ];
 
         // Get memory usage percentage
         $limit = $this->parseMemoryLimit(ini_get('memory_limit'));
+
         if ($limit > 0) {
-            $info['usage_percentage'] = round(($info['current_usage_real'] / $limit) * 100, 2);
-            $info['remaining'] = $limit - $info['current_usage_real'];
+            $info['usage_percentage']    = round(($info['current_usage_real'] / $limit) * 100, 2);
+            $info['remaining']           = $limit - $info['current_usage_real'];
             $info['remaining_formatted'] = $this->formatBytes($info['remaining']);
         }
 
@@ -135,19 +160,19 @@ final class MemoryProfiler
     public function getDelta(string $fromCheckpoint, string $toCheckpoint): array
     {
         if (!isset($this->checkpoints[$fromCheckpoint]) || !isset($this->checkpoints[$toCheckpoint])) {
-            throw new \InvalidArgumentException('Invalid checkpoint labels');
+            throw new InvalidArgumentException('Invalid checkpoint labels');
         }
 
         $from = $this->checkpoints[$fromCheckpoint];
-        $to = $this->checkpoints[$toCheckpoint];
+        $to   = $this->checkpoints[$toCheckpoint];
 
         return [
-            'memory_delta' => $to['memory'] - $from['memory'],
+            'memory_delta'           => $to['memory'] - $from['memory'],
             'memory_delta_formatted' => $this->formatBytes($to['memory'] - $from['memory']),
-            'peak_delta' => $to['peak'] - $from['peak'],
-            'peak_delta_formatted' => $this->formatBytes($to['peak'] - $from['peak']),
-            'time_delta' => $to['timestamp'] - $from['timestamp'],
-            'time_delta_formatted' => round(($to['timestamp'] - $from['timestamp']) * 1000, 2) . ' ms',
+            'peak_delta'             => $to['peak'] - $from['peak'],
+            'peak_delta_formatted'   => $this->formatBytes($to['peak'] - $from['peak']),
+            'time_delta'             => $to['timestamp'] - $from['timestamp'],
+            'time_delta_formatted'   => round(($to['timestamp'] - $from['timestamp']) * 1000, 2) . ' ms',
         ];
     }
 
@@ -156,8 +181,9 @@ final class MemoryProfiler
      */
     public function analyzePattern(string $context): ?array
     {
-        $snapshots = array_filter($this->checkpoints, function ($cp) use ($context) {
-            return strpos($cp, $context) === 0;
+        $snapshots = array_filter($this->checkpoints, static function ($cp) use ($context)
+        {
+            return str_starts_with($cp, $context);
         }, ARRAY_FILTER_USE_KEY);
 
         if (count($snapshots) < 2) {
@@ -165,21 +191,22 @@ final class MemoryProfiler
         }
 
         $memories = array_column($snapshots, 'memory');
-        $diffs = [];
+        $diffs    = [];
+
         for ($i = 1; $i < count($memories); $i++) {
             $diffs[] = $memories[$i] - $memories[$i - 1];
         }
 
         return [
-            'context' => $context,
-            'sample_count' => count($snapshots),
-            'avg_delta' => array_sum($diffs) / count($diffs),
-            'avg_delta_formatted' => $this->formatBytes((int) (array_sum($diffs) / count($diffs))),
-            'max_delta' => max($diffs),
-            'max_delta_formatted' => $this->formatBytes(max($diffs)),
-            'min_delta' => min($diffs),
-            'min_delta_formatted' => $this->formatBytes(min($diffs)),
-            'total_growth' => end($memories) - reset($memories),
+            'context'                => $context,
+            'sample_count'           => count($snapshots),
+            'avg_delta'              => array_sum($diffs) / count($diffs),
+            'avg_delta_formatted'    => $this->formatBytes((int) (array_sum($diffs) / count($diffs))),
+            'max_delta'              => max($diffs),
+            'max_delta_formatted'    => $this->formatBytes(max($diffs)),
+            'min_delta'              => min($diffs),
+            'min_delta_formatted'    => $this->formatBytes(min($diffs)),
+            'total_growth'           => end($memories) - reset($memories),
             'total_growth_formatted' => $this->formatBytes(end($memories) - reset($memories)),
         ];
     }
@@ -190,29 +217,30 @@ final class MemoryProfiler
     public function getSummary(): array
     {
         $currentMemory = memory_get_usage(true);
-        $currentPeak = memory_get_peak_usage(true);
-        $duration = microtime(true) - $this->startTime;
+        $currentPeak   = memory_get_peak_usage(true);
+        $duration      = microtime(true) - $this->startTime;
 
         $checkpointList = [];
+
         foreach ($this->checkpoints as $label => $data) {
             $checkpointList[] = [
-                'label' => $label,
+                'label'     => $label,
                 'timestamp' => $data['timestamp'],
-                'elapsed' => round(($data['timestamp'] - $this->startTime) * 1000, 2) . ' ms',
-                'memory' => $this->formatBytes($data['memory']),
-                'peak' => $this->formatBytes($data['peak']),
+                'elapsed'   => round(($data['timestamp'] - $this->startTime) * 1000, 2) . ' ms',
+                'memory'    => $this->formatBytes($data['memory']),
+                'peak'      => $this->formatBytes($data['peak']),
             ];
         }
 
         return [
-            'start_memory' => $this->formatBytes($this->startMemory),
-            'start_peak' => $this->formatBytes($this->startPeak),
-            'current_memory' => $this->formatBytes($currentMemory),
-            'current_peak' => $this->formatBytes($currentPeak),
-            'memory_growth' => $this->formatBytes($currentMemory - $this->startMemory),
-            'peak_growth' => $this->formatBytes($currentPeak - $this->startPeak),
-            'duration_ms' => round($duration * 1000, 2),
-            'checkpoints' => $checkpointList,
+            'start_memory'      => $this->formatBytes($this->startMemory),
+            'start_peak'        => $this->formatBytes($this->startPeak),
+            'current_memory'    => $this->formatBytes($currentMemory),
+            'current_peak'      => $this->formatBytes($currentPeak),
+            'memory_growth'     => $this->formatBytes($currentMemory - $this->startMemory),
+            'peak_growth'       => $this->formatBytes($currentPeak - $this->startPeak),
+            'duration_ms'       => round($duration * 1000, 2),
+            'checkpoints'       => $checkpointList,
             'snapshot_contexts' => $this->snapshotCounts,
         ];
     }
@@ -224,53 +252,56 @@ final class MemoryProfiler
     {
         $summary = $this->getSummary();
 
-        echo "\n";
-        echo "═══════════════════════════════════════════════════════════════\n";
-        echo "                     MEMORY PROFILE REPORT                     \n";
-        echo "═══════════════════════════════════════════════════════════════\n";
-        echo "\n";
+        print "\n";
+        print "═══════════════════════════════════════════════════════════════\n";
+        print "                     MEMORY PROFILE REPORT                     \n";
+        print "═══════════════════════════════════════════════════════════════\n";
+        print "\n";
 
-        echo "Overall Statistics:\n";
-        echo "  Start Memory:     {$summary['start_memory']}\n";
-        echo "  Current Memory:   {$summary['current_memory']}\n";
-        echo "  Memory Growth:    {$summary['memory_growth']}\n";
-        echo "  Peak Growth:      {$summary['peak_growth']}\n";
-        echo "  Duration:         {$summary['duration_ms']} ms\n";
-        echo "\n";
+        print "Overall Statistics:\n";
+        print "  Start Memory:     {$summary['start_memory']}\n";
+        print "  Current Memory:   {$summary['current_memory']}\n";
+        print "  Memory Growth:    {$summary['memory_growth']}\n";
+        print "  Peak Growth:      {$summary['peak_growth']}\n";
+        print "  Duration:         {$summary['duration_ms']} ms\n";
+        print "\n";
 
         if (!empty($summary['checkpoints'])) {
-            echo "Checkpoints:\n";
+            print "Checkpoints:\n";
+
             foreach ($summary['checkpoints'] as $cp) {
-                echo sprintf(
+                print sprintf(
                     "  [%s] %s - Memory: %s, Peak: %s\n",
                     $cp['elapsed'],
                     str_pad($cp['label'], 30),
                     str_pad($cp['memory'], 12),
-                    $cp['peak']
+                    $cp['peak'],
                 );
             }
-            echo "\n";
+            print "\n";
         }
 
         if (!empty($summary['snapshot_contexts'])) {
-            echo "Snapshot Contexts:\n";
+            print "Snapshot Contexts:\n";
+
             foreach ($summary['snapshot_contexts'] as $context => $count) {
-                echo "  {$context}: {$count} snapshots\n";
+                print "  {$context}: {$count} snapshots\n";
             }
-            echo "\n";
+            print "\n";
         }
 
         $detailed = $this->getDetailedMemoryInfo();
+
         if (isset($detailed['usage_percentage'])) {
-            echo "Memory Limit Analysis:\n";
-            echo "  Limit:            {$detailed['limit']}\n";
-            echo "  Current Usage:    {$detailed['usage_percentage']}%\n";
-            echo "  Remaining:        {$detailed['remaining_formatted']}\n";
-            echo "\n";
+            print "Memory Limit Analysis:\n";
+            print "  Limit:            {$detailed['limit']}\n";
+            print "  Current Usage:    {$detailed['usage_percentage']}%\n";
+            print "  Remaining:        {$detailed['remaining_formatted']}\n";
+            print "\n";
         }
 
-        echo "═══════════════════════════════════════════════════════════════\n";
-        echo "\n";
+        print "═══════════════════════════════════════════════════════════════\n";
+        print "\n";
     }
 
     /**
@@ -279,20 +310,20 @@ final class MemoryProfiler
     public function forceGC(string $context = 'manual'): array
     {
         $beforeMemory = memory_get_usage(true);
-        $beforePeak = memory_get_peak_usage(true);
+        $beforePeak   = memory_get_peak_usage(true);
 
         $cycles = gc_collect_cycles();
 
         $afterMemory = memory_get_usage(true);
-        $afterPeak = memory_get_peak_usage(true);
+        $afterPeak   = memory_get_peak_usage(true);
 
         $result = [
-            'context' => $context,
-            'cycles_collected' => $cycles,
-            'memory_freed' => $beforeMemory - $afterMemory,
+            'context'                => $context,
+            'cycles_collected'       => $cycles,
+            'memory_freed'           => $beforeMemory - $afterMemory,
             'memory_freed_formatted' => $this->formatBytes($beforeMemory - $afterMemory),
-            'before_memory' => $this->formatBytes($beforeMemory),
-            'after_memory' => $this->formatBytes($afterMemory),
+            'before_memory'          => $this->formatBytes($beforeMemory),
+            'after_memory'           => $this->formatBytes($afterMemory),
         ];
 
         $this->logger->debug('Garbage collection executed', $result);
@@ -307,13 +338,13 @@ final class MemoryProfiler
     public function measureVariable(string $name, mixed $variable): array
     {
         $serialized = serialize($variable);
-        $size = strlen($serialized);
+        $size       = strlen($serialized);
         unset($serialized);
 
         return [
-            'name' => $name,
-            'type' => get_debug_type($variable),
-            'size' => $size,
+            'name'           => $name,
+            'type'           => get_debug_type($variable),
+            'size'           => $size,
             'size_formatted' => $this->formatBytes($size),
         ];
     }
@@ -336,13 +367,13 @@ final class MemoryProfiler
             return '0 B';
         }
 
-        $units = ['B', 'KB', 'MB', 'GB', 'TB'];
+        $units    = ['B', 'KB', 'MB', 'GB', 'TB'];
         $negative = $bytes < 0;
-        $bytes = abs($bytes);
+        $bytes    = abs($bytes);
 
         $pow = floor(($bytes ? log($bytes) : 0) / log(1024));
         $pow = min($pow, count($units) - 1);
-        $bytes /= pow(1024, $pow);
+        $bytes /= 1024 ** $pow;
 
         $formatted = round($bytes, 2) . ' ' . $units[$pow];
 
@@ -359,16 +390,18 @@ final class MemoryProfiler
         }
 
         $limit = trim($limit);
-        $last = strtolower($limit[strlen($limit) - 1]);
+        $last  = strtolower($limit[strlen($limit) - 1]);
         $value = (int) $limit;
 
         switch ($last) {
             case 'g':
                 $value *= 1024;
-            // no break
+
+                // no break
             case 'm':
                 $value *= 1024;
-            // no break
+
+                // no break
             case 'k':
                 $value *= 1024;
         }

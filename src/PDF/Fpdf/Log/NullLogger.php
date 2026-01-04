@@ -11,11 +11,11 @@ declare(strict_types=1);
  * @see https://github.com/pxp-sh/pdf
  *
  */
-
 namespace PXP\PDF\Fpdf\Log;
 
 use Psr\Log\LoggerInterface;
 use Psr\Log\LoggerTrait;
+use Stringable;
 
 /**
  * Null logger implementation that does nothing.
@@ -26,11 +26,10 @@ final class NullLogger implements LoggerInterface
     use LoggerTrait;
 
     /**
-     * @param mixed $level
-     * @param string|\Stringable $message
+     * @param mixed        $level
      * @param array<mixed> $context
      */
-    public function log($level, string|\Stringable $message, array $context = []): void
+    public function log($level, string|Stringable $message, array $context = []): void
     {
         // Do nothing - this is a null logger
     }

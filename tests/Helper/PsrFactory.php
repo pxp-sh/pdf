@@ -11,7 +11,6 @@ declare(strict_types=1);
  * @see https://github.com/pxp-sh/pdf
  *
  */
-
 namespace Test\Helper;
 
 use Monolog\Handler\StreamHandler;
@@ -53,7 +52,7 @@ final class PsrFactory
      */
     public static function createCache(): CacheItemPoolInterface
     {
-        return new ArrayAdapter();
+        return new ArrayAdapter;
     }
 
     /**
@@ -61,6 +60,6 @@ final class PsrFactory
      */
     public static function createEventDispatcher(): EventDispatcherInterface
     {
-        return new EventDispatcher();
+        return new EventDispatcher;
     }
 }

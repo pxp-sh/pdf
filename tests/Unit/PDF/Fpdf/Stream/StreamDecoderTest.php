@@ -11,14 +11,15 @@ declare(strict_types=1);
  * @see https://github.com/pxp-sh/pdf
  *
  */
-
 namespace Test\Unit\PDF\Fpdf\Stream;
 
-use Test\TestCase;
+use function function_exists;
+use function gzcompress;
 use PXP\PDF\Fpdf\Exception\FpdfException;
 use PXP\PDF\Fpdf\Object\Base\PDFDictionary;
 use PXP\PDF\Fpdf\Object\Base\PDFName;
 use PXP\PDF\Fpdf\Stream\StreamDecoder;
+use Test\TestCase;
 
 /**
  * @covers \PXP\PDF\Fpdf\Stream\StreamDecoder
@@ -29,7 +30,7 @@ final class StreamDecoderTest extends TestCase
 
     protected function setUp(): void
     {
-        $this->decoder = new StreamDecoder();
+        $this->decoder = new StreamDecoder;
     }
 
     public function testDecodeFlate(): void
@@ -38,10 +39,10 @@ final class StreamDecoderTest extends TestCase
             $this->markTestSkipped('zlib extension not available');
         }
 
-        $original = 'test data';
+        $original   = 'test data';
         $compressed = gzcompress($original);
 
-        $dict = new PDFDictionary();
+        $dict = new PDFDictionary;
         $dict->addEntry('/Filter', new PDFName('FlateDecode'));
 
         $decoded = $this->decoder->decode($compressed, $dict);
@@ -60,7 +61,7 @@ final class StreamDecoderTest extends TestCase
 
     public function testDecodeDCT(): void
     {
-        $data = 'jpeg data';
+        $data    = 'jpeg data';
         $decoded = $this->decoder->decodeDCT($data);
         $this->assertSame($data, $decoded);
     }
@@ -75,7 +76,7 @@ final class StreamDecoderTest extends TestCase
 
     public function testDecodeASCIIHex(): void
     {
-        $hex = '74657374>';
+        $hex     = '74657374>';
         $decoded = $this->decoder->decodeASCIIHex($hex);
         $this->assertSame('test', $decoded);
     }
@@ -90,7 +91,7 @@ final class StreamDecoderTest extends TestCase
     public function testDecodeWithNoFilter(): void
     {
         $data = 'test data';
-        $dict = new PDFDictionary();
+        $dict = new PDFDictionary;
 
         $decoded = $this->decoder->decode($data, $dict);
         $this->assertSame($data, $decoded);
@@ -98,7 +99,7 @@ final class StreamDecoderTest extends TestCase
 
     public function testDecodeThrowsExceptionForUnknownFilter(): void
     {
-        $dict = new PDFDictionary();
+        $dict = new PDFDictionary;
         $dict->addEntry('/Filter', new PDFName('UnknownFilter'));
 
         $this->expectException(FpdfException::class);

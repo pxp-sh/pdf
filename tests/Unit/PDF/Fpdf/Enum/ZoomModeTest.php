@@ -11,12 +11,11 @@ declare(strict_types=1);
  * @see https://github.com/pxp-sh/pdf
  *
  */
-
 namespace Test\Unit\PDF\Fpdf\Enum;
 
 use InvalidArgumentException;
-use Test\TestCase;
 use PXP\PDF\Fpdf\Enum\ZoomMode;
+use Test\TestCase;
 
 /**
  * @covers \PXP\PDF\Fpdf\Enum\ZoomMode
@@ -40,7 +39,7 @@ final class ZoomModeTest extends TestCase
 
     public function testDefaultCase(): void
     {
-        $this->assertSame('default', ZoomMode::DEFAULT ->value);
+        $this->assertSame('default', ZoomMode::DEFAULT->value);
     }
 
     public function testFromValueWithFloat(): void

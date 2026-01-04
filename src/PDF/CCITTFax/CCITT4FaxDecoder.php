@@ -11,8 +11,11 @@ declare(strict_types=1);
  * @see https://github.com/pxp-sh/pdf
  *
  */
-
 namespace PXP\PDF\CCITTFax;
+
+use function array_fill;
+use function count;
+use RuntimeException;
 
 class CCITT4FaxDecoder
 {
@@ -26,9 +29,12 @@ class CCITT4FaxDecoder
     {
         $this->width = $width;
         $this->buffer = new BitBuffer($bytes);
-        $this->modeCodes = new CCITTFaxModes();
-        $this->horizontalCodes = new CCITTFaxCodes();
+        $this->modeCodes = new CCITTFaxModes;
+        $this->horizontalCodes = new CCITTFaxCodes;
         $this->reverseColor = $reverseColor;
+
+        // Skip any leading fill bits (0x00 bytes) at the beginning
+        $this->skipFillBits();
     }
 
     /**
@@ -49,19 +55,30 @@ class CCITT4FaxDecoder
                 $linePos = 0;
                 $a0Color = 255; // start white
                 $curLine++;
+
                 if ($this->endOfBlock($this->buffer->getBuffer())) {
                     break;
                 }
             }
 
             // end on trailing zeros padding
-            [$v,] = $this->buffer->peak32();
+            [$v] = $this->buffer->peak32();
+
             if ($v === 0x00000000) {
                 break;
             }
 
             // mode lookup
-            $mode = $this->getMode();
+            try {
+                $mode = $this->getMode();
+            } catch (RuntimeException $e) {
+                // If we can't get a valid mode and we have lines, treat as end of stream
+                if (count($lines) > 0) {
+                    break;
+                }
+
+                throw $e;
+            }
             $this->buffer->flushBits($mode->bitsUsed);
 
             // act on mode
@@ -71,25 +88,31 @@ class CCITT4FaxDecoder
                         $this->getPreviousLine($lines, $curLine),
                         $linePos,
                         $a0Color,
-                        false
+                        false,
                     );
+
                     for ($p = $linePos; $p < $b2; $p++) {
                         $line[$linePos] = $a0Color;
                         $linePos++;
                     }
+
                     // a0 color should stay the same
                     break;
 
                 case Mode::Extension:
-                    throw new \RuntimeException('CCITTFax extensions not supported');
+                    // Extension mode is rarely used - skip it and continue
+                    // In most cases, this indicates a malformed stream that can be ignored
+                    continue 2;
 
                 case Mode::Horizontal:
                     $isWhite = $a0Color === 255;
 
                     $length = [0, 0];
                     $color = [127, 127];
+
                     for ($i = 0; $i < 2; $i++) {
                         $scan = true;
+
                         while ($scan) {
                             $h = $this->horizontalCodes->findMatch32($this->buffer->getBuffer(), $isWhite);
                             $this->buffer->flushBits($h->bitsUsed);
@@ -111,6 +134,7 @@ class CCITT4FaxDecoder
                             $linePos++;
                         }
                     }
+
                     // a0 color should stay the same
                     break;
 
@@ -122,11 +146,11 @@ class CCITT4FaxDecoder
                 case Mode::VerticalL3:
                 case Mode::VerticalR3:
                     $offset = $mode->getVerticalOffset();
-                    [$b1,] = $this->findBValues(
+                    [$b1] = $this->findBValues(
                         $this->getPreviousLine($lines, $curLine),
                         $linePos,
                         $a0Color,
-                        true
+                        true,
                     );
 
                     for ($i = $linePos; $i < $b1 + $offset; $i++) {
@@ -138,10 +162,11 @@ class CCITT4FaxDecoder
 
                     // a0 color changes
                     $a0Color = $this->reverseColorValue($a0Color);
+
                     break;
 
                 default:
-                    throw new \RuntimeException('unknown mode type');
+                    throw new RuntimeException('unknown mode type');
             }
         }
 
@@ -163,11 +188,12 @@ class CCITT4FaxDecoder
 
     private function endOfBlock(int $buffer): bool
     {
-        return ($buffer & 0xffffff00) === 0x00100100;
+        return ($buffer & 0xFFFFFF00) === 0x00100100;
     }
 
     /**
      * @param array<int, array<int, int>> $lines
+     *
      * @return array<int, int>
      */
     private function getPreviousLine(array $lines, int $currentLine): array
@@ -175,19 +201,22 @@ class CCITT4FaxDecoder
         if ($currentLine === 0) {
             return array_fill(0, $this->width, 255);
         }
+
         return $lines[$currentLine - 1];
     }
 
     /**
      * @param array<int, int> $refLine
+     *
      * @return array{int, int}
      */
     private function findBValues(array $refLine, int $a0pos, int $a0Color, bool $justb1): array
     {
         $other = $this->reverseColorValue($a0Color);
         $startPos = $a0pos;
+
         if ($startPos !== 0) {
-            $startPos += 1;
+            $startPos++;
         }
 
         $b1 = 0;
@@ -205,12 +234,14 @@ class CCITT4FaxDecoder
             if ($b1 !== 0) {
                 if ($curColor === $a0Color && $lastColor === $other) {
                     $b2 = $i;
+
                     return [$b1, $b2];
                 }
             }
 
             if ($curColor === $other && $lastColor === $a0Color) {
                 $b1 = $i;
+
                 if ($b2 !== 0 || $justb1) {
                     return [$b1, $b2];
                 }
@@ -228,7 +259,43 @@ class CCITT4FaxDecoder
 
     private function getMode(): ModeCode
     {
-        [$b8,] = $this->buffer->peak8();
+        [$b8, $valid] = $this->buffer->peak8();
+
+        if (!$valid) {
+            throw new RuntimeException('Unexpected end of stream while reading mode code');
+        }
+
+        // Skip fill bits (0x00 bytes) - these are valid padding in CCITT streams
+        while ($b8 === 0 && $this->buffer->available() >= 8) {
+            $this->buffer->getBits(8); // Consume the 0x00 byte
+            [$b8, $valid] = $this->buffer->peak8();
+
+            if (!$valid) {
+                throw new RuntimeException('End of stream after fill bits');
+            }
+        }
+
+        if ($b8 === 0) {
+            throw new RuntimeException('Invalid mode code 0x00 at end of stream');
+        }
+
         return $this->modeCodes->getMode($b8);
+    }
+
+    /**
+     * Skip leading fill bits (0x00 bytes) at the beginning of the stream.
+     * Fill bits are used for byte alignment and padding in CCITT streams.
+     */
+    private function skipFillBits(): void
+    {
+        while ($this->buffer->available() >= 8) {
+            [$b8] = $this->buffer->peak8();
+
+            if ($b8 === 0) {
+                $this->buffer->getBits(8); // Consume the 0x00 byte
+            } else {
+                break; // Found non-zero byte, stop skipping
+            }
+        }
     }
 }

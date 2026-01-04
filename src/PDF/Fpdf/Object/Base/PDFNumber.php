@@ -11,8 +11,11 @@ declare(strict_types=1);
  * @see https://github.com/pxp-sh/pdf
  *
  */
-
 namespace PXP\PDF\Fpdf\Object\Base;
+
+use function is_int;
+use function rtrim;
+use function sprintf;
 
 /**
  * Represents a PDF number (integer or float).
@@ -20,13 +23,8 @@ namespace PXP\PDF\Fpdf\Object\Base;
 final class PDFNumber extends PDFObject
 {
     public function __construct(
-        private readonly int|float $value,
+        private readonly float|int $value,
     ) {
-    }
-
-    public function getValue(): int|float
-    {
-        return $this->value;
     }
 
     public function __toString(): string
@@ -37,8 +35,12 @@ final class PDFNumber extends PDFObject
 
         // Format float with up to 5 decimal places, remove trailing zeros
         $formatted = rtrim(sprintf('%.5F', $this->value), '0');
-        $formatted = rtrim($formatted, '.');
 
-        return $formatted;
+        return rtrim($formatted, '.');
+    }
+
+    public function getValue(): float|int
+    {
+        return $this->value;
     }
 }

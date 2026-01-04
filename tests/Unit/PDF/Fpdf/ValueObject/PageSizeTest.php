@@ -11,12 +11,12 @@ declare(strict_types=1);
  * @see https://github.com/pxp-sh/pdf
  *
  */
-
 namespace Test\Unit\PDF\Fpdf\ValueObject;
 
 use InvalidArgumentException;
-use Test\TestCase;
 use PXP\PDF\Fpdf\ValueObject\PageSize;
+use ReflectionClass;
+use Test\TestCase;
 
 /**
  * @covers \PXP\PDF\Fpdf\ValueObject\PageSize
@@ -27,7 +27,7 @@ final class PageSizeTest extends TestCase
 
     public function testPageSizeIsReadonly(): void
     {
-        $reflection = new \ReflectionClass(PageSize::class);
+        $reflection = new ReflectionClass(PageSize::class);
         $this->assertTrue($reflection->isReadOnly());
     }
 
@@ -132,14 +132,14 @@ final class PageSizeTest extends TestCase
 
     public function testGetWidthInPoints(): void
     {
-        $pageSize = new PageSize(100.0, 200.0);
+        $pageSize    = new PageSize(100.0, 200.0);
         $scaleFactor = 2.0;
         $this->assertSame(200.0, $pageSize->getWidthInPoints($scaleFactor));
     }
 
     public function testGetHeightInPoints(): void
     {
-        $pageSize = new PageSize(100.0, 200.0);
+        $pageSize    = new PageSize(100.0, 200.0);
         $scaleFactor = 2.0;
         $this->assertSame(400.0, $pageSize->getHeightInPoints($scaleFactor));
     }

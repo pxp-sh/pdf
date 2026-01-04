@@ -11,24 +11,21 @@ declare(strict_types=1);
  * @see https://github.com/pxp-sh/pdf
  *
  */
-
 namespace Test\Unit\PDF\Fpdf\Structure;
 
-use Test\TestCase;
+use function sys_get_temp_dir;
 use PXP\PDF\Fpdf\Buffer\Buffer;
-use PXP\PDF\Fpdf\Color\ColorManager;
 use PXP\PDF\Fpdf\Enum\LayoutMode;
 use PXP\PDF\Fpdf\Enum\PageOrientation;
-use PXP\PDF\Fpdf\Enum\ZoomMode;
 use PXP\PDF\Fpdf\Font\FontManager;
 use PXP\PDF\Fpdf\Image\ImageHandler;
-use PXP\PDF\Fpdf\IO\FileIO;
 use PXP\PDF\Fpdf\Link\LinkManager;
 use PXP\PDF\Fpdf\Metadata\Metadata;
 use PXP\PDF\Fpdf\Page\PageManager;
 use PXP\PDF\Fpdf\Structure\PDFStructure;
 use PXP\PDF\Fpdf\Text\TextRenderer;
 use PXP\PDF\Fpdf\ValueObject\PageSize;
+use Test\TestCase;
 
 /**
  * @covers \PXP\PDF\Fpdf\Structure\PDFStructure
@@ -46,28 +43,28 @@ final class PDFStructureTest extends TestCase
 
     protected function setUp(): void
     {
-        $fileIO = self::createFileIO();
-        $this->buffer = new Buffer();
+        $fileIO            = self::createFileIO();
+        $this->buffer      = new Buffer;
         $this->pageManager = new PageManager(
             $fileIO,
             self::getLogger(),
-            self::getEventDispatcher()
+            self::getEventDispatcher(),
         );
         $this->fontManager = new FontManager(
             sys_get_temp_dir(),
             500,
             self::getLogger(),
-            self::getCache()
+            self::getCache(),
         );
         $this->imageHandler = new ImageHandler(
             $fileIO,
             $fileIO,
             self::getLogger(),
-            self::getCache()
+            self::getCache(),
         );
-        $this->linkManager = new LinkManager();
-        $this->metadata = new Metadata('Test Producer');
-        $this->textRenderer = new TextRenderer();
+        $this->linkManager  = new LinkManager;
+        $this->metadata     = new Metadata('Test Producer');
+        $this->textRenderer = new TextRenderer;
         $this->pdfStructure = new PDFStructure(
             $this->buffer,
             $this->pageManager,
@@ -81,7 +78,7 @@ final class PDFStructureTest extends TestCase
             withAlpha: false,
             pdfVersion: '1.3',
             logger: self::getLogger(),
-            dispatcher: self::getEventDispatcher()
+            dispatcher: self::getEventDispatcher(),
         );
     }
 
@@ -95,7 +92,7 @@ final class PDFStructureTest extends TestCase
             $pageSize,
             72.0 / 25.4,
             'default',
-            LayoutMode::DEFAULT
+            LayoutMode::DEFAULT,
         );
 
         $content = $this->buffer->getContent();
@@ -113,7 +110,7 @@ final class PDFStructureTest extends TestCase
             $pageSize,
             72.0 / 25.4,
             'default',
-            LayoutMode::DEFAULT
+            LayoutMode::DEFAULT,
         );
 
         $content = $this->buffer->getContent();
@@ -132,7 +129,7 @@ final class PDFStructureTest extends TestCase
             $pageSize,
             72.0 / 25.4,
             'default',
-            LayoutMode::DEFAULT
+            LayoutMode::DEFAULT,
         );
 
         $content = $this->buffer->getContent();
@@ -149,7 +146,7 @@ final class PDFStructureTest extends TestCase
             $pageSize,
             72.0 / 25.4,
             'default',
-            LayoutMode::DEFAULT
+            LayoutMode::DEFAULT,
         );
 
         $content = $this->buffer->getContent();
@@ -166,7 +163,7 @@ final class PDFStructureTest extends TestCase
             $pageSize,
             72.0 / 25.4,
             'default',
-            LayoutMode::DEFAULT
+            LayoutMode::DEFAULT,
         );
 
         $content = $this->buffer->getContent();
@@ -183,7 +180,7 @@ final class PDFStructureTest extends TestCase
             $pageSize,
             72.0 / 25.4,
             'fullpage',
-            LayoutMode::DEFAULT
+            LayoutMode::DEFAULT,
         );
 
         $content = $this->buffer->getContent();
@@ -200,7 +197,7 @@ final class PDFStructureTest extends TestCase
             $pageSize,
             72.0 / 25.4,
             'fullwidth',
-            LayoutMode::DEFAULT
+            LayoutMode::DEFAULT,
         );
 
         $content = $this->buffer->getContent();
@@ -217,7 +214,7 @@ final class PDFStructureTest extends TestCase
             $pageSize,
             72.0 / 25.4,
             'real',
-            LayoutMode::DEFAULT
+            LayoutMode::DEFAULT,
         );
 
         $content = $this->buffer->getContent();
@@ -234,7 +231,7 @@ final class PDFStructureTest extends TestCase
             $pageSize,
             72.0 / 25.4,
             150.0,
-            LayoutMode::DEFAULT
+            LayoutMode::DEFAULT,
         );
 
         $content = $this->buffer->getContent();
@@ -251,7 +248,7 @@ final class PDFStructureTest extends TestCase
             $pageSize,
             72.0 / 25.4,
             'default',
-            LayoutMode::SINGLE
+            LayoutMode::SINGLE,
         );
 
         $content = $this->buffer->getContent();
@@ -268,7 +265,7 @@ final class PDFStructureTest extends TestCase
             $pageSize,
             72.0 / 25.4,
             'default',
-            LayoutMode::CONTINUOUS
+            LayoutMode::CONTINUOUS,
         );
 
         $content = $this->buffer->getContent();
@@ -285,7 +282,7 @@ final class PDFStructureTest extends TestCase
             $pageSize,
             72.0 / 25.4,
             'default',
-            LayoutMode::TWO
+            LayoutMode::TWO,
         );
 
         $content = $this->buffer->getContent();
@@ -304,7 +301,7 @@ final class PDFStructureTest extends TestCase
             $pageSize,
             72.0 / 25.4,
             'default',
-            LayoutMode::DEFAULT
+            LayoutMode::DEFAULT,
         );
 
         $content = $this->buffer->getContent();
@@ -322,7 +319,7 @@ final class PDFStructureTest extends TestCase
             $pageSize,
             72.0 / 25.4,
             'default',
-            LayoutMode::DEFAULT
+            LayoutMode::DEFAULT,
         );
 
         $content = $this->buffer->getContent();
@@ -343,7 +340,7 @@ final class PDFStructureTest extends TestCase
             $pageSize,
             72.0 / 25.4,
             'default',
-            LayoutMode::DEFAULT
+            LayoutMode::DEFAULT,
         );
 
         $content = $this->buffer->getContent();
@@ -364,7 +361,7 @@ final class PDFStructureTest extends TestCase
             $pageSize,
             72.0 / 25.4,
             'default',
-            LayoutMode::DEFAULT
+            LayoutMode::DEFAULT,
         );
 
         $content = $this->buffer->getContent();
@@ -382,7 +379,7 @@ final class PDFStructureTest extends TestCase
             $pageSize,
             72.0 / 25.4,
             'default',
-            LayoutMode::DEFAULT
+            LayoutMode::DEFAULT,
         );
 
         $content = $this->buffer->getContent();

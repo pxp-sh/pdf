@@ -11,13 +11,12 @@ declare(strict_types=1);
  * @see https://github.com/pxp-sh/pdf
  *
  */
-
 namespace Test\Unit\PDF\Fpdf\Tree;
 
-use Test\TestCase;
 use PXP\PDF\Fpdf\Object\Base\PDFDictionary;
 use PXP\PDF\Fpdf\Tree\PDFObjectNode;
 use PXP\PDF\Fpdf\Tree\PDFObjectRegistry;
+use Test\TestCase;
 
 /**
  * @covers \PXP\PDF\Fpdf\Tree\PDFObjectRegistry
@@ -26,9 +25,9 @@ final class PDFObjectRegistryTest extends TestCase
 {
     public function testRegister(): void
     {
-        $registry = new PDFObjectRegistry();
-        $dict = new PDFDictionary();
-        $node = new PDFObjectNode(1, $dict);
+        $registry = new PDFObjectRegistry;
+        $dict     = new PDFDictionary;
+        $node     = new PDFObjectNode(1, $dict);
 
         $registry->register($node);
         $this->assertSame($node, $registry->get(1));
@@ -36,15 +35,15 @@ final class PDFObjectRegistryTest extends TestCase
 
     public function testGetReturnsNullForMissing(): void
     {
-        $registry = new PDFObjectRegistry();
+        $registry = new PDFObjectRegistry;
         $this->assertNull($registry->get(999));
     }
 
     public function testHas(): void
     {
-        $registry = new PDFObjectRegistry();
-        $dict = new PDFDictionary();
-        $node = new PDFObjectNode(1, $dict);
+        $registry = new PDFObjectRegistry;
+        $dict     = new PDFDictionary;
+        $node     = new PDFObjectNode(1, $dict);
 
         $registry->register($node);
         $this->assertTrue($registry->has(1));
@@ -53,9 +52,9 @@ final class PDFObjectRegistryTest extends TestCase
 
     public function testRemove(): void
     {
-        $registry = new PDFObjectRegistry();
-        $dict = new PDFDictionary();
-        $node = new PDFObjectNode(1, $dict);
+        $registry = new PDFObjectRegistry;
+        $dict     = new PDFDictionary;
+        $node     = new PDFObjectNode(1, $dict);
 
         $registry->register($node);
         $registry->remove(1);
@@ -64,16 +63,16 @@ final class PDFObjectRegistryTest extends TestCase
 
     public function testGetNextObjectNumber(): void
     {
-        $registry = new PDFObjectRegistry();
+        $registry = new PDFObjectRegistry;
         $this->assertSame(1, $registry->getNextObjectNumber());
         $this->assertSame(2, $registry->getNextObjectNumber());
     }
 
     public function testGetNextObjectNumberUpdatesAfterRegister(): void
     {
-        $registry = new PDFObjectRegistry();
-        $dict = new PDFDictionary();
-        $node = new PDFObjectNode(5, $dict);
+        $registry = new PDFObjectRegistry;
+        $dict     = new PDFDictionary;
+        $node     = new PDFObjectNode(5, $dict);
         $registry->register($node);
 
         $this->assertSame(6, $registry->getNextObjectNumber());
@@ -81,11 +80,11 @@ final class PDFObjectRegistryTest extends TestCase
 
     public function testRebuildObjectNumbers(): void
     {
-        $registry = new PDFObjectRegistry();
-        $dict1 = new PDFDictionary();
-        $dict2 = new PDFDictionary();
-        $node1 = new PDFObjectNode(10, $dict1);
-        $node2 = new PDFObjectNode(20, $dict2);
+        $registry = new PDFObjectRegistry;
+        $dict1    = new PDFDictionary;
+        $dict2    = new PDFDictionary;
+        $node1    = new PDFObjectNode(10, $dict1);
+        $node2    = new PDFObjectNode(20, $dict2);
 
         $registry->register($node1);
         $registry->register($node2);
@@ -98,10 +97,10 @@ final class PDFObjectRegistryTest extends TestCase
 
     public function testGetMaxObjectNumber(): void
     {
-        $registry = new PDFObjectRegistry();
+        $registry = new PDFObjectRegistry;
         $this->assertSame(0, $registry->getMaxObjectNumber());
 
-        $dict = new PDFDictionary();
+        $dict = new PDFDictionary;
         $node = new PDFObjectNode(5, $dict);
         $registry->register($node);
 

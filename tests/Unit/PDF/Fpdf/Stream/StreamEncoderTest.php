@@ -11,12 +11,12 @@ declare(strict_types=1);
  * @see https://github.com/pxp-sh/pdf
  *
  */
-
 namespace Test\Unit\PDF\Fpdf\Stream;
 
-use Test\TestCase;
+use function function_exists;
 use PXP\PDF\Fpdf\Exception\FpdfException;
 use PXP\PDF\Fpdf\Stream\StreamEncoder;
+use Test\TestCase;
 
 /**
  * @covers \PXP\PDF\Fpdf\Stream\StreamEncoder
@@ -27,7 +27,7 @@ final class StreamEncoderTest extends TestCase
 
     protected function setUp(): void
     {
-        $this->encoder = new StreamEncoder();
+        $this->encoder = new StreamEncoder;
     }
 
     public function testEncodeFlate(): void
@@ -36,7 +36,7 @@ final class StreamEncoderTest extends TestCase
             $this->markTestSkipped('zlib extension not available');
         }
 
-        $data = 'test data';
+        $data    = 'test data';
         $encoded = $this->encoder->encodeFlate($data);
 
         $this->assertNotSame($data, $encoded);
@@ -59,7 +59,7 @@ final class StreamEncoderTest extends TestCase
             $this->markTestSkipped('zlib extension not available');
         }
 
-        $data = 'test data';
+        $data    = 'test data';
         $encoded = $this->encoder->encode($data, ['FlateDecode']);
 
         $this->assertIsString($encoded);

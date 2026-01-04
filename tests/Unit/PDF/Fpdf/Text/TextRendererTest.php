@@ -11,11 +11,10 @@ declare(strict_types=1);
  * @see https://github.com/pxp-sh/pdf
  *
  */
-
 namespace Test\Unit\PDF\Fpdf\Text;
 
-use Test\TestCase;
 use PXP\PDF\Fpdf\Text\TextRenderer;
+use Test\TestCase;
 
 /**
  * @covers \PXP\PDF\Fpdf\Text\TextRenderer
@@ -26,7 +25,7 @@ final class TextRendererTest extends TestCase
 
     protected function setUp(): void
     {
-        $this->textRenderer = new TextRenderer();
+        $this->textRenderer = new TextRenderer;
     }
 
     public function testEscapeWithNoSpecialCharacters(): void
@@ -61,25 +60,25 @@ final class TextRendererTest extends TestCase
 
     public function testGetStringWidth(): void
     {
-        $cw = ['a' => 500, 'b' => 600, 'c' => 700];
+        $cw       = ['a' => 500, 'b' => 600, 'c' => 700];
         $fontSize = 12.0;
-        $result = $this->textRenderer->getStringWidth('abc', $cw, $fontSize);
+        $result   = $this->textRenderer->getStringWidth('abc', $cw, $fontSize);
         $this->assertSame((500 + 600 + 700) * 12.0 / 1000, $result);
     }
 
     public function testGetStringWidthWithUnknownCharacter(): void
     {
-        $cw = ['a' => 500];
+        $cw       = ['a' => 500];
         $fontSize = 12.0;
-        $result = $this->textRenderer->getStringWidth('ax', $cw, $fontSize);
+        $result   = $this->textRenderer->getStringWidth('ax', $cw, $fontSize);
         $this->assertSame((500 + 0) * 12.0 / 1000, $result);
     }
 
     public function testGetStringWidthWithEmptyString(): void
     {
-        $cw = ['a' => 500];
+        $cw       = ['a' => 500];
         $fontSize = 12.0;
-        $result = $this->textRenderer->getStringWidth('', $cw, $fontSize);
+        $result   = $this->textRenderer->getStringWidth('', $cw, $fontSize);
         $this->assertSame(0.0, $result);
     }
 

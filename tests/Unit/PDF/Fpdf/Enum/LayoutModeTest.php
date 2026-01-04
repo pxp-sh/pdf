@@ -11,12 +11,11 @@ declare(strict_types=1);
  * @see https://github.com/pxp-sh/pdf
  *
  */
-
 namespace Test\Unit\PDF\Fpdf\Enum;
 
 use InvalidArgumentException;
-use Test\TestCase;
 use PXP\PDF\Fpdf\Enum\LayoutMode;
+use Test\TestCase;
 
 /**
  * @covers \PXP\PDF\Fpdf\Enum\LayoutMode
@@ -40,7 +39,7 @@ final class LayoutModeTest extends TestCase
 
     public function testDefaultCase(): void
     {
-        $this->assertSame('default', LayoutMode::DEFAULT ->value);
+        $this->assertSame('default', LayoutMode::DEFAULT->value);
     }
 
     public function testFromStringWithSingle(): void
@@ -66,9 +65,9 @@ final class LayoutModeTest extends TestCase
 
     public function testFromStringWithDefault(): void
     {
-        $this->assertSame(LayoutMode::DEFAULT , LayoutMode::fromString('default'));
-        $this->assertSame(LayoutMode::DEFAULT , LayoutMode::fromString('DEFAULT'));
-        $this->assertSame(LayoutMode::DEFAULT , LayoutMode::fromString('Default'));
+        $this->assertSame(LayoutMode::DEFAULT, LayoutMode::fromString('default'));
+        $this->assertSame(LayoutMode::DEFAULT, LayoutMode::fromString('DEFAULT'));
+        $this->assertSame(LayoutMode::DEFAULT, LayoutMode::fromString('Default'));
     }
 
     public function testFromStringThrowsExceptionForInvalidValue(): void
