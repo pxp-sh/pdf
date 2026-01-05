@@ -42,6 +42,7 @@ use function preg_quote;
 use function preg_replace;
 use function realpath;
 use function round;
+use function spl_object_id;
 use function strlen;
 use function sys_get_temp_dir;
 use Exception;
@@ -1078,6 +1079,10 @@ class PDFMerger
                 $sourceDocCache = [];
             }
 
+            if (!isset($globalObjectMap)) {
+                $globalObjectMap = [];
+            }
+
             if ($pageData['resources'] !== null) {
                 $this->copyResourcesForPage(
                     $pageData['resources'],
@@ -1088,6 +1093,7 @@ class PDFMerger
                     $resourceNameMap,
                     $localResourceMap,
                     $sourceDocCache,
+                    $globalObjectMap,
                 );
             } else {
                 $emptyResources = new ResourcesDictionary;
@@ -1252,8 +1258,16 @@ class PDFMerger
 
             $mediaBox = $pageData['mediaBox'] ?? $defaultMediaBox;
 
-            if ($pageData['hasMediaBox']) {
-                $newPageDict->setMediaBox($mediaBox);
+            // Set MediaBox if page has its own OR if it differs from default
+            // This ensures portrait/landscape differences are preserved
+            if ($pageData['mediaBox'] !== null) {
+                $needsOwnMediaBox = $pageData['hasMediaBox'] ||
+                    $defaultMediaBox === null ||
+                    $pageData['mediaBox'] !== $defaultMediaBox;
+
+                if ($needsOwnMediaBox) {
+                    $newPageDict->setMediaBox($mediaBox);
+                }
             }
 
             // Preserve additional page-level entries that affect rendering (e.g., /Group, /Annots, rotate and crop boxes)
@@ -1337,7 +1351,8 @@ class PDFMerger
         int &$nextObjectNumber,
         array &$resourceNameMap,
         array &$localResourceMap = [],
-        array &$sourceDocCache = []
+        array &$sourceDocCache = [],
+        array &$globalObjectMap = []
     ): void {
         // Resolve source document if a path was provided. Use a local cache so we don't re-parse the same file for every page.
         if (is_string($sourceDocOrPath)) {
@@ -1356,7 +1371,10 @@ class PDFMerger
 
         // Use similar approach to PDFSplitter's copyResourcesWithReferences
         $newResources = new ResourcesDictionary;
-        $objectMap    = [];
+        // Use global object map that persists across all pages to prevent number conflicts
+        // Key by document ID + object number to avoid collisions between different source PDFs
+        $docId     = spl_object_id($sourceDoc);
+        $objectMap = &$globalObjectMap;
 
         // Copy ProcSet
         $procSet = $resourcesDict->getEntry('/ProcSet');
@@ -1394,26 +1412,35 @@ class PDFMerger
                     $fontNode = $sourceDoc->getObject($fontRef->getObjectNumber());
 
                     if ($fontNode !== null) {
-                        $fontObj    = $fontNode->getValue();
+                        $fontObj      = $fontNode->getValue();
+                        $sourceObjNum = $fontRef->getObjectNumber();
+
+                        // Pre-allocate object number BEFORE copying to avoid mismatch
+                        $fontObjNum                            = $nextObjectNumber;
+                        $objectMap["{$docId}:{$sourceObjNum}"] = $fontObjNum;
+                        $nextObjectNumber++;
+
                         $copiedFont = $this->copyObjectWithReferences($fontObj, $sourceDoc, $targetDoc, $nextObjectNumber, $objectMap, $copyingObjects);
-                        $targetDoc->addObject($copiedFont, $nextObjectNumber);
-                        $newFonts->addEntry($uniqueFontName, new PDFReference($nextObjectNumber));
+                        $targetDoc->addObject($copiedFont, $fontObjNum);
+                        $newFonts->addEntry($uniqueFontName, new PDFReference($fontObjNum));
 
                         // If we had to rename it to keep global uniqueness, also add the original name as an alias
                         if ($uniqueFontName !== $fontName) {
-                            $newFonts->addEntry($fontName, new PDFReference($nextObjectNumber));
+                            $newFonts->addEntry($fontName, new PDFReference($fontObjNum));
                         }
-                        $nextObjectNumber++;
                     }
                 } elseif ($fontRef instanceof PDFDictionary) {
+                    // Pre-allocate object number BEFORE copying
+                    $fontObjNum = $nextObjectNumber;
+                    $nextObjectNumber++;
+
                     $copiedFont = $this->copyObjectWithReferences($fontRef, $sourceDoc, $targetDoc, $nextObjectNumber, $objectMap, $copyingObjects);
-                    $targetDoc->addObject($copiedFont, $nextObjectNumber);
-                    $newFonts->addEntry($uniqueFontName, new PDFReference($nextObjectNumber));
+                    $targetDoc->addObject($copiedFont, $fontObjNum);
+                    $newFonts->addEntry($uniqueFontName, new PDFReference($fontObjNum));
 
                     if ($uniqueFontName !== $fontName) {
-                        $newFonts->addEntry($fontName, new PDFReference($nextObjectNumber));
+                        $newFonts->addEntry($fontName, new PDFReference($fontObjNum));
                     }
-                    $nextObjectNumber++;
                 }
             }
 
@@ -1444,26 +1471,36 @@ class PDFMerger
                     $xObjectNode = $sourceDoc->getObject($xObjectRef->getObjectNumber());
 
                     if ($xObjectNode !== null) {
-                        $xObjectObj    = $xObjectNode->getValue();
+                        $xObjectObj   = $xObjectNode->getValue();
+                        $sourceObjNum = $xObjectRef->getObjectNumber();
+
+                        // Pre-allocate object number BEFORE copying to avoid mismatch
+                        $xObjectObjNum      = $nextObjectNumber;
+                        $mapKey             = "{$docId}:{$sourceObjNum}";
+                        $objectMap[$mapKey] = $xObjectObjNum;
+                        $nextObjectNumber++;
+
                         $copiedXObject = $this->copyObjectWithReferences($xObjectObj, $sourceDoc, $targetDoc, $nextObjectNumber, $objectMap, $copyingObjects);
-                        $targetDoc->addObject($copiedXObject, $nextObjectNumber);
-                        $newXObjects->addEntry($uniqueXObjectName, new PDFReference($nextObjectNumber));
+                        $targetDoc->addObject($copiedXObject, $xObjectObjNum);
+                        $newXObjects->addEntry($uniqueXObjectName, new PDFReference($xObjectObjNum));
 
                         // Also add original name as alias if we had to rename
                         if ($uniqueXObjectName !== $xObjectName) {
-                            $newXObjects->addEntry($xObjectName, new PDFReference($nextObjectNumber));
+                            $newXObjects->addEntry($xObjectName, new PDFReference($xObjectObjNum));
                         }
-                        $nextObjectNumber++;
                     }
                 } elseif ($xObjectRef instanceof PDFStream) {
+                    // Pre-allocate object number BEFORE copying
+                    $xObjectObjNum = $nextObjectNumber;
+                    $nextObjectNumber++;
+
                     $copiedXObject = $this->copyObjectWithReferences($xObjectRef, $sourceDoc, $targetDoc, $nextObjectNumber, $objectMap, $copyingObjects);
-                    $targetDoc->addObject($copiedXObject, $nextObjectNumber);
-                    $newXObjects->addEntry($uniqueXObjectName, new PDFReference($nextObjectNumber));
+                    $targetDoc->addObject($copiedXObject, $xObjectObjNum);
+                    $newXObjects->addEntry($uniqueXObjectName, new PDFReference($xObjectObjNum));
 
                     if ($uniqueXObjectName !== $xObjectName) {
-                        $newXObjects->addEntry($xObjectName, new PDFReference($nextObjectNumber));
+                        $newXObjects->addEntry($xObjectName, new PDFReference($xObjectObjNum));
                     }
-                    $nextObjectNumber++;
                 }
             }
             $newResources->addEntry('/XObject', $newXObjects);
@@ -1480,11 +1517,17 @@ class PDFMerger
 
                 if ($refNode !== null) {
                     $refObj         = $refNode->getValue();
+                    $sourceObjNum   = $value->getObjectNumber();
                     $copyingObjects = [];
-                    $copiedObj      = $this->copyObjectWithReferences($refObj, $sourceDoc, $targetDoc, $nextObjectNumber, $objectMap, $copyingObjects);
-                    $targetDoc->addObject($copiedObj, $nextObjectNumber);
-                    $newResources->addEntry($key, new PDFReference($nextObjectNumber));
+
+                    // Pre-allocate object number BEFORE copying
+                    $resourceObjNum                        = $nextObjectNumber;
+                    $objectMap["{$docId}:{$sourceObjNum}"] = $resourceObjNum;
                     $nextObjectNumber++;
+
+                    $copiedObj = $this->copyObjectWithReferences($refObj, $sourceDoc, $targetDoc, $nextObjectNumber, $objectMap, $copyingObjects);
+                    $targetDoc->addObject($copiedObj, $resourceObjNum);
+                    $newResources->addEntry($key, new PDFReference($resourceObjNum));
                 }
             } elseif ($value instanceof PDFDictionary || $value instanceof PDFArray) {
                 $copyingObjects = [];
@@ -1509,19 +1552,22 @@ class PDFMerger
         array &$objectMap = [],
         array &$copyingObjects = []
     ): PDFObjectInterface {
+        $docId = spl_object_id($sourceDoc);
+
         if ($obj instanceof PDFReference) {
             $oldObjNum = $obj->getObjectNumber();
+            $mapKey    = "{$docId}:{$oldObjNum}";
 
-            if (isset($objectMap[$oldObjNum])) {
-                return new PDFReference($objectMap[$oldObjNum]);
+            if (isset($objectMap[$mapKey])) {
+                return new PDFReference($objectMap[$mapKey]);
             }
 
             if (isset($copyingObjects[$oldObjNum])) {
-                if (isset($objectMap[$oldObjNum])) {
-                    return new PDFReference($objectMap[$oldObjNum]);
+                if (isset($objectMap[$mapKey])) {
+                    return new PDFReference($objectMap[$mapKey]);
                 }
-                $newObjNum             = $nextObjectNumber;
-                $objectMap[$oldObjNum] = $newObjNum;
+                $newObjNum          = $nextObjectNumber;
+                $objectMap[$mapKey] = $newObjNum;
                 $nextObjectNumber++;
 
                 return new PDFReference($newObjNum);
@@ -1532,8 +1578,8 @@ class PDFMerger
             if ($refNode !== null) {
                 $refObj = $refNode->getValue();
 
-                $newObjNum             = $nextObjectNumber;
-                $objectMap[$oldObjNum] = $newObjNum;
+                $newObjNum          = $nextObjectNumber;
+                $objectMap[$mapKey] = $newObjNum;
                 $nextObjectNumber++;
 
                 $copyingObjects[$oldObjNum] = true;
@@ -1817,6 +1863,39 @@ class PDFMerger
             if (count($values) >= 4) {
                 $mediaBox    = [$values[0], $values[1], $values[2], $values[3]];
                 $hasMediaBox = true;
+            }
+        }
+
+        // If page doesn't have its own MediaBox, inherit from parent
+        if ($mediaBox === null) {
+            $parentRef = $pageDict->getEntry('/Parent');
+
+            if ($parentRef instanceof PDFReference) {
+                $parentNode = $sourceDoc->getObject($parentRef->getObjectNumber());
+
+                if ($parentNode !== null) {
+                    $parentDict = $parentNode->getValue();
+
+                    if ($parentDict instanceof PDFDictionary) {
+                        $parentMediaBoxEntry = $parentDict->getEntry('/MediaBox');
+
+                        if ($parentMediaBoxEntry instanceof MediaBoxArray) {
+                            $mediaBox = $parentMediaBoxEntry->getValues();
+                        } elseif ($parentMediaBoxEntry instanceof PDFArray) {
+                            $values = [];
+
+                            foreach ($parentMediaBoxEntry->getAll() as $item) {
+                                if ($item instanceof PDFNumber) {
+                                    $values[] = (float) $item->getValue();
+                                }
+                            }
+
+                            if (count($values) >= 4) {
+                                $mediaBox = [$values[0], $values[1], $values[2], $values[3]];
+                            }
+                        }
+                    }
+                }
             }
         }
 

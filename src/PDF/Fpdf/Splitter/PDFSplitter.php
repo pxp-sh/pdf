@@ -14,16 +14,26 @@ declare(strict_types=1);
 namespace PXP\PDF\Fpdf\Splitter;
 
 use function array_map;
+use function array_merge;
+use function array_slice;
+use function array_unique;
+use function array_values;
 use function basename;
 use function count;
 use function dirname;
 use function fclose;
 use function fwrite;
 use function gc_collect_cycles;
+use function gzinflate;
+use function gzuncompress;
+use function implode;
 use function in_array;
 use function is_dir;
+use function ltrim;
+use function memory_get_usage;
 use function microtime;
 use function mkdir;
+use function preg_match_all;
 use function realpath;
 use function round;
 use function rtrim;
@@ -126,8 +136,9 @@ final class PDFSplitter
         ]);
 
         // Clear cache periodically to manage memory for large PDFs
-        // Use smaller interval (50) with streaming for more aggressive cleanup
-        $cacheClearInterval = 50;
+        // Use smaller interval (25) with streaming for more aggressive cleanup
+        // Reduced from 50 to 25 to prevent memory accumulation
+        $cacheClearInterval = 25;
 
         for ($pageNum = 1; $pageNum <= $totalPages; $pageNum++) {
             $filename   = sprintf($filenamePattern, $pageNum);
@@ -144,13 +155,23 @@ final class PDFSplitter
 
             // Clear cache periodically to free memory
             if ($pageNum % $cacheClearInterval === 0) {
+                $memBefore = memory_get_usage(true);
                 $this->logger->debug('Clearing cache for memory management', [
                     'page_number'          => $pageNum,
                     'cache_clear_interval' => $cacheClearInterval,
+                    'memory_before_mb'     => round($memBefore / 1024 / 1024, 2),
                 ]);
+
                 $this->document->getObjectRegistry()->clearCache();
+
                 // Force garbage collection to free memory
                 gc_collect_cycles();
+
+                $memAfter = memory_get_usage(true);
+                $this->logger->debug('Cache cleared', [
+                    'memory_freed_mb' => round(($memBefore - $memAfter) / 1024 / 1024, 2),
+                    'memory_after_mb' => round($memAfter / 1024 / 1024, 2),
+                ]);
             }
         }
 
@@ -234,8 +255,12 @@ final class PDFSplitter
             fclose($handle);
         }
 
-        // Free memory immediately
-        unset($pageNode, $pageDict);
+        // Aggressive memory cleanup
+        unset($pageNode, $pageDict, $bytesWritten);
+
+        // Clear document object cache for this page
+        $this->document->getObjectRegistry()->clearCache();
+
         gc_collect_cycles();
     }
 
@@ -436,6 +461,7 @@ final class PDFSplitter
         // Get Contents - can be a single reference or an array of references
         $contentsRef    = $pageDict->getEntry('/Contents');
         $contentStreams = [];
+        $allEncoded     = true; // Track if all streams are already encoded
 
         if ($contentsRef instanceof PDFReference) {
             // Single content stream
@@ -465,12 +491,108 @@ final class PDFSplitter
             }
         }
 
-        // Combine all content streams into one
+        // Combine all content streams - prefer using encoded data if available
         $combinedContent = '';
+        $hasCompression  = false;
 
-        foreach ($contentStreams as $stream) {
-            $combinedContent .= $stream->getDecodedData();
+        // Log content stream analysis
+        $this->logger->debug('Content stream analysis started', [
+            'total_streams' => count($contentStreams),
+        ]);
+
+        // Check if we can use encoded data (all streams have same compression)
+        $firstHasCompression = false;
+
+        if (!empty($contentStreams)) {
+            $firstHasCompression = $contentStreams[0]->hasFilter('FlateDecode');
+            $allSameCompression  = true;
+
+            foreach ($contentStreams as $stream) {
+                if ($stream->hasFilter('FlateDecode') !== $firstHasCompression) {
+                    $allSameCompression = false;
+
+                    break;
+                }
+            }
+
+            // Log individual stream sizes before processing
+            $totalEncodedSize = 0;
+            $totalDecodedSize = 0;
+
+            foreach ($contentStreams as $index => $stream) {
+                $encodedSize = strlen($stream->getEncodedData());
+                $decodedSize = strlen($stream->getDecodedData());
+                $totalEncodedSize += $encodedSize;
+                $totalDecodedSize += $decodedSize;
+
+                $this->logger->debug("Content stream #{$index}", [
+                    'encoded_size'      => $encodedSize,
+                    'decoded_size'      => $decodedSize,
+                    'has_flate'         => $stream->hasFilter('FlateDecode'),
+                    'compression_ratio' => $encodedSize > 0 ? round($decodedSize / $encodedSize, 2) : 0,
+                ]);
+            }
+
+            $this->logger->debug('Content streams total sizes', [
+                'total_encoded'         => $totalEncodedSize,
+                'total_decoded'         => $totalDecodedSize,
+                'all_same_compression'  => $allSameCompression,
+                'first_has_compression' => $firstHasCompression,
+            ]);
+
+            // If all have same compression, we must decode to combine
+            // Otherwise copy the first stream's data only to save memory
+            if (count($contentStreams) === 1) {
+                // Single stream - can use encoded data directly
+                $combinedContent = $contentStreams[0]->getEncodedData();
+                $hasCompression  = $firstHasCompression;
+                $allEncoded      = true;
+
+                $this->logger->debug('Single content stream - using encoded data', [
+                    'encoded_size'    => strlen($combinedContent),
+                    'has_compression' => $hasCompression,
+                ]);
+            } else {
+                // Multiple streams - must decode and combine
+                $this->logger->debug('Multiple content streams - decoding and combining', [
+                    'stream_count' => count($contentStreams),
+                ]);
+
+                foreach ($contentStreams as $index => $stream) {
+                    $decodedData = $stream->getDecodedData();
+                    $beforeSize  = strlen($combinedContent);
+                    $combinedContent .= $decodedData;
+                    $afterSize = strlen($combinedContent);
+
+                    $this->logger->debug("Concatenated stream #{$index}", [
+                        'bytes_added'  => strlen($decodedData),
+                        'total_before' => $beforeSize,
+                        'total_after'  => $afterSize,
+                    ]);
+
+                    unset($decodedData, $contentStreams[$index]);
+                }
+                $hasCompression = $firstHasCompression;
+                $allEncoded     = false;
+
+                $this->logger->debug('Content streams combined', [
+                    'final_size'      => strlen($combinedContent),
+                    'will_recompress' => $hasCompression,
+                ]);
+            }
         }
+
+        unset($contentStreams);
+
+        if (!$allEncoded && strlen($combinedContent) > 1024 * 1024) {
+            gc_collect_cycles();
+        }
+
+        $this->logger->debug('After content processing', [
+            'content_length'   => strlen($combinedContent),
+            'content_is_empty' => empty($combinedContent),
+            'all_encoded'      => $allEncoded,
+        ]);
 
         // Get Resources - can be a reference or inline dictionary
         $resourcesRef  = $pageDict->getEntry('/Resources');
@@ -491,6 +613,67 @@ final class PDFSplitter
             $resourcesDict = $resourcesRef;
         }
 
+        // Analyze content to find used resources (for filtering)
+        $usedResources = null;
+
+        if (!empty($combinedContent)) {
+            // We need decoded content for analysis
+            $contentForAnalysis = $combinedContent;
+
+            $this->logger->debug('Content analysis setup', [
+                'content_size'    => strlen($combinedContent),
+                'all_encoded'     => $allEncoded,
+                'has_compression' => $hasCompression,
+            ]);
+
+            // If content is still encoded (single stream case with allEncoded=true),
+            // we need to decode it for analysis
+            if ($allEncoded && $hasCompression) {
+                // Content is encoded, need to decode for analysis
+                $this->logger->debug('Attempting to decode content for analysis');
+
+                // Use gzuncompress first
+                $contentForAnalysis = @gzuncompress($combinedContent);
+
+                if ($contentForAnalysis === false) {
+                    // Try gzinflate as fallback
+                    $this->logger->debug('gzuncompress failed, trying gzinflate');
+                    $contentForAnalysis = @gzinflate($combinedContent);
+
+                    if ($contentForAnalysis === false) {
+                        // Decoding failed, analyze what we have
+                        $this->logger->warning('Failed to decode content for resource analysis');
+                        $contentForAnalysis = $combinedContent;
+                    } else {
+                        $this->logger->debug('Successfully decoded with gzinflate', [
+                            'decoded_size' => strlen($contentForAnalysis),
+                        ]);
+                    }
+                } else {
+                    $this->logger->debug('Successfully decoded with gzuncompress', [
+                        'decoded_size' => strlen($contentForAnalysis),
+                    ]);
+                }
+            }
+
+            $usedResources = $this->analyzeUsedResources($contentForAnalysis);
+
+            // Expand XObject dependencies recursively (Form XObjects may reference other XObjects)
+            if ($resourcesDict !== null && !empty($usedResources['xobjects'])) {
+                $expandedResources = $this->expandXObjectDependencies(
+                    $usedResources['xobjects'],
+                    $resourcesDict,
+                );
+
+                // Merge expanded resources with original
+                $usedResources['xobjects'] = $expandedResources['xobjects'];
+                $usedResources['fonts']    = array_unique(array_merge(
+                    $usedResources['fonts'],
+                    $expandedResources['fonts'],
+                ));
+            }
+        }
+
         // Create new document with cache-enabled registry
         $registry = new PDFObjectRegistry(null, null, null, null, null, $this->cache, $this->logger);
         $newDoc   = new PDFDocument('1.3', $registry);
@@ -505,11 +688,11 @@ final class PDFSplitter
         $pagesDict->addEntry('/MediaBox', new MediaBoxArray($mediaBox));
         $pagesNode = $newDoc->addObject($pagesDict, 1);
 
-        // Object 2: Resources - copy and resolve all references
+        // Object 2: Resources - copy and resolve all references with filtering
         $nextObjectNumber = 6; // Start after catalog (5)
 
         if ($resourcesDict !== null) {
-            $newResourcesDict = $this->copyResourcesWithReferences($resourcesDict, $newDoc, $nextObjectNumber);
+            $newResourcesDict = $this->copyResourcesWithReferences($resourcesDict, $newDoc, $nextObjectNumber, $usedResources);
             $newDoc->addObject($newResourcesDict, 2);
         } else {
             $emptyResources = new ResourcesDictionary;
@@ -532,18 +715,19 @@ final class PDFSplitter
         if (!empty($combinedContent)) {
             // Create new stream with combined content
             $streamDict = new PDFDictionary;
-            // Use FlateDecode if original had compression, otherwise no filter
-            $hasCompression = false;
 
-            if (!empty($contentStreams)) {
-                $firstStream    = $contentStreams[0];
-                $hasCompression = $firstStream->hasFilter('FlateDecode');
-            }
-
-            $newStream = new PDFStream($streamDict, $combinedContent, false);
-
-            if ($hasCompression) {
+            // If content is already encoded, use it directly
+            if ($allEncoded && $hasCompression) {
+                $newStream = new PDFStream($streamDict, '', true);
+                $newStream->setEncodedData($combinedContent);
                 $newStream->addFilter('FlateDecode');
+            } else {
+                // Content is decoded, create stream normally
+                $newStream = new PDFStream($streamDict, $combinedContent, false);
+
+                if ($hasCompression) {
+                    $newStream->addFilter('FlateDecode');
+                }
             }
             $newDoc->addObject($newStream, 4);
         } else {
@@ -551,6 +735,9 @@ final class PDFSplitter
             $emptyStream = new PDFStream(new PDFDictionary, '');
             $newDoc->addObject($emptyStream, 4);
         }
+
+        // Clear content immediately
+        unset($combinedContent);
 
         // Object 5: Catalog
         $catalog = new CatalogDictionary;
@@ -563,18 +750,186 @@ final class PDFSplitter
     }
 
     /**
+     * Analyze content stream to identify which resources are actually used.
+     *
+     * This method parses the PDF content stream operators to find references
+     * to fonts (Tf operator) and XObjects (Do operator).
+     *
+     * @param string $contentData The decoded content stream data
+     *
+     * @return array{fonts: array<string>, xobjects: array<string>} Array of used resource names
+     */
+    private function analyzeUsedResources(string $contentData): array
+    {
+        $used = ['fonts' => [], 'xobjects' => []];
+
+        // Match font references: /F1 Tf, /F2 12 Tf, etc.
+        // Pattern: /FontName size Tf
+        if (preg_match_all('/\/([A-Za-z][A-Za-z0-9_]*)\s+[\d.]+\s+Tf/', $contentData, $matches)) {
+            $used['fonts'] = array_values(array_unique($matches[1]));
+        }
+
+        // Match XObject (including images and form XObjects) references: /TPL0 Do, /I1 Do, etc.
+        // Pattern: /XObjectName Do
+        if (preg_match_all('/\/([A-Za-z][A-Za-z0-9_]*)\s+Do/', $contentData, $matches)) {
+            $used['xobjects'] = array_values(array_unique($matches[1]));
+        }
+
+        $this->logger->debug('Analyzed content stream for resource usage', [
+            'fonts_found'    => count($used['fonts']),
+            'xobjects_found' => count($used['xobjects']),
+            'fonts'          => implode(', ', array_slice($used['fonts'], 0, 20)),
+            'xobjects'       => implode(', ', array_slice($used['xobjects'], 0, 20)),
+        ]);
+
+        return $used;
+    }
+
+    /**
+     * Recursively expand XObject dependencies.
+     *
+     * Form XObjects can contain references to other XObjects (images, other forms, etc.).
+     * This method recursively analyzes Form XObjects to find all transitive Form XObject dependencies.
+     *
+     * IMPORTANT: Nested resources WITHIN a Form XObject (like images in TPL529's resources)
+     * are automatically copied when the Form XObject is copied. We only need to track
+     * which Form XObjects transitively reference other Form XObjects.
+     *
+     * @param array<string> $xobjects      Initial list of XObject names
+     * @param PDFDictionary $resourcesDict Original resources dictionary
+     * @param int           $maxDepth      Maximum recursion depth (prevent infinite loops)
+     *
+     * @return array{fonts: array<string>, xobjects: array<string>} Expanded resource dependencies (only top-level XObjects)
+     */
+    private function expandXObjectDependencies(array $xobjects, PDFDictionary $resourcesDict, int $maxDepth = 10): array
+    {
+        $allFonts    = [];
+        $allXObjects = $xobjects;
+        $processed   = [];
+        $toProcess   = $xobjects;
+        $depth       = 0;
+
+        $xobjEntry = $resourcesDict->getEntry('/XObject');
+
+        if (!$xobjEntry instanceof PDFDictionary) {
+            // No XObjects in resources
+            return ['fonts' => [], 'xobjects' => $xobjects];
+        }
+
+        while (!empty($toProcess) && $depth < $maxDepth) {
+            $currentBatch = $toProcess;
+            $toProcess    = [];
+
+            foreach ($currentBatch as $xobjName) {
+                if (isset($processed[$xobjName])) {
+                    continue; // Already processed
+                }
+                $processed[$xobjName] = true;
+
+                // Get the XObject from main resources dictionary
+                $xobjRef = $xobjEntry->getEntry('/' . $xobjName);
+
+                if (!$xobjRef instanceof PDFReference) {
+                    continue; // Not found in main resources
+                }
+
+                // Get the XObject itself
+                $xobjNode = $this->document->getObject($xobjRef->getObjectNumber());
+
+                if ($xobjNode === null) {
+                    continue;
+                }
+
+                $xobjValue = $xobjNode->getValue();
+
+                if (!$xobjValue instanceof PDFStream) {
+                    continue;
+                }
+
+                // Check if it's a Form XObject
+                $xobjDict = $xobjValue->getDictionary();
+                $subtype  = $xobjDict->getEntry('/Subtype');
+
+                if (!$subtype instanceof PDFName || $subtype->getName() !== 'Form') {
+                    // Not a Form XObject (probably an Image), no nested processing needed
+                    continue;
+                }
+
+                // It's a Form XObject - analyze its content stream for OTHER Form XObjects
+                $formContent     = $xobjValue->getDecodedData();
+                $nestedResources = $this->analyzeUsedResources($formContent);
+
+                // IMPORTANT: Only add fonts from nested analysis
+                // XObjects referenced in the Form's content might be:
+                // 1. In the Form's own /Resources - automatically copied with the Form
+                // 2. In the main resources - we need to ensure they're in our filter
+                foreach ($nestedResources['fonts'] as $font) {
+                    if (!in_array($font, $allFonts, true)) {
+                        $allFonts[] = $font;
+                    }
+                }
+
+                // For XObjects referenced in the Form's content:
+                // Only process those that exist in the MAIN resources (not nested)
+                foreach ($nestedResources['xobjects'] as $nestedXObj) {
+                    // Check if this XObject exists in the main resources dictionary
+                    $nestedXObjRef = $xobjEntry->getEntry('/' . $nestedXObj);
+
+                    if ($nestedXObjRef instanceof PDFReference) {
+                        // It exists in main resources - add it to our list
+                        if (!in_array($nestedXObj, $allXObjects, true)) {
+                            $allXObjects[] = $nestedXObj;
+
+                            if (!isset($processed[$nestedXObj])) {
+                                $toProcess[] = $nestedXObj;
+                            }
+                        }
+                    }
+                    // If it doesn't exist in main resources, it's in the Form's nested resources
+                    // and will be automatically copied when we copy the Form XObject
+                }
+            }
+
+            $depth++;
+        }
+
+        if ($depth >= $maxDepth) {
+            $this->logger->warning('XObject dependency expansion hit max depth', [
+                'max_depth'      => $maxDepth,
+                'xobjects_found' => count($allXObjects),
+            ]);
+        }
+
+        $this->logger->debug('Expanded XObject dependencies recursively', [
+            'initial_xobjects'  => count($xobjects),
+            'expanded_xobjects' => count($allXObjects),
+            'fonts_from_forms'  => count($allFonts),
+            'recursion_depth'   => $depth,
+        ]);
+
+        return [
+            'fonts'    => $allFonts,
+            'xobjects' => $allXObjects,
+        ];
+    }
+
+    /**
      * Copy resources dictionary and resolve all references to objects in the new document.
      *
-     * @param PDFDictionary $resourcesDict    Original resources dictionary
-     * @param PDFDocument   $newDoc           New document to add objects to
-     * @param int           $nextObjectNumber Next available object number
+     * Optionally filters resources to only include those actually used in the content stream.
+     *
+     * @param PDFDictionary                     $resourcesDict    Original resources dictionary
+     * @param PDFDocument                       $newDoc           New document to add objects to
+     * @param int                               $nextObjectNumber Next available object number
+     * @param null|array<string, array<string>> $usedResources    Optional filter for resources (from analyzeUsedResources)
      *
      * @return ResourcesDictionary New resources dictionary with resolved references
      */
     private function copyResourcesWithReferences(
         PDFDictionary $resourcesDict,
         PDFDocument $newDoc,
-        int &$nextObjectNumber
+        int &$nextObjectNumber,
+        ?array $usedResources = null
     ): ResourcesDictionary {
         $newResources = new ResourcesDictionary;
         $objectMap    = []; // Track copied objects to avoid duplicates
@@ -593,13 +948,25 @@ final class PDFSplitter
             );
         }
 
-        // Copy Fonts
+        // Copy Fonts (with optional filtering)
         $fonts = $resourcesDict->getEntry('/Font');
 
         if ($fonts instanceof PDFDictionary) {
-            $newFonts = new PDFDictionary;
+            $newFonts     = new PDFDictionary;
+            $fontsSkipped = 0;
 
             foreach ($fonts->getAllEntries() as $fontName => $fontRef) {
+                // Filter: Skip fonts not used in content stream
+                if ($usedResources !== null && !empty($usedResources['fonts'])) {
+                    $fontShortName = ltrim($fontName, '/');
+
+                    if (!in_array($fontShortName, $usedResources['fonts'], true)) {
+                        $fontsSkipped++;
+
+                        continue;
+                    }
+                }
+
                 $copyingObjects = [];
 
                 if ($fontRef instanceof PDFReference) {
@@ -625,15 +992,34 @@ final class PDFSplitter
             if (count($newFonts->getAllEntries()) > 0) {
                 $newResources->addEntry('/Font', $newFonts);
             }
+
+            if ($fontsSkipped > 0) {
+                $this->logger->debug('Filtered unused fonts', [
+                    'skipped' => $fontsSkipped,
+                    'kept'    => count($newFonts->getAllEntries()),
+                ]);
+            }
         }
 
-        // Copy XObjects (images) - even if empty
+        // Copy XObjects (images and templates) with optional filtering
         $xObjects = $resourcesDict->getEntry('/XObject');
 
         if ($xObjects instanceof PDFDictionary) {
-            $newXObjects = new PDFDictionary;
+            $newXObjects     = new PDFDictionary;
+            $xobjectsSkipped = 0;
 
             foreach ($xObjects->getAllEntries() as $xObjectName => $xObjectRef) {
+                // Filter: Skip XObjects not used in content stream
+                if ($usedResources !== null && !empty($usedResources['xobjects'])) {
+                    $xobjectShortName = ltrim($xObjectName, '/');
+
+                    if (!in_array($xobjectShortName, $usedResources['xobjects'], true)) {
+                        $xobjectsSkipped++;
+
+                        continue;
+                    }
+                }
+
                 $copyingObjects = [];
 
                 if ($xObjectRef instanceof PDFReference) {
@@ -655,8 +1041,18 @@ final class PDFSplitter
                     $nextObjectNumber++;
                 }
             }
-            // Always add XObject dictionary, even if empty (to match original structure)
-            $newResources->addEntry('/XObject', $newXObjects);
+
+            // Add XObject dictionary if not empty or if no filtering applied
+            if (count($newXObjects->getAllEntries()) > 0 || $usedResources === null) {
+                $newResources->addEntry('/XObject', $newXObjects);
+            }
+
+            if ($xobjectsSkipped > 0) {
+                $this->logger->debug('Filtered unused XObjects', [
+                    'skipped' => $xobjectsSkipped,
+                    'kept'    => count($newXObjects->getAllEntries()),
+                ]);
+            }
         }
 
         // Copy any other resource types (ColorSpace, Pattern, Shading, ExtGState, etc.)
@@ -790,22 +1186,28 @@ final class PDFSplitter
         }
 
         if ($obj instanceof PDFStream) {
-            // Copy stream dictionary and data
+            // CRITICAL: Copy stream without decoding/re-encoding to save memory
+            // Get the stream dictionary and recursively copy it (preserves /Subtype, /Filter, and all metadata)
             $streamDict = $obj->getDictionary();
-            $streamData = $obj->getDecodedData();
             $copiedDict = $this->copyObjectWithReferences($streamDict, $newDoc, $nextObjectNumber, $objectMap, $copyingObjects);
 
             if (!$copiedDict instanceof PDFDictionary) {
                 $copiedDict = new PDFDictionary;
             }
 
-            // Create new stream with copied dictionary
-            $newStream = new PDFStream($copiedDict, $streamData, false);
+            // Create new stream with ALREADY ENCODED data to avoid re-encoding
+            // Pass true for $dataIsEncoded to indicate data is pre-encoded
+            $newStream = new PDFStream($copiedDict, '', true);
 
-            // Copy all filters
-            foreach ($obj->getFilters() as $filter) {
-                $newStream->addFilter($filter);
-            }
+            // Set encoded data directly without decoding first (saves massive memory)
+            $encodedData = $obj->getEncodedData();
+            $newStream->setEncodedData($encodedData);
+
+            // Clear encoded data immediately to free memory
+            unset($encodedData);
+
+            // NOTE: We don't need to add filters manually - they're already in the copied dictionary
+            // and PDFStream's constructor reads them via updateFiltersFromDictionary()
 
             return $newStream;
         }
@@ -819,6 +1221,10 @@ final class PDFSplitter
      *
      * This method writes PDF objects directly to the output stream
      * without assembling the entire PDF in memory.
+     *
+     * CRITICAL FIX: For complex PDFs with many resources (fonts, XObjects),
+     * we must write ALL resource objects to the stream BEFORE writing the
+     * Resources dictionary that references them.
      *
      * @return int Total bytes written
      */
@@ -863,21 +1269,62 @@ final class PDFSplitter
         $pagesNode = $newDoc->addObject($pagesDict, 1);
         $currentOffset += $this->writeObjectToStream($handle, $pagesDict, 1);
 
-        // Object 2: Resources
-        $objectOffsets[2] = $currentOffset;
+        // CRITICAL FIX: Copy resources and write all resource objects FIRST
+        // Object 2 will be Resources dictionary, objects 6+ will be resource objects (fonts, XObjects, etc.)
         $nextObjectNumber = 6; // Start after catalog (5)
+        $newResourcesDict = null;
 
         if ($pageData['resourcesDict'] !== null) {
+            // Analyze content to find used resources (for filtering)
+            $usedResources = null;
+
+            if (!empty($pageData['content'])) {
+                $usedResources = $this->analyzeUsedResources($pageData['content']);
+
+                // Expand XObject dependencies recursively (Form XObjects may reference other XObjects)
+                if (!empty($usedResources['xobjects'])) {
+                    $expandedResources = $this->expandXObjectDependencies(
+                        $usedResources['xobjects'],
+                        $pageData['resourcesDict'],
+                    );
+
+                    // Merge expanded resources with original
+                    $usedResources['xobjects'] = $expandedResources['xobjects'];
+                    $usedResources['fonts']    = array_unique(array_merge(
+                        $usedResources['fonts'],
+                        $expandedResources['fonts'],
+                    ));
+                }
+            }
+
+            // Copy resources with filtering - this adds objects to $newDoc starting from $nextObjectNumber
             $newResourcesDict = $this->copyResourcesWithReferences(
                 $pageData['resourcesDict'],
                 $newDoc,
                 $nextObjectNumber,
+                $usedResources,  // Pass used resources for filtering
             );
-            $currentOffset += $this->writeObjectToStream($handle, $newResourcesDict, 2);
+
+            // Now write all the resource objects (fonts, XObjects, etc.) that were added to $newDoc
+            // These are objects numbered from 6 to ($nextObjectNumber - 1)
+            $registry = $newDoc->getObjectRegistry();
+
+            for ($objNum = 6; $objNum < $nextObjectNumber; $objNum++) {
+                $objNode = $registry->get($objNum);
+
+                if ($objNode !== null) {
+                    $objectOffsets[$objNum] = $currentOffset;
+                    $obj                    = $objNode->getValue();
+                    $currentOffset += $this->writeObjectToStream($handle, $obj, $objNum);
+                }
+            }
         } else {
-            $emptyResources = new ResourcesDictionary;
-            $currentOffset += $this->writeObjectToStream($handle, $emptyResources, 2);
+            $newResourcesDict = new ResourcesDictionary;
         }
+
+        // NOW write Object 2: Resources dictionary (which references objects 6+)
+        $objectOffsets[2] = $currentOffset;
+        $currentOffset += $this->writeObjectToStream($handle, $newResourcesDict, 2);
 
         // Object 3: Page dictionary
         $objectOffsets[3] = $currentOffset;
@@ -910,8 +1357,13 @@ final class PDFSplitter
             $currentOffset += $this->writeObjectToStream($handle, $emptyStream, 4);
         }
 
-        // Free content immediately
+        // Free content immediately and force GC if content was large
+        $contentSize = strlen($pageData['content'] ?? '');
         unset($pageData['content']);
+
+        if ($contentSize > 512 * 1024) { // > 512KB
+            gc_collect_cycles();
+        }
 
         // Object 5: Catalog
         $objectOffsets[5] = $currentOffset;
@@ -1050,14 +1502,21 @@ final class PDFSplitter
             }
         }
 
-        // Combine content streams
+        // Combine content streams with memory-efficient concatenation
         $combinedContent = '';
 
-        foreach ($contentStreams as $stream) {
+        foreach ($contentStreams as $index => $stream) {
             $combinedContent .= $stream->getDecodedData();
+            // Free each stream immediately after processing to reduce memory
+            unset($contentStreams[$index]);
         }
-        // Free streams immediately
+        // Final cleanup
         unset($contentStreams);
+
+        // Force garbage collection after processing large content
+        if (strlen($combinedContent) > 1024 * 1024) { // > 1MB
+            gc_collect_cycles();
+        }
 
         // Get Resources
         $resourcesRef  = $pageDict->getEntry('/Resources');
@@ -1077,13 +1536,18 @@ final class PDFSplitter
             $resourcesDict = $resourcesRef;
         }
 
-        return [
+        $result = [
             'mediaBox'        => $mediaBox,
             'pageHasMediaBox' => $pageHasMediaBox,
             'content'         => $combinedContent,
             'resourcesDict'   => $resourcesDict,
             'hasCompression'  => $hasCompression,
         ];
+
+        // Clear heavy variables immediately
+        unset($pageDict, $mediaBoxEntry, $contentsRef, $resourcesRef);
+
+        return $result;
     }
 
     /**

@@ -17,6 +17,7 @@ use function count;
 use function ltrim;
 use function preg_quote;
 use function preg_replace;
+use function spl_object_id;
 use Psr\Log\LoggerInterface;
 use PXP\PDF\Fpdf\Exception\FpdfException;
 use PXP\PDF\Fpdf\Object\Array\KidsArray;
@@ -311,6 +312,7 @@ final class IncrementalPageProcessor
         $newResources = new ResourcesDictionary;
         // Use global objectMap to reuse copied objects across pages
         // This prevents copying the same font/xobject multiple times
+        $docId = spl_object_id($sourceDoc);
 
         // Copy fonts with full object copying
         $fonts = $resourcesDict->getEntry('/Font');
@@ -338,18 +340,19 @@ final class IncrementalPageProcessor
                 // Copy font object recursively
                 if ($fontRef instanceof PDFReference) {
                     $oldObjNum = $fontRef->getObjectNumber();
+                    $mapKey    = "{$docId}:{$oldObjNum}";
 
                     // Check if already copied
-                    if (isset($this->globalObjectMap[$oldObjNum])) {
-                        $newFonts->addEntry('/' . $uniqueName, new PDFReference($this->globalObjectMap[$oldObjNum]));
+                    if (isset($this->globalObjectMap[$mapKey])) {
+                        $newFonts->addEntry('/' . $uniqueName, new PDFReference($this->globalObjectMap[$mapKey]));
                     } else {
                         $fontNode = $sourceDoc->getObject($oldObjNum);
 
                         if ($fontNode !== null) {
-                            $fontObj                           = $fontNode->getValue();
-                            $copyingObjects                    = [];
-                            $newObjNum                         = $nextObjectNumber;
-                            $this->globalObjectMap[$oldObjNum] = $newObjNum;
+                            $fontObj                        = $fontNode->getValue();
+                            $copyingObjects                 = [];
+                            $newObjNum                      = $nextObjectNumber;
+                            $this->globalObjectMap[$mapKey] = $newObjNum;
                             $nextObjectNumber++;
 
                             $copiedFont = $this->copyObjectWithReferences($fontObj, $sourceDoc, $this->targetDoc, $nextObjectNumber, $this->globalObjectMap, $copyingObjects, 0, 10);
@@ -403,18 +406,19 @@ final class IncrementalPageProcessor
                 // Copy XObject recursively
                 if ($xobjRef instanceof PDFReference) {
                     $oldObjNum = $xobjRef->getObjectNumber();
+                    $mapKey    = "{$docId}:{$oldObjNum}";
 
                     // Check if already copied
-                    if (isset($this->globalObjectMap[$oldObjNum])) {
-                        $newXObjects->addEntry('/' . $uniqueName, new PDFReference($this->globalObjectMap[$oldObjNum]));
+                    if (isset($this->globalObjectMap[$mapKey])) {
+                        $newXObjects->addEntry('/' . $uniqueName, new PDFReference($this->globalObjectMap[$mapKey]));
                     } else {
                         $xobjNode = $sourceDoc->getObject($oldObjNum);
 
                         if ($xobjNode !== null) {
-                            $xobjObj                           = $xobjNode->getValue();
-                            $copyingObjects                    = [];
-                            $newObjNum                         = $nextObjectNumber;
-                            $this->globalObjectMap[$oldObjNum] = $newObjNum;
+                            $xobjObj                        = $xobjNode->getValue();
+                            $copyingObjects                 = [];
+                            $newObjNum                      = $nextObjectNumber;
+                            $this->globalObjectMap[$mapKey] = $newObjNum;
                             $nextObjectNumber++;
 
                             $copiedXObj = $this->copyObjectWithReferences($xobjObj, $sourceDoc, $this->targetDoc, $nextObjectNumber, $this->globalObjectMap, $copyingObjects, 0, 10);
@@ -468,18 +472,19 @@ final class IncrementalPageProcessor
                 // Copy ExtGState recursively
                 if ($gsRef instanceof PDFReference) {
                     $oldObjNum = $gsRef->getObjectNumber();
+                    $mapKey    = "{$docId}:{$oldObjNum}";
 
                     // Check if already copied
-                    if (isset($this->globalObjectMap[$oldObjNum])) {
-                        $newExtGStates->addEntry('/' . $uniqueName, new PDFReference($this->globalObjectMap[$oldObjNum]));
+                    if (isset($this->globalObjectMap[$mapKey])) {
+                        $newExtGStates->addEntry('/' . $uniqueName, new PDFReference($this->globalObjectMap[$mapKey]));
                     } else {
                         $gsNode = $sourceDoc->getObject($oldObjNum);
 
                         if ($gsNode !== null) {
-                            $gsObj                             = $gsNode->getValue();
-                            $copyingObjects                    = [];
-                            $newObjNum                         = $nextObjectNumber;
-                            $this->globalObjectMap[$oldObjNum] = $newObjNum;
+                            $gsObj                          = $gsNode->getValue();
+                            $copyingObjects                 = [];
+                            $newObjNum                      = $nextObjectNumber;
+                            $this->globalObjectMap[$mapKey] = $newObjNum;
                             $nextObjectNumber++;
 
                             $copiedGS = $this->copyObjectWithReferences($gsObj, $sourceDoc, $this->targetDoc, $nextObjectNumber, $this->globalObjectMap, $copyingObjects, 0, 10);
@@ -636,9 +641,16 @@ final class IncrementalPageProcessor
             $newPageDict->addEntry('/Contents', $contentsArray);
         }
 
-        // Set MediaBox only if page has its own
-        if ($pageData['hasMediaBox'] && $pageData['mediaBox'] !== null) {
-            $newPageDict->setMediaBox($pageData['mediaBox']);
+        // Set MediaBox if page has its own OR if it differs from default
+        // This ensures portrait/landscape differences are preserved
+        if ($pageData['mediaBox'] !== null) {
+            $needsOwnMediaBox = $pageData['hasMediaBox'] ||
+                $this->defaultMediaBox === null ||
+                $pageData['mediaBox'] !== $this->defaultMediaBox;
+
+            if ($needsOwnMediaBox) {
+                $newPageDict->setMediaBox($pageData['mediaBox']);
+            }
         }
 
         // Copy important page-level entries
@@ -677,9 +689,16 @@ final class IncrementalPageProcessor
             $newPageDict->addEntry('/Contents', $contentsArray);
         }
 
-        // Set MediaBox only if page has its own
-        if ($pageData['hasMediaBox'] && $pageData['mediaBox'] !== null) {
-            $newPageDict->setMediaBox($pageData['mediaBox']);
+        // Set MediaBox if page has its own OR if it differs from default
+        // This ensures portrait/landscape differences are preserved
+        if ($pageData['mediaBox'] !== null) {
+            $needsOwnMediaBox = $pageData['hasMediaBox'] ||
+                $this->defaultMediaBox === null ||
+                $pageData['mediaBox'] !== $this->defaultMediaBox;
+
+            if ($needsOwnMediaBox) {
+                $newPageDict->setMediaBox($pageData['mediaBox']);
+            }
         }
 
         // Copy important page-level entries
@@ -767,19 +786,22 @@ final class IncrementalPageProcessor
             return $obj;
         }
 
+        $docId = spl_object_id($sourceDoc);
+
         if ($obj instanceof PDFReference) {
             $oldObjNum = $obj->getObjectNumber();
+            $mapKey    = "{$docId}:{$oldObjNum}";
 
-            if (isset($objectMap[$oldObjNum])) {
-                return new PDFReference($objectMap[$oldObjNum]);
+            if (isset($objectMap[$mapKey])) {
+                return new PDFReference($objectMap[$mapKey]);
             }
 
             if (isset($copyingObjects[$oldObjNum])) {
-                if (isset($objectMap[$oldObjNum])) {
-                    return new PDFReference($objectMap[$oldObjNum]);
+                if (isset($objectMap[$mapKey])) {
+                    return new PDFReference($objectMap[$mapKey]);
                 }
-                $newObjNum             = $nextObjectNumber;
-                $objectMap[$oldObjNum] = $newObjNum;
+                $newObjNum          = $nextObjectNumber;
+                $objectMap[$mapKey] = $newObjNum;
                 $nextObjectNumber++;
 
                 return new PDFReference($newObjNum);
@@ -790,8 +812,8 @@ final class IncrementalPageProcessor
             if ($refNode !== null) {
                 $refObj = $refNode->getValue();
 
-                $newObjNum             = $nextObjectNumber;
-                $objectMap[$oldObjNum] = $newObjNum;
+                $newObjNum          = $nextObjectNumber;
+                $objectMap[$mapKey] = $newObjNum;
                 $nextObjectNumber++;
 
                 $copyingObjects[$oldObjNum] = true;
