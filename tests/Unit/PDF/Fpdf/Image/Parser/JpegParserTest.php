@@ -17,7 +17,6 @@ use function file_exists;
 use function file_put_contents;
 use function sys_get_temp_dir;
 use function uniqid;
-use function unlink;
 use PXP\PDF\Fpdf\Exception\FpdfException;
 use PXP\PDF\Fpdf\Image\Parser\JpegParser;
 use Test\TestCase;
@@ -72,7 +71,7 @@ final class JpegParserTest extends TestCase
             $this->parser->parse($tempFile);
         } finally {
             if (file_exists($tempFile)) {
-                unlink($tempFile);
+                self::unlink($tempFile);
             }
         }
     }

@@ -32,7 +32,6 @@ use function preg_match;
 use function strlen;
 use function substr;
 use function uniqid;
-use function unlink;
 use Faker\Factory;
 use ReflectionProperty;
 use RuntimeException;
@@ -152,8 +151,8 @@ final class GenerateAndParsePdfTest extends TestCase
             }
 
             // Clean up intermediate images
-            @unlink($imgA);
-            @unlink($imgB);
+            self::unlink($imgA);
+            self::unlink($imgB);
 
             if ($bothBlank) {
                 $this->markTestSkipped('Rendered PDFs are blank on this environment; skipping visual comparison');
@@ -341,8 +340,8 @@ final class GenerateAndParsePdfTest extends TestCase
                     }
                 }
             }
-            @unlink($imgA);
-            @unlink($imgB);
+            self::unlink($imgA);
+            self::unlink($imgB);
 
             if ($bothBlank) {
                 $this->markTestSkipped('Rendered PDFs are blank on this environment; skipping visual comparison');

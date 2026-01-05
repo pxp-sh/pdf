@@ -21,7 +21,6 @@ use function fwrite;
 use function rewind;
 use function sys_get_temp_dir;
 use function uniqid;
-use function unlink;
 use PXP\PDF\Fpdf\Exception\FpdfException;
 use PXP\PDF\Fpdf\Image\Parser\PngParser;
 use Test\TestCase;
@@ -71,7 +70,7 @@ final class PngParserTest extends TestCase
             $this->parser->parse($tempFile);
         } finally {
             if (file_exists($tempFile)) {
-                unlink($tempFile);
+                self::unlink($tempFile);
             }
         }
     }

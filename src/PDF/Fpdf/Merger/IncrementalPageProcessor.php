@@ -355,7 +355,7 @@ final class IncrementalPageProcessor
                             $this->globalObjectMap[$mapKey] = $newObjNum;
                             $nextObjectNumber++;
 
-                            $copiedFont = $this->copyObjectWithReferences($fontObj, $sourceDoc, $this->targetDoc, $nextObjectNumber, $this->globalObjectMap, $copyingObjects, 0, 10);
+                            $copiedFont = $this->copyObjectWithReferences($fontObj, $sourceDoc, $this->targetDoc, $nextObjectNumber, $this->globalObjectMap, $copyingObjects, 0, 20);
 
                             // Write immediately if streaming
                             if ($this->streamWriter !== null) {
@@ -421,7 +421,7 @@ final class IncrementalPageProcessor
                             $this->globalObjectMap[$mapKey] = $newObjNum;
                             $nextObjectNumber++;
 
-                            $copiedXObj = $this->copyObjectWithReferences($xobjObj, $sourceDoc, $this->targetDoc, $nextObjectNumber, $this->globalObjectMap, $copyingObjects, 0, 10);
+                            $copiedXObj = $this->copyObjectWithReferences($xobjObj, $sourceDoc, $this->targetDoc, $nextObjectNumber, $this->globalObjectMap, $copyingObjects, 0, 20);
 
                             // Write immediately if streaming
                             if ($this->streamWriter !== null) {
@@ -487,7 +487,7 @@ final class IncrementalPageProcessor
                             $this->globalObjectMap[$mapKey] = $newObjNum;
                             $nextObjectNumber++;
 
-                            $copiedGS = $this->copyObjectWithReferences($gsObj, $sourceDoc, $this->targetDoc, $nextObjectNumber, $this->globalObjectMap, $copyingObjects, 0, 10);
+                            $copiedGS = $this->copyObjectWithReferences($gsObj, $sourceDoc, $this->targetDoc, $nextObjectNumber, $this->globalObjectMap, $copyingObjects, 0, 20);
 
                             // Write immediately if streaming
                             if ($this->streamWriter !== null) {
@@ -778,8 +778,18 @@ final class IncrementalPageProcessor
     ): PDFObjectInterface {
         // Check depth limit to prevent stack overflow and memory exhaustion
         if ($depth >= $maxDepth) {
-            // At max depth, return reference without resolving to prevent deep recursion
+            // At max depth, still try to remap references if already in objectMap
             if ($obj instanceof PDFReference) {
+                $oldObjNum = $obj->getObjectNumber();
+                $docId     = spl_object_id($sourceDoc);
+                $mapKey    = "{$docId}:{$oldObjNum}";
+
+                // If already remapped, return new reference
+                if (isset($objectMap[$mapKey])) {
+                    return new PDFReference($objectMap[$mapKey]);
+                }
+
+                // Otherwise return original (unavoidable at max depth)
                 return $obj;
             }
 

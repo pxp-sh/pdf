@@ -352,7 +352,7 @@ class TestCase extends \PHPUnit\Framework\TestCase
                 $splitText    = self::extractPdfText($splitPdf, 1);
 
                 // Clean up temporary images
-                if (!getenv('PDF_TEST_DEBUG')) {
+                if (!getenv('PERSISTENT_PDF_TEST_FILES')) {
                     self::unlink($originalImage);
                     self::unlink($splitImage);
                 }
@@ -383,7 +383,7 @@ class TestCase extends \PHPUnit\Framework\TestCase
             $similarity = self::compareImages($originalImage, $splitImage);
 
             // Debug: Log similarity and image paths if similarity is suspiciously high for different content
-            if (getenv('PDF_TEST_DEBUG')) {
+            if (getenv('PERSISTENT_PDF_TEST_FILES')) {
                 error_log(sprintf(
                     'PDF Comparison Debug: similarity=%.4f, original=%s, split=%s, originalImage=%s, splitImage=%s',
                     $similarity,
@@ -395,7 +395,7 @@ class TestCase extends \PHPUnit\Framework\TestCase
             }
 
             // Clean up temporary images (unless debugging)
-            if (!getenv('PDF_TEST_DEBUG')) {
+            if (!getenv('PERSISTENT_PDF_TEST_FILES')) {
                 self::unlink($originalImage);
                 self::unlink($splitImage);
             }

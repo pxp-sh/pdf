@@ -21,7 +21,6 @@ use function round;
 use function str_repeat;
 use function sys_get_temp_dir;
 use function uniqid;
-use function unlink;
 use Monolog\Handler\StreamHandler;
 use Monolog\Logger;
 use Psr\Log\LoggerInterface;
@@ -57,7 +56,7 @@ class ContentStreamValidationTest extends TestCase
     protected function tearDown(): void
     {
         if (file_exists($this->testPdfPath)) {
-            unlink($this->testPdfPath);
+            self::unlink($this->testPdfPath);
         }
 
         parent::tearDown();
@@ -96,7 +95,7 @@ class ContentStreamValidationTest extends TestCase
         ]);
 
         // Cleanup
-        unlink($extractedPath);
+        self::unlink($extractedPath);
     }
 
     /**
@@ -140,8 +139,8 @@ class ContentStreamValidationTest extends TestCase
         );
 
         // Cleanup
-        unlink($sourcePath);
-        unlink($extractedPath);
+        self::unlink($sourcePath);
+        self::unlink($extractedPath);
     }
 
     /**
@@ -164,7 +163,7 @@ class ContentStreamValidationTest extends TestCase
         $this->assertGreaterThan(500, filesize($extractedPath), 'Should have substantial content');
 
         // Cleanup
-        unlink($extractedPath);
+        self::unlink($extractedPath);
     }
 
     /**
@@ -195,7 +194,7 @@ class ContentStreamValidationTest extends TestCase
         ]);
 
         // Cleanup
-        unlink($extractedPath);
+        self::unlink($extractedPath);
     }
 
     /**

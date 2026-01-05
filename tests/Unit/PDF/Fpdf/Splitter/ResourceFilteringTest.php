@@ -27,7 +27,6 @@ use function shell_exec;
 use function sprintf;
 use function sys_get_temp_dir;
 use function uniqid;
-use function unlink;
 use PXP\PDF\Fpdf\IO\FileIO;
 use PXP\PDF\Fpdf\Splitter\PDFSplitter;
 use Test\TestCase;
@@ -63,7 +62,7 @@ final class ResourceFilteringTest extends TestCase
 
             foreach ($files as $file) {
                 if (is_file($file)) {
-                    unlink($file);
+                    self::unlink($file);
                 }
             }
             rmdir($this->testDir);

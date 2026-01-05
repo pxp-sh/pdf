@@ -24,7 +24,6 @@ use function rmdir;
 use function strlen;
 use function sys_get_temp_dir;
 use function uniqid;
-use function unlink;
 use PXP\PDF\Fpdf\IO\FileIO;
 use PXP\PDF\Fpdf\Object\Base\PDFDictionary;
 use PXP\PDF\Fpdf\Object\Base\PDFName;
@@ -63,7 +62,7 @@ final class XObjectMappingRegressionTest extends TestCase
 
             foreach ($files as $file) {
                 if (is_file($file)) {
-                    unlink($file);
+                    self::unlink($file);
                 }
             }
             rmdir($this->tempDir);

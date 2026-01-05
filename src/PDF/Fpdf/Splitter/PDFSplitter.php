@@ -658,6 +658,12 @@ final class PDFSplitter
 
             $usedResources = $this->analyzeUsedResources($contentForAnalysis);
 
+            $this->logger->info('Before expansion check', [
+                'resourcesDict_is_null' => $resourcesDict === null,
+                'xobjects_empty'        => empty($usedResources['xobjects']),
+                'xobjects_count'        => count($usedResources['xobjects'] ?? []),
+            ]);
+
             // Expand XObject dependencies recursively (Form XObjects may reference other XObjects)
             if ($resourcesDict !== null && !empty($usedResources['xobjects'])) {
                 $expandedResources = $this->expandXObjectDependencies(
@@ -671,6 +677,21 @@ final class PDFSplitter
                     $usedResources['fonts'],
                     $expandedResources['fonts'],
                 ));
+
+                $this->logger->info('Resource expansion result', [
+                    'has_nested_resources_key'   => isset($expandedResources['has_nested_resources']),
+                    'has_nested_resources_value' => $expandedResources['has_nested_resources'] ?? 'NOT_SET',
+                ]);
+
+                // CRITICAL FIX: If any Form XObjects have nested /Resources dictionaries,
+                // disable filtering entirely because nested XObjects won't be in the main
+                // page /XObject dictionary and would be incorrectly filtered out.
+                if (isset($expandedResources['has_nested_resources']) && $expandedResources['has_nested_resources']) {
+                    $this->logger->info('✓✓✓ Disabling resource filtering - Form XObjects have nested /Resources', [
+                        'expanded_xobjects' => count($expandedResources['xobjects']),
+                    ]);
+                    $usedResources = null;
+                }
             }
         }
 
@@ -799,21 +820,22 @@ final class PDFSplitter
      * @param PDFDictionary $resourcesDict Original resources dictionary
      * @param int           $maxDepth      Maximum recursion depth (prevent infinite loops)
      *
-     * @return array{fonts: array<string>, xobjects: array<string>} Expanded resource dependencies (only top-level XObjects)
+     * @return array{fonts: array<string>, xobjects: array<string>, has_nested_resources: bool} Expanded resource dependencies
      */
     private function expandXObjectDependencies(array $xobjects, PDFDictionary $resourcesDict, int $maxDepth = 10): array
     {
-        $allFonts    = [];
-        $allXObjects = $xobjects;
-        $processed   = [];
-        $toProcess   = $xobjects;
-        $depth       = 0;
+        $allFonts           = [];
+        $allXObjects        = $xobjects;
+        $processed          = [];
+        $toProcess          = $xobjects;
+        $depth              = 0;
+        $hasNestedResources = false;
 
         $xobjEntry = $resourcesDict->getEntry('/XObject');
 
         if (!$xobjEntry instanceof PDFDictionary) {
             // No XObjects in resources
-            return ['fonts' => [], 'xobjects' => $xobjects];
+            return ['fonts' => [], 'xobjects' => $xobjects, 'has_nested_resources' => false];
         }
 
         while (!empty($toProcess) && $depth < $maxDepth) {
@@ -888,6 +910,59 @@ final class PDFSplitter
                     // If it doesn't exist in main resources, it's in the Form's nested resources
                     // and will be automatically copied when we copy the Form XObject
                 }
+
+                // CRITICAL FIX: Also check Form XObject's nested /Resources dictionary
+                // Form XObjects can have their own /Resources with additional XObjects
+                $formResources = $xobjDict->getEntry('/Resources');
+
+                if ($formResources !== null) {
+                    $hasNestedResources = true; // Flag that we found nested resources
+
+                    // Resolve if reference
+                    if ($formResources instanceof PDFReference) {
+                        $formResourcesNode = $this->document->getObject($formResources->getObjectNumber());
+
+                        if ($formResourcesNode !== null) {
+                            $formResources = $formResourcesNode->getValue();
+                        }
+                    }
+
+                    if ($formResources instanceof PDFDictionary) {
+                        // Check for XObjects in Form's nested resources
+                        $formXObjects = $formResources->getEntry('/XObject');
+
+                        if ($formXObjects !== null) {
+                            // Resolve if reference
+                            if ($formXObjects instanceof PDFReference) {
+                                $formXObjectsNode = $this->document->getObject($formXObjects->getObjectNumber());
+
+                                if ($formXObjectsNode !== null) {
+                                    $formXObjects = $formXObjectsNode->getValue();
+                                }
+                            }
+
+                            if ($formXObjects instanceof PDFDictionary) {
+                                // Add all XObjects from Form's nested resources to main list
+                                foreach ($formXObjects->getAllEntries() as $formXObjName => $formXObjRef) {
+                                    $formXObjShortName = ltrim($formXObjName, '/');
+                                    // Check if exists in main resources
+                                    $mainXObjRef = $xobjEntry->getEntry($formXObjName);
+
+                                    if ($mainXObjRef instanceof PDFReference) {
+                                        // Exists in main resources - add to list
+                                        if (!in_array($formXObjShortName, $allXObjects, true)) {
+                                            $allXObjects[] = $formXObjShortName;
+
+                                            if (!isset($processed[$formXObjShortName])) {
+                                                $toProcess[] = $formXObjShortName;
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
             }
 
             $depth++;
@@ -901,15 +976,17 @@ final class PDFSplitter
         }
 
         $this->logger->debug('Expanded XObject dependencies recursively', [
-            'initial_xobjects'  => count($xobjects),
-            'expanded_xobjects' => count($allXObjects),
-            'fonts_from_forms'  => count($allFonts),
-            'recursion_depth'   => $depth,
+            'initial_xobjects'     => count($xobjects),
+            'expanded_xobjects'    => count($allXObjects),
+            'fonts_from_forms'     => count($allFonts),
+            'recursion_depth'      => $depth,
+            'has_nested_resources' => $hasNestedResources,
         ]);
 
         return [
-            'fonts'    => $allFonts,
-            'xobjects' => $allXObjects,
+            'fonts'                => $allFonts,
+            'xobjects'             => $allXObjects,
+            'has_nested_resources' => $hasNestedResources,
         ];
     }
 
@@ -1294,6 +1371,16 @@ final class PDFSplitter
                         $usedResources['fonts'],
                         $expandedResources['fonts'],
                     ));
+
+                    // CRITICAL FIX: If any Form XObjects have nested /Resources dictionaries,
+                    // disable filtering entirely because nested XObjects won't be in the main
+                    // page /XObject dictionary and would be incorrectly filtered out.
+                    if (isset($expandedResources['has_nested_resources']) && $expandedResources['has_nested_resources']) {
+                        $this->logger->info('Disabling resource filtering - Form XObjects have nested /Resources', [
+                            'expanded_xobjects' => count($expandedResources['xobjects']),
+                        ]);
+                        $usedResources = null;
+                    }
                 }
             }
 

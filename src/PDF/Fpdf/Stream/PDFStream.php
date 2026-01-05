@@ -61,10 +61,14 @@ final class PDFStream extends PDFObject
         $result .= $encodedData . "\n";
         $result .= 'endstream';
 
-        // Free heavy buffers after serializing to reduce peak memory usage during large merges.
-        $this->encodedData = null;
+        // CRITICAL FIX: Do NOT clear $this->encodedData because it needs to remain
+        // available for subsequent getEncodedData() calls during object copying.
+        // Example: PDFSplitter.copyObjectWithReferences() needs encoded data after
+        // stream serialization.
+        // $this->encodedData = null;  // REMOVED - causes 37% content loss bug!
 
         // Clear raw data when it was encoded to free the memory used by large streams.
+        // This is safe because we keep $this->encodedData for subsequent getEncodedData() calls.
         if ($this->dataIsEncoded) {
             $this->data = '';
         }

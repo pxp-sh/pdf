@@ -29,7 +29,6 @@ use function imagesy;
 use function max;
 use function preg_match;
 use function uniqid;
-use function unlink;
 use RuntimeException;
 use Test\TestCase;
 
@@ -129,8 +128,8 @@ final class ImageWithAlphaTest extends TestCase
                     }
                 }
             }
-            @unlink($imgA);
-            @unlink($imgB);
+            self::unlink($imgA);
+            self::unlink($imgB);
 
             if ($bothBlank) {
                 $this->markTestSkipped('Rendered PDFs are blank on this environment; skipping visual comparison');

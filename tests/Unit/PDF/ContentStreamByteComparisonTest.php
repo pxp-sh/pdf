@@ -28,7 +28,6 @@ use function strlen;
 use function sys_get_temp_dir;
 use function trim;
 use function uniqid;
-use function unlink;
 use Monolog\Handler\StreamHandler;
 use Monolog\Logger;
 use Psr\Log\LoggerInterface;
@@ -103,10 +102,10 @@ class ContentStreamByteComparisonTest extends TestCase
         $this->assertGreaterThan(0.95, $similarity, 'Content streams should be >95% similar');
 
         // Cleanup
-        unlink($sourcePath);
-        unlink($extractedPath);
-        unlink($sourceDecompressed);
-        unlink($extractedDecompressed);
+        self::unlink($sourcePath);
+        self::unlink($extractedPath);
+        self::unlink($sourceDecompressed);
+        self::unlink($extractedDecompressed);
     }
 
     /**
@@ -141,8 +140,8 @@ class ContentStreamByteComparisonTest extends TestCase
         );
 
         // Cleanup
-        unlink($sourcePath);
-        unlink($extractedPath);
+        self::unlink($sourcePath);
+        self::unlink($extractedPath);
     }
 
     /**
@@ -183,8 +182,8 @@ class ContentStreamByteComparisonTest extends TestCase
         ]);
 
         // Cleanup
-        unlink($sourcePath);
-        unlink($extractedPath);
+        self::unlink($sourcePath);
+        self::unlink($extractedPath);
     }
 
     /**
@@ -230,8 +229,8 @@ class ContentStreamByteComparisonTest extends TestCase
         ]);
 
         // Cleanup
-        unlink($sourcePath);
-        unlink($extractedPath);
+        self::unlink($sourcePath);
+        self::unlink($extractedPath);
     }
 
     // Helper methods

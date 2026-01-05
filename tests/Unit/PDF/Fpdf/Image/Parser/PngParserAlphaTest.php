@@ -31,7 +31,6 @@ use function print_r;
 use function strlen;
 use function sys_get_temp_dir;
 use function uniqid;
-use function unlink;
 use PXP\PDF\Fpdf\Exception\FpdfException;
 use PXP\PDF\Fpdf\Image\Parser\PngParser;
 use Test\TestCase;
@@ -85,7 +84,7 @@ final class PngParserAlphaTest extends TestCase
         $uncompressedSmask = gzuncompress($info['smask']);
         $this->assertSame(2 * (2 + 1), strlen($uncompressedSmask));
 
-        @unlink($file);
+        self::unlink($file);
     }
 
     public function test_parse_nonexistent_file_throws(): void

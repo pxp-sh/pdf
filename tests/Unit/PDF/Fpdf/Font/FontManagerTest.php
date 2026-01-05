@@ -22,7 +22,6 @@ use function rtrim;
 use function scandir;
 use function sys_get_temp_dir;
 use function uniqid;
-use function unlink;
 use PXP\PDF\Fpdf\Exception\FpdfException;
 use PXP\PDF\Fpdf\Font\FontManager;
 use Test\TestCase;
@@ -249,7 +248,7 @@ final class FontManagerTest extends TestCase
 
         foreach ($files as $file) {
             $path = $dir . '/' . $file;
-            is_dir($path) ? $this->removeDirectory($path) : unlink($path);
+            is_dir($path) ? $this->removeDirectory($path) : self::unlink($path);
         }
 
         rmdir($dir);

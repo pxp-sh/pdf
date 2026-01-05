@@ -30,7 +30,6 @@ use function rmdir;
 use function strlen;
 use function sys_get_temp_dir;
 use function uniqid;
-use function unlink;
 use PXP\PDF\Fpdf\FPDF;
 use PXP\PDF\Fpdf\IO\FileIO;
 use PXP\PDF\Fpdf\Object\Base\PDFDictionary;
@@ -73,7 +72,7 @@ final class XObjectMappingTest extends TestCase
 
             foreach ($files as $file) {
                 if (is_file($file)) {
-                    unlink($file);
+                    self::unlink($file);
                 }
             }
             rmdir($this->tempDir);
@@ -522,7 +521,7 @@ final class XObjectMappingTest extends TestCase
         // Create and add an image (Image XObject)
         $imagePath = $this->createTestImage();
         $pdf->Image($imagePath, 50, 40, 80);
-        unlink($imagePath);
+        self::unlink($imagePath);
 
         // Add more content to create a more complex page
         $pdf->SetY(130);

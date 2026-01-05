@@ -30,7 +30,6 @@ use function preg_match_all;
 use function str_contains;
 use function sys_get_temp_dir;
 use function uniqid;
-use function unlink;
 use Exception;
 use Monolog\Handler\StreamHandler;
 use Monolog\Logger;
@@ -67,7 +66,7 @@ class XObjectValidationTest extends TestCase
     protected function tearDown(): void
     {
         if (file_exists($this->testPdfWithImages)) {
-            unlink($this->testPdfWithImages);
+            self::unlink($this->testPdfWithImages);
         }
 
         parent::tearDown();
@@ -98,7 +97,7 @@ class XObjectValidationTest extends TestCase
         ]);
 
         // Cleanup
-        unlink($extractedPath);
+        self::unlink($extractedPath);
     }
 
     /**
@@ -129,7 +128,7 @@ class XObjectValidationTest extends TestCase
         ]);
 
         // Cleanup
-        unlink($extractedPath);
+        self::unlink($extractedPath);
     }
 
     /**
@@ -168,7 +167,7 @@ class XObjectValidationTest extends TestCase
         }
 
         // Cleanup
-        unlink($extractedPath);
+        self::unlink($extractedPath);
     }
 
     /**
@@ -191,7 +190,7 @@ class XObjectValidationTest extends TestCase
         $this->assertGreaterThan(0, filesize($extractedPath));
 
         // Cleanup
-        unlink($extractedPath);
+        self::unlink($extractedPath);
     }
 
     /**
@@ -219,7 +218,7 @@ class XObjectValidationTest extends TestCase
         $testFile = sys_get_temp_dir() . '/test_xobject_' . uniqid() . '.pdf';
         $pdf->Output('F', $testFile);
 
-        unlink($imagePath);
+        self::unlink($imagePath);
 
         return $testFile;
     }

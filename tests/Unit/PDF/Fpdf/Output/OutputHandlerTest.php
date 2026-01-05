@@ -21,7 +21,6 @@ use function ob_get_clean;
 use function ob_start;
 use function sys_get_temp_dir;
 use function uniqid;
-use function unlink;
 use PXP\PDF\Fpdf\Enum\OutputDestination;
 use PXP\PDF\Fpdf\Exception\FpdfException;
 use PXP\PDF\Fpdf\Output\OutputHandler;
@@ -59,7 +58,7 @@ final class OutputHandlerTest extends TestCase
             $this->assertSame($buffer, file_get_contents($tempFile));
         } finally {
             if (file_exists($tempFile)) {
-                unlink($tempFile);
+                self::unlink($tempFile);
             }
         }
     }
