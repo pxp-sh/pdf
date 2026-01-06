@@ -13,7 +13,10 @@ declare(strict_types=1);
  */
 namespace PXP\PDF\Fpdf\Extractor;
 
+use function count;
 use function implode;
+use function max;
+use function min;
 use function preg_match_all;
 use function preg_replace;
 use function str_replace;
@@ -73,6 +76,91 @@ class Text
     }
 
     /**
+     * Extract text from a specific page of a PDF file.
+     *
+     * @param string $filePath   Path to the PDF file
+     * @param int    $pageNumber Page number (1-based)
+     *
+     * @return string Extracted text from the specified page
+     */
+    public function extractFromFilePage(string $filePath, int $pageNumber): string
+    {
+        $content  = $this->fileReader->readFile($filePath);
+        $document = $this->parser->parseDocument($content);
+
+        return $this->extractTextFromDocumentPage($document, $pageNumber);
+    }
+
+    /**
+     * Extract text from a specific page of PDF content.
+     *
+     * @param string $pdfContent PDF file content as string
+     * @param int    $pageNumber Page number (1-based)
+     *
+     * @return string Extracted text from the specified page
+     */
+    public function extractFromStringPage(string $pdfContent, int $pageNumber): string
+    {
+        $document = $this->parser->parseDocument($pdfContent);
+
+        return $this->extractTextFromDocumentPage($document, $pageNumber);
+    }
+
+    /**
+     * Extract text from a range of pages in a PDF file.
+     *
+     * @param string $filePath  Path to the PDF file
+     * @param int    $startPage Start page number (1-based, inclusive)
+     * @param int    $endPage   End page number (1-based, inclusive)
+     *
+     * @return array<int, string> Array of page numbers => extracted text
+     */
+    public function extractFromFilePages(string $filePath, int $startPage, int $endPage): array
+    {
+        $content  = $this->fileReader->readFile($filePath);
+        $document = $this->parser->parseDocument($content);
+
+        return $this->extractTextFromDocumentPages($document, $startPage, $endPage);
+    }
+
+    /**
+     * Extract text from a range of pages in PDF content.
+     *
+     * @param string $pdfContent PDF file content as string
+     * @param int    $startPage  Start page number (1-based, inclusive)
+     * @param int    $endPage    End page number (1-based, inclusive)
+     *
+     * @return array<int, string> Array of page numbers => extracted text
+     */
+    public function extractFromStringPages(string $pdfContent, int $startPage, int $endPage): array
+    {
+        $document = $this->parser->parseDocument($pdfContent);
+
+        return $this->extractTextFromDocumentPages($document, $startPage, $endPage);
+    }
+
+    /**
+     * Get the total number of pages in a PDF file.
+     *
+     * @param string $filePath Path to the PDF file
+     *
+     * @return int Number of pages
+     */
+    public function getPageCount(string $filePath): int
+    {
+        $content  = $this->fileReader->readFile($filePath);
+        $document = $this->parser->parseDocument($content);
+
+        try {
+            $pages = $document->getAllPages();
+
+            return count($pages);
+        } catch (Exception $e) {
+            return 0;
+        }
+    }
+
+    /**
      * Extract text from a PDFDocument object.
      *
      * @param PDFDocument $document The PDF document
@@ -109,6 +197,77 @@ class Text
         }
 
         return trim($text);
+    }
+
+    /**
+     * Extract text from a specific page in a PDFDocument.
+     *
+     * @param PDFDocument $document   The PDF document
+     * @param int         $pageNumber Page number (1-based)
+     *
+     * @return string Extracted text from the specified page
+     */
+    private function extractTextFromDocumentPage(PDFDocument $document, int $pageNumber): string
+    {
+        try {
+            $pages = $document->getAllPages();
+        } catch (Exception $e) {
+            return '';
+        }
+
+        if (empty($pages) || $pageNumber < 1 || $pageNumber > count($pages)) {
+            return '';
+        }
+
+        $page = $pages[$pageNumber - 1];
+
+        if ($page === null) {
+            return '';
+        }
+
+        return trim($this->extractTextFromPage($page, $document));
+    }
+
+    /**
+     * Extract text from a range of pages in a PDFDocument.
+     *
+     * @param PDFDocument $document  The PDF document
+     * @param int         $startPage Start page number (1-based, inclusive)
+     * @param int         $endPage   End page number (1-based, inclusive)
+     *
+     * @return array<int, string> Array of page numbers => extracted text
+     */
+    private function extractTextFromDocumentPages(PDFDocument $document, int $startPage, int $endPage): array
+    {
+        $result = [];
+
+        try {
+            $pages = $document->getAllPages();
+        } catch (Exception $e) {
+            return $result;
+        }
+
+        if (empty($pages)) {
+            return $result;
+        }
+
+        $totalPages = count($pages);
+        $startPage  = max(1, $startPage);
+        $endPage    = min($totalPages, $endPage);
+
+        for ($pageNum = $startPage; $pageNum <= $endPage; $pageNum++) {
+            $page = $pages[$pageNum - 1];
+
+            if ($page === null) {
+                $result[$pageNum] = '';
+
+                continue;
+            }
+
+            $result[$pageNum] = trim($this->extractTextFromPage($page, $document));
+        }
+
+        return $result;
     }
 
     /**
