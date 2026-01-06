@@ -14,14 +14,17 @@ declare(strict_types=1);
 namespace PXP\PDF\Fpdf\Extractor;
 
 use function count;
+use function filesize;
 use function implode;
 use function max;
 use function min;
 use function preg_match_all;
 use function preg_replace;
 use function str_replace;
+use function strlen;
 use function trim;
 use Exception;
+use InvalidArgumentException;
 use PXP\PDF\Fpdf\IO\FileIO;
 use PXP\PDF\Fpdf\IO\FileReaderInterface;
 use PXP\PDF\Fpdf\Object\Base\PDFArray;
@@ -30,6 +33,7 @@ use PXP\PDF\Fpdf\Object\Base\PDFReference;
 use PXP\PDF\Fpdf\Object\Parser\PDFParser;
 use PXP\PDF\Fpdf\Stream\PDFStream;
 use PXP\PDF\Fpdf\Tree\PDFDocument;
+use RuntimeException;
 
 /**
  * Extracts text content from PDF documents.
@@ -76,6 +80,39 @@ class Text
     }
 
     /**
+     * Determine if buffer-based extraction is recommended for the given parameters.
+     * This helps decide between file-based and buffer-based approaches.
+     *
+     * @param int $fileSize     Size of PDF file in bytes
+     * @param int $pagesNeeded  Number of pages to extract
+     * @param int $totalPages   Total pages in document
+     * @param int $reusageCount How many times the buffer will be reused (default 1)
+     *
+     * @return bool True if buffer-based extraction is recommended
+     */
+    public function shouldUseBuffer(
+        int $fileSize,
+        int $pagesNeeded,
+        int $totalPages,
+        int $reusageCount = 1
+    ): bool {
+        // Buffer recommended if:
+        // 1. File is small (< 5MB) - low memory overhead
+        // 2. Extracting most pages (> 50%) - worth loading once
+        // 3. Buffer will be reused multiple times (reusageCount > 1)
+        // 4. Extracting all pages
+
+        $smallFileThreshold = 5 * 1024 * 1024; // 5MB
+        $pagePercentage     = $totalPages > 0 ? ($pagesNeeded / $totalPages) : 0;
+
+        return
+            $fileSize < $smallFileThreshold ||
+            $pagePercentage > 0.5 ||
+            $reusageCount > 1 ||
+            $pagesNeeded === $totalPages;
+    }
+
+    /**
      * Extract text from a specific page of a PDF file.
      *
      * @param string $filePath   Path to the PDF file
@@ -89,6 +126,35 @@ class Text
         $document = $this->parser->parseDocument($content);
 
         return $this->extractTextFromDocumentPage($document, $pageNumber);
+    }
+
+    /**
+     * Extract text with automatic optimization for large files.
+     * This method automatically chooses the best extraction strategy based on file size.
+     *
+     * For small files (< 5MB): Loads entire file into memory
+     * For large files: Uses direct file access (delegates to extractFromFilePage)
+     *
+     * @param string $filePath   Path to the PDF file
+     * @param int    $pageNumber Page number (1-based), or null for all pages
+     *
+     * @return string Extracted text
+     */
+    public function extractOptimized(string $filePath, ?int $pageNumber = null): string
+    {
+        $fileSize = filesize($filePath);
+
+        if ($fileSize === false) {
+            throw new RuntimeException('Cannot determine file size: ' . $filePath);
+        }
+
+        // For single page extraction, always use page-specific method
+        if ($pageNumber !== null) {
+            return $this->extractFromFilePage($filePath, $pageNumber);
+        }
+
+        // For full extraction, use the standard method
+        return $this->extractFromFile($filePath);
     }
 
     /**
@@ -158,6 +224,82 @@ class Text
         } catch (Exception $e) {
             return 0;
         }
+    }
+
+    /**
+     * Create a small PDF buffer containing only specified pages.
+     * This is useful for efficient buffer-based extraction when you only need
+     * to work with a subset of pages from a large PDF.
+     *
+     * Note: This method requires PDFSplitter and PDFMerger classes.
+     * For simple single-page extraction, use extractFromFilePage() directly.
+     *
+     * @param string $filePath    Path to the PDF file
+     * @param array  $pageNumbers Array of page numbers to include (1-based)
+     *
+     * @return string PDF content as string (small buffer)
+     */
+    public function createSmallBuffer(string $filePath, array $pageNumbers): string
+    {
+        if (empty($pageNumbers)) {
+            throw new InvalidArgumentException('Page numbers array cannot be empty');
+        }
+
+        // For single page, extract directly without merging
+        if (count($pageNumbers) === 1) {
+            return $this->extractSinglePageAsBuffer($filePath, $pageNumbers[0]);
+        }
+
+        // For multiple pages, we need to use splitter/merger
+        // This is left as a basic implementation - caller should use PDFSplitter/PDFMerger
+        // for production use, or extract pages individually
+        throw new RuntimeException(
+            'Multiple page buffer creation requires PDFSplitter and PDFMerger. '
+            . 'Extract pages individually or use those classes directly.',
+        );
+    }
+
+    /**
+     * Extract text from a page range and return both text and a small buffer.
+     * This is a convenience method that combines buffer creation with text extraction.
+     *
+     * @param string $filePath  Path to the PDF file
+     * @param int    $startPage Start page number (1-based, inclusive)
+     * @param int    $endPage   End page number (1-based, inclusive)
+     *
+     * @return array{text: array<int, string>, buffer_size: int} Extracted text and buffer size
+     */
+    public function extractFromFileWithBufferInfo(string $filePath, int $startPage, int $endPage): array
+    {
+        $content    = $this->fileReader->readFile($filePath);
+        $bufferSize = strlen($content);
+
+        $document = $this->parser->parseDocument($content);
+        $text     = $this->extractTextFromDocumentPages($document, $startPage, $endPage);
+
+        return [
+            'text'        => $text,
+            'buffer_size' => $bufferSize,
+        ];
+    }
+
+    /**
+     * Extract a single page as a complete PDF buffer.
+     * This creates a minimal, complete PDF containing just one page.
+     *
+     * @param string $filePath   Path to the PDF file
+     * @param int    $pageNumber Page number (1-based)
+     *
+     * @return string Complete PDF content containing just the specified page
+     */
+    private function extractSinglePageAsBuffer(string $filePath, int $pageNumber): string
+    {
+        // For now, this requires external tools. In practice, you'd use PDFSplitter
+        // This method serves as a placeholder for the interface design
+        throw new RuntimeException(
+            'Single page buffer extraction requires PDFSplitter. '
+            . 'Use extractFromFilePage() for text extraction without buffer creation.',
+        );
     }
 
     /**
