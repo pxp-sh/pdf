@@ -13,17 +13,23 @@ declare(strict_types=1);
  */
 namespace Test\Feature\PDF;
 
+use const PREG_SPLIT_NO_EMPTY;
+use function array_flip;
+use function array_intersect_key;
 use function array_map;
 use function basename;
+use function count;
 use function dirname;
 use function exec;
 use function file_exists;
 use function file_get_contents;
 use function filesize;
 use function glob;
+use function preg_split;
 use function round;
 use function similar_text;
 use function strlen;
+use function strtolower;
 use function trim;
 use function uniqid;
 use function unlink;
@@ -238,7 +244,8 @@ final class TextExtractionTest extends TestCase
     }
 
     /**
-     * Calculate text similarity percentage using PHP's similar_text function.
+     * Calculate text similarity percentage using a fast word-based approach.
+     * This is much faster than similar_text() for large texts.
      */
     private function calculateTextSimilarity(string $text1, string $text2): float
     {
@@ -253,8 +260,30 @@ final class TextExtractionTest extends TestCase
             return 0.0;
         }
 
-        $similarity = 0;
-        similar_text($text1, $text2, $similarity);
+        // For large texts, use a word-based Jaccard similarity (much faster)
+        // Split into words
+        $words1 = preg_split('/\s+/', strtolower($text1), -1, PREG_SPLIT_NO_EMPTY);
+        $words2 = preg_split('/\s+/', strtolower($text2), -1, PREG_SPLIT_NO_EMPTY);
+
+        if (empty($words1) && empty($words2)) {
+            return 100.0;
+        }
+
+        if (empty($words1) || empty($words2)) {
+            return 0.0;
+        }
+
+        // Calculate Jaccard similarity: intersection / union
+        $set1         = array_flip($words1);
+        $set2         = array_flip($words2);
+        $intersection = count(array_intersect_key($set1, $set2));
+        $union        = count($set1) + count($set2) - $intersection;
+
+        if ($union === 0) {
+            return 0.0;
+        }
+
+        $similarity = ($intersection / $union) * 100;
 
         return round($similarity, 2);
     }

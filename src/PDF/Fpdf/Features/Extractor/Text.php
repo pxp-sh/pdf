@@ -15,15 +15,22 @@ namespace PXP\PDF\Fpdf\Features\Extractor;
 
 use const PREG_OFFSET_CAPTURE;
 use const PREG_SET_ORDER;
+use const STR_PAD_LEFT;
+use function chr;
 use function count;
+use function dechex;
 use function filesize;
+use function hexdec;
 use function implode;
 use function max;
 use function min;
+use function ord;
 use function preg_match;
 use function preg_match_all;
 use function preg_replace;
+use function str_pad;
 use function str_replace;
+use function strlen;
 use function substr;
 use function trim;
 use function usort;
@@ -435,6 +442,9 @@ class Text
             return '';
         }
 
+        // Extract font information from Resources for character mapping
+        $fontMappings = $this->extractFontMappings($pageDict, $pdfDocument);
+
         $contentsEntry = $pageDict->getEntry('/Contents');
 
         if ($contentsEntry === null) {
@@ -476,7 +486,7 @@ class Text
         $text = '';
 
         foreach ($contentStreams as $contentStream) {
-            $text .= $this->extractTextFromContentStream($contentStream);
+            $text .= $this->extractTextFromContentStream($contentStream, $fontMappings);
         }
 
         return $text;
@@ -485,16 +495,17 @@ class Text
     /**
      * Extract text from a content stream.
      *
-     * @param PDFStream $pdfStream The content stream
+     * @param PDFStream $pdfStream    The content stream
+     * @param array     $fontMappings Font name to ToUnicode mapping
      *
      * @return string Extracted text
      */
-    private function extractTextFromContentStream(PDFStream $pdfStream): string
+    private function extractTextFromContentStream(PDFStream $pdfStream, array $fontMappings = []): string
     {
         // Get decoded stream data
         $content = $pdfStream->getDecodedData();
 
-        return $this->parseTextFromContent($content);
+        return $this->parseTextFromContent($content, $fontMappings);
     }
 
     /**
@@ -502,23 +513,63 @@ class Text
      *
      * This extracts text from PDF text-showing operators like Tj and TJ.
      *
-     * @param string $content PDF content stream
+     * @param string $content      PDF content stream
+     * @param array  $fontMappings Font name to ToUnicode mapping
      *
      * @return string Extracted text
      */
-    private function parseTextFromContent(string $content): string
+    private function parseTextFromContent(string $content, array $fontMappings = []): string
     {
         $text = '';
+
+        // Extract font selections: /FontName size Tf with positions
+        $fontSelections = [];
+
+        if (preg_match_all('/\/([A-Za-z0-9]+)\s+[\d.]+\s+Tf/', $content, $fontMatches, PREG_OFFSET_CAPTURE)) {
+            foreach ($fontMatches[0] as $idx => $match) {
+                $fontSelections[] = [
+                    'pos'  => $match[1],
+                    'font' => $fontMatches[1][$idx][0],
+                ];
+            }
+        }
+
+        // Helper function to get active font at a given position
+        $getActiveFont = static function ($position) use ($fontSelections): ?string
+        {
+            $activeFont = null;
+
+            foreach ($fontSelections as $selection) {
+                if ($selection['pos'] < $position) {
+                    $activeFont = $selection['font'];
+                } else {
+                    break;
+                }
+            }
+
+            return $activeFont;
+        };
 
         // Build an array of all text operators with their positions
         $textElements = [];
 
-        // Extract text from Tj operator: (text) Tj
-        if (preg_match_all('/\(((?:[^()\\\\]|\\\\.|\\\\(?:\r\n|\r|\n))*)\)\s*Tj/', $content, $matches, PREG_OFFSET_CAPTURE)) {
+        // Extract text from Tj operator: (text) Tj or <hex> Tj
+        if (preg_match_all('/(?:\(((?:[^()\\\\]|\\\\.|\\\\(?:\r\n|\r|\n))*)\)|<([0-9A-Fa-f]+)>)\s*Tj/', $content, $matches, PREG_OFFSET_CAPTURE)) {
             foreach ($matches[0] as $idx => $match) {
+                $currentFont = $getActiveFont($match[1]);
+                $decodedText = '';
+
+                if (isset($matches[1][$idx][0]) && $matches[1][$idx][0] !== '') {
+                    // Literal string
+                    $decodedText = $this->decodeTextString($matches[1][$idx][0]);
+                } elseif (isset($matches[2][$idx][0]) && $matches[2][$idx][0] !== '') {
+                    // Hex string - use font mapping
+                    $decodedText = $this->decodeHexStringWithMapping($matches[2][$idx][0], $currentFont, $fontMappings);
+                }
+
                 $textElements[] = [
                     'pos'  => $match[1],
-                    'text' => $this->decodeTextString($matches[1][$idx][0]),
+                    'text' => $decodedText,
                     'type' => 'Tj',
                 ];
             }
@@ -528,20 +579,25 @@ class Text
         // In TJ arrays, numbers represent kerning/spacing. Negative numbers < -100 often indicate word spacing
         if (preg_match_all('/\[((?:[^\[\]\\\\]|\\\\.|\\\\(?:\r\n|\r|\n))*)\]\s*TJ/', $content, $matches, PREG_OFFSET_CAPTURE)) {
             foreach ($matches[0] as $idx => $match) {
+                $currentFont  = $getActiveFont($match[1]);
                 $arrayContent = $matches[1][$idx][0];
                 $text_parts   = [];
 
-                // Parse the array content: mix of strings and numbers
-                preg_match_all('/\(((?:[^()\\\\]|\\\\.|\\\\(?:\r\n|\r|\n))*)\)|(-?\d+(?:\.\d+)?)/', $arrayContent, $arrayMatches, PREG_SET_ORDER);
+                // Parse the array content: mix of strings (literal or hex), and numbers
+                // Match: (literal string) or <hex string> or number
+                preg_match_all('/\(((?:[^()\\\\]|\\\\.|\\\\(?:\r\n|\r|\n))*)\)|<([0-9A-Fa-f]+)>|(-?\d+(?:\.\d+)?)/', $arrayContent, $arrayMatches, PREG_SET_ORDER);
 
                 foreach ($arrayMatches as $element) {
                     if (isset($element[1]) && $element[1] !== '') {
-                        // It's a string
+                        // It's a literal string
                         $text_parts[] = $this->decodeTextString($element[1]);
-                    } elseif (isset($element[2])) {
+                    } elseif (isset($element[2]) && $element[2] !== '') {
+                        // It's a hexadecimal string - use font mapping
+                        $text_parts[] = $this->decodeHexStringWithMapping($element[2], $currentFont, $fontMappings);
+                    } elseif (isset($element[3])) {
                         // It's a number (kerning value)
                         // Negative values < -100 often indicate word spacing
-                        $num = (float) $element[2];
+                        $num = (float) $element[3];
 
                         if ($num < -100) {
                             $text_parts[] = ' ';
@@ -557,23 +613,45 @@ class Text
             }
         }
 
-        // Extract text from ' (single quote) operator: (text) '
-        if (preg_match_all('/\(((?:[^()\\\\]|\\\\.|\\\\(?:\r\n|\r|\n))*)\)\s*\'/', $content, $matches, PREG_OFFSET_CAPTURE)) {
+        // Extract text from ' (single quote) operator: (text) ' or <hex> '
+        if (preg_match_all('/(?:\(((?:[^()\\\\]|\\\\.|\\\\(?:\r\n|\r|\n))*)\)|<([0-9A-Fa-f]+)>)\s*\'/', $content, $matches, PREG_OFFSET_CAPTURE)) {
             foreach ($matches[0] as $idx => $match) {
+                $currentFont = $getActiveFont($match[1]);
+                $decodedText = '';
+
+                if (isset($matches[1][$idx][0]) && $matches[1][$idx][0] !== '') {
+                    // Literal string
+                    $decodedText = $this->decodeTextString($matches[1][$idx][0]);
+                } elseif (isset($matches[2][$idx][0]) && $matches[2][$idx][0] !== '') {
+                    // Hex string - use font mapping
+                    $decodedText = $this->decodeHexStringWithMapping($matches[2][$idx][0], $currentFont, $fontMappings);
+                }
+
                 $textElements[] = [
                     'pos'  => $match[1],
-                    'text' => $this->decodeTextString($matches[1][$idx][0]),
+                    'text' => $decodedText,
                     'type' => '\'',
                 ];
             }
         }
 
-        // Extract text from " (double quote) operator
-        if (preg_match_all('/\(((?:[^()\\\\]|\\\\.|\\\\(?:\r\n|\r|\n))*)\)\s*"/', $content, $matches, PREG_OFFSET_CAPTURE)) {
+        // Extract text from " (double quote) operator: (text) " or <hex> "
+        if (preg_match_all('/(?:\(((?:[^()\\\\]|\\\\.|\\\\(?:\r\n|\r|\n))*)\)|<([0-9A-Fa-f]+)>)\s*"/', $content, $matches, PREG_OFFSET_CAPTURE)) {
             foreach ($matches[0] as $idx => $match) {
+                $currentFont = $getActiveFont($match[1]);
+                $decodedText = '';
+
+                if (isset($matches[1][$idx][0]) && $matches[1][$idx][0] !== '') {
+                    // Literal string
+                    $decodedText = $this->decodeTextString($matches[1][$idx][0]);
+                } elseif (isset($matches[2][$idx][0]) && $matches[2][$idx][0] !== '') {
+                    // Hex string - use font mapping
+                    $decodedText = $this->decodeHexStringWithMapping($matches[2][$idx][0], $currentFont, $fontMappings);
+                }
+
                 $textElements[] = [
                     'pos'  => $match[1],
-                    'text' => $this->decodeTextString($matches[1][$idx][0]),
+                    'text' => $decodedText,
                     'type' => '"',
                 ];
             }
@@ -628,5 +706,376 @@ class Text
 
         // Handle octal escape sequences (\ddd)
         return preg_replace('/\\\\([0-7]{1,3})/', '', $str); // Simplified for now
+    }
+
+    /**
+     * Decode a PDF hexadecimal string using font mapping (ToUnicode CMap) if available.
+     *
+     * @param string      $hexStr       The hex string (without < > delimiters)
+     * @param null|string $currentFont  The current font name
+     * @param array       $fontMappings Font name => character mapping
+     *
+     * @return string The decoded string
+     */
+    private function decodeHexStringWithMapping(string $hexStr, ?string $currentFont, array $fontMappings): string
+    {
+        // Remove any whitespace
+        $hexStr = preg_replace('/\s+/', '', $hexStr);
+
+        // If odd length, pad with 0
+        if (strlen($hexStr) % 2 !== 0) {
+            $hexStr .= '0';
+        }
+
+        // Check if we have a font mapping for the current font
+        if ($currentFont !== null && isset($fontMappings[$currentFont])) {
+            $mapping = $fontMappings[$currentFont];
+            $result  = '';
+
+            // Decode using font mapping (usually 2-byte or 4-byte character codes)
+            // Try 4-byte codes first (common for CID fonts), then 2-byte
+            for ($i = 0; $i < strlen($hexStr);) {
+                $matched = false;
+
+                // Try 4-byte (8 hex digits)
+                if ($i + 8 <= strlen($hexStr)) {
+                    $code4 = hexdec(substr($hexStr, $i, 8));
+
+                    if (isset($mapping[$code4])) {
+                        $result .= $mapping[$code4];
+                        $i += 8;
+                        $matched = true;
+                    }
+                }
+
+                // Try 2-byte (4 hex digits)
+                if (!$matched && $i + 4 <= strlen($hexStr)) {
+                    $code2 = hexdec(substr($hexStr, $i, 4));
+
+                    if (isset($mapping[$code2])) {
+                        $result .= $mapping[$code2];
+                        $i += 4;
+                        $matched = true;
+                    }
+                }
+
+                // Try 1-byte (2 hex digits)
+                if (!$matched && $i + 2 <= strlen($hexStr)) {
+                    $code1 = hexdec(substr($hexStr, $i, 2));
+
+                    if (isset($mapping[$code1])) {
+                        $result .= $mapping[$code1];
+                        $i += 2;
+                        $matched = true;
+                    }
+                }
+
+                // If no mapping found, skip this byte
+                if (!$matched) {
+                    $i += 2;
+                }
+            }
+
+            return $result;
+        }
+
+        // Fall back to original hex decoding if no mapping available
+        return $this->decodeHexString($hexStr);
+    }
+
+    /**
+     * Decode a PDF hexadecimal string.
+     * Hex strings in PDFs are encoded as <hexdigits> where each pair represents a byte.
+     * The encoding can be various: ASCII, UTF-16BE (with BOM FEFF), or custom encoding.
+     *
+     * @param string $hexStr The hex string (without < > delimiters)
+     *
+     * @return string The decoded string
+     */
+    private function decodeHexString(string $hexStr): string
+    {
+        // Remove any whitespace (PDFs allow whitespace in hex strings)
+        $hexStr = preg_replace('/\s+/', '', $hexStr);
+
+        // If odd length, pad with 0
+        if (strlen($hexStr) % 2 !== 0) {
+            $hexStr .= '0';
+        }
+
+        // Convert hex to binary
+        $binary = '';
+
+        for ($i = 0; $i < strlen($hexStr); $i += 2) {
+            $binary .= chr((int) hexdec(substr($hexStr, $i, 2)));
+        }
+
+        // Check for UTF-16BE BOM (FEFF)
+        if (strlen($binary) >= 2 && substr($binary, 0, 2) === "\xFE\xFF") {
+            // UTF-16BE encoding
+            $binary = substr($binary, 2); // Remove BOM
+
+            // Convert UTF-16BE to UTF-8
+            $utf8 = '';
+
+            for ($i = 0; $i < strlen($binary); $i += 2) {
+                if ($i + 1 < strlen($binary)) {
+                    $codepoint = (ord($binary[$i]) << 8) | ord($binary[$i + 1]);
+
+                    // Simple conversion (handles BMP only, not surrogates)
+                    if ($codepoint < 0x80) {
+                        $utf8 .= chr($codepoint);
+                    } elseif ($codepoint < 0x800) {
+                        $utf8 .= chr(0xC0 | ($codepoint >> 6));
+                        $utf8 .= chr(0x80 | ($codepoint & 0x3F));
+                    } else {
+                        $utf8 .= chr(0xE0 | ($codepoint >> 12));
+                        $utf8 .= chr(0x80 | (($codepoint >> 6) & 0x3F));
+                        $utf8 .= chr(0x80 | ($codepoint & 0x3F));
+                    }
+                }
+            }
+
+            return $utf8;
+        }
+
+        // Check if it looks like a glyph ID (small numbers, typically < 256 per character)
+        // Many PDFs use custom encodings where hex values map to glyphs via font encoding
+        // For now, treat as-is, but ideally we'd look up the font encoding
+
+        // If all bytes are in printable ASCII range or look reasonable, return as-is
+        // This handles simple ASCII encodings and single-byte encodings
+        return $binary;
+    }
+
+    /**
+     * Extract font mappings (ToUnicode CMaps) from page resources.
+     *
+     * @param PDFDictionary $pageDict    The page dictionary
+     * @param PDFDocument   $pdfDocument The PDF document
+     *
+     * @return array<string, array> Font name => character mapping array
+     */
+    private function extractFontMappings(PDFDictionary $pageDict, PDFDocument $pdfDocument): array
+    {
+        $fontMappings = [];
+
+        // Get Resources dictionary
+        $resourcesEntry = $pageDict->getEntry('/Resources');
+
+        if ($resourcesEntry === null) {
+            return $fontMappings;
+        }
+
+        // Resolve reference if needed
+        if ($resourcesEntry instanceof PDFReference) {
+            $resourcesObj = $pdfDocument->getObject($resourcesEntry->getObjectNumber());
+
+            if ($resourcesObj instanceof PDFObjectNode) {
+                $resourcesEntry = $resourcesObj->getValue();
+            }
+        }
+
+        if (!($resourcesEntry instanceof PDFDictionary)) {
+            return $fontMappings;
+        }
+
+        // Get Font dictionary
+        $fontEntry = $resourcesEntry->getEntry('/Font');
+
+        if ($fontEntry === null) {
+            return $fontMappings;
+        }
+
+        // Resolve reference if needed
+        if ($fontEntry instanceof PDFReference) {
+            $fontObj = $pdfDocument->getObject($fontEntry->getObjectNumber());
+
+            if ($fontObj instanceof PDFObjectNode) {
+                $fontEntry = $fontObj->getValue();
+            }
+        }
+
+        if (!($fontEntry instanceof PDFDictionary)) {
+            return $fontMappings;
+        }
+
+        // Iterate through each font
+        foreach ($fontEntry->getAllEntries() as $fontName => $fontRef) {
+            if ($fontRef instanceof PDFReference) {
+                $fontObj = $pdfDocument->getObject($fontRef->getObjectNumber());
+
+                if ($fontObj instanceof PDFObjectNode) {
+                    $fontDict = $fontObj->getValue();
+
+                    if ($fontDict instanceof PDFDictionary) {
+                        // Extract ToUnicode CMap
+                        $toUnicodeMapping = $this->extractToUnicodeCMap($fontDict, $pdfDocument);
+
+                        if ($toUnicodeMapping !== []) {
+                            $fontMappings[$fontName] = $toUnicodeMapping;
+                        }
+                    }
+                }
+            }
+        }
+
+        return $fontMappings;
+    }
+
+    /**
+     * Extract ToUnicode CMap from font dictionary.
+     *
+     * @param PDFDictionary $fontDict    The font dictionary
+     * @param PDFDocument   $pdfDocument The PDF document
+     *
+     * @return array<int, string> Character code => Unicode character mapping
+     */
+    private function extractToUnicodeCMap(PDFDictionary $fontDict, PDFDocument $pdfDocument): array
+    {
+        $mapping = [];
+
+        // Get ToUnicode entry
+        $toUnicodeEntry = $fontDict->getEntry('/ToUnicode');
+
+        if ($toUnicodeEntry === null) {
+            return $mapping;
+        }
+
+        // Resolve reference
+        if ($toUnicodeEntry instanceof PDFReference) {
+            $toUnicodeObj = $pdfDocument->getObject($toUnicodeEntry->getObjectNumber());
+
+            if ($toUnicodeObj instanceof PDFObjectNode) {
+                $toUnicodeEntry = $toUnicodeObj->getValue();
+            }
+        }
+
+        if (!($toUnicodeEntry instanceof PDFStream)) {
+            return $mapping;
+        }
+
+        // Parse CMap data
+        $cmapData = $toUnicodeEntry->getDecodedData();
+
+        return $this->parseToUnicodeCMap($cmapData);
+    }
+
+    /**
+     * Parse ToUnicode CMap data to extract character mappings.
+     *
+     * @param string $cmapData The CMap stream data
+     *
+     * @return array<int, string> Character code => Unicode character mapping
+     */
+    private function parseToUnicodeCMap(string $cmapData): array
+    {
+        $mapping = [];
+
+        // Parse bfchar sections: <srcCode> <dstUnicode>
+        if (preg_match_all('/beginbfchar\s+(.*?)\s+endbfchar/s', $cmapData, $bfcharMatches)) {
+            foreach ($bfcharMatches[1] as $bfcharSection) {
+                // Match pairs of hex strings: <XX> <YYYY>
+                if (preg_match_all('/<([0-9A-Fa-f]+)>\s*<([0-9A-Fa-f]+)>/', $bfcharSection, $pairs)) {
+                    for ($i = 0; $i < count($pairs[1]); $i++) {
+                        $srcCode = hexdec($pairs[1][$i]);
+                        $dstCode = $pairs[2][$i];
+
+                        // Convert destination hex to UTF-8
+                        $unicodeChar       = $this->hexToUTF8($dstCode);
+                        $mapping[$srcCode] = $unicodeChar;
+                    }
+                }
+            }
+        }
+
+        // Parse bfrange sections: <startCode> <endCode> <dstUnicode>
+        if (preg_match_all('/beginbfrange\s+(.*?)\s+endbfrange/s', $cmapData, $bfrangeMatches)) {
+            foreach ($bfrangeMatches[1] as $bfrangeSection) {
+                // Match: <start> <end> <baseUnicode> or <start> <end> [<unicode1> <unicode2> ...]
+                if (preg_match_all('/<([0-9A-Fa-f]+)>\s*<([0-9A-Fa-f]+)>\s*(?:<([0-9A-Fa-f]+)>|\[(.*?)\])/s', $bfrangeSection, $ranges, PREG_SET_ORDER)) {
+                    foreach ($ranges as $range) {
+                        $start = hexdec($range[1]);
+                        $end   = hexdec($range[2]);
+
+                        if (isset($range[3]) && $range[3] !== '') {
+                            // Single base code, increment for range
+                            $baseCode = $range[3];
+                            $baseNum  = hexdec($baseCode);
+
+                            for ($code = $start; $code <= $end; $code++) {
+                                $unicodeValue   = $baseNum + ($code - $start);
+                                $hexValue       = str_pad(dechex($unicodeValue), strlen($baseCode), '0', STR_PAD_LEFT);
+                                $mapping[$code] = $this->hexToUTF8($hexValue);
+                            }
+                        } elseif (isset($range[4])) {
+                            // Array of codes
+                            if (preg_match_all('/<([0-9A-Fa-f]+)>/', $range[4], $arrayMatches)) {
+                                $code = $start;
+
+                                foreach ($arrayMatches[1] as $hexCode) {
+                                    if ($code <= $end) {
+                                        $mapping[$code] = $this->hexToUTF8($hexCode);
+                                        $code++;
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        return $mapping;
+    }
+
+    /**
+     * Convert hex string to UTF-8 character(s).
+     *
+     * @param string $hexStr Hex string (without delimiters)
+     *
+     * @return string UTF-8 character(s)
+     */
+    private function hexToUTF8(string $hexStr): string
+    {
+        // Pad to even length
+        if (strlen($hexStr) % 2 !== 0) {
+            $hexStr = '0' . $hexStr;
+        }
+
+        $result = '';
+
+        // Process as UTF-16BE pairs
+        for ($i = 0; $i < strlen($hexStr); $i += 4) {
+            $hexPair = substr($hexStr, $i, 4);
+
+            if (strlen($hexPair) < 4) {
+                // Single byte, treat as-is
+                $hexPair   = substr($hexStr, $i, 2);
+                $codepoint = hexdec($hexPair);
+            } else {
+                // Two bytes (UTF-16 code unit)
+                $codepoint = hexdec($hexPair);
+            }
+
+            // Convert codepoint to UTF-8
+            if ($codepoint < 0x80) {
+                $result .= chr($codepoint);
+            } elseif ($codepoint < 0x800) {
+                $result .= chr(0xC0 | ($codepoint >> 6));
+                $result .= chr(0x80 | ($codepoint & 0x3F));
+            } elseif ($codepoint < 0x10000) {
+                $result .= chr(0xE0 | ($codepoint >> 12));
+                $result .= chr(0x80 | (($codepoint >> 6) & 0x3F));
+                $result .= chr(0x80 | ($codepoint & 0x3F));
+            } else {
+                // Handle surrogates or 4-byte UTF-8 (simplified)
+                $result .= chr(0xF0 | ($codepoint >> 18));
+                $result .= chr(0x80 | (($codepoint >> 12) & 0x3F));
+                $result .= chr(0x80 | (($codepoint >> 6) & 0x3F));
+                $result .= chr(0x80 | ($codepoint & 0x3F));
+            }
+        }
+
+        return $result;
     }
 }
