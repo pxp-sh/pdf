@@ -27,8 +27,8 @@ final class CatalogDictionaryTest extends TestCase
 {
     public function testConstructorSetsType(): void
     {
-        $catalog = new CatalogDictionary;
-        $type    = $catalog->getEntry('/Type');
+        $catalogDictionary = new CatalogDictionary;
+        $type              = $catalogDictionary->getEntry('/Type');
 
         $this->assertNotNull($type);
         $this->assertStringContainsString('Catalog', (string) $type);
@@ -36,51 +36,51 @@ final class CatalogDictionaryTest extends TestCase
 
     public function testSetPages(): void
     {
-        $catalog = new CatalogDictionary;
-        $catalog->setPages(1);
+        $catalogDictionary = new CatalogDictionary;
+        $catalogDictionary->setPages(1);
 
-        $pages = $catalog->getEntry('/Pages');
+        $pages = $catalogDictionary->getEntry('/Pages');
         $this->assertInstanceOf(PDFReference::class, $pages);
         $this->assertSame(1, $pages->getObjectNumber());
     }
 
     public function testSetPagesWithObjectNode(): void
     {
-        $doc       = new PDFDocument;
-        $pagesDict = new PDFDictionary;
-        $pagesNode = $doc->addObject($pagesDict, 1);
+        $pdfDocument   = new PDFDocument;
+        $pdfDictionary = new PDFDictionary;
+        $pdfObjectNode = $pdfDocument->addObject($pdfDictionary, 1);
 
-        $catalog = new CatalogDictionary;
-        $catalog->setPages($pagesNode);
+        $catalogDictionary = new CatalogDictionary;
+        $catalogDictionary->setPages($pdfObjectNode);
 
-        $pages = $catalog->getEntry('/Pages');
+        $pages = $catalogDictionary->getEntry('/Pages');
         $this->assertInstanceOf(PDFReference::class, $pages);
     }
 
     public function testSetOpenAction(): void
     {
-        $catalog = new CatalogDictionary;
-        $catalog->setOpenAction([1, 'Fit']);
+        $catalogDictionary = new CatalogDictionary;
+        $catalogDictionary->setOpenAction([1, 'Fit']);
 
-        $openAction = $catalog->getEntry('/OpenAction');
+        $openAction = $catalogDictionary->getEntry('/OpenAction');
         $this->assertInstanceOf(PDFArray::class, $openAction);
     }
 
     public function testSetPageLayout(): void
     {
-        $catalog = new CatalogDictionary;
-        $catalog->setPageLayout('SinglePage');
+        $catalogDictionary = new CatalogDictionary;
+        $catalogDictionary->setPageLayout('SinglePage');
 
-        $layout = $catalog->getEntry('/PageLayout');
+        $layout = $catalogDictionary->getEntry('/PageLayout');
         $this->assertNotNull($layout);
     }
 
     public function testSetPageMode(): void
     {
-        $catalog = new CatalogDictionary;
-        $catalog->setPageMode('UseOutlines');
+        $catalogDictionary = new CatalogDictionary;
+        $catalogDictionary->setPageMode('UseOutlines');
 
-        $mode = $catalog->getEntry('/PageMode');
+        $mode = $catalogDictionary->getEntry('/PageMode');
         $this->assertNotNull($mode);
     }
 }

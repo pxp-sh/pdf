@@ -68,9 +68,9 @@ final class PngParserAlphaTest extends TestCase
         imagedestroy($im2);
         fwrite(STDERR, "DEBUG GD alphas (7-bit): {$a00}, {$a11}\n");
 
-        $fileIO = self::createFileIO();
-        $parser = new PngParser($fileIO, $fileIO);
-        $info   = $parser->parse($file);
+        $fileIO    = self::createFileIO();
+        $pngParser = new PngParser($fileIO, $fileIO);
+        $info      = $pngParser->parse($file);
 
         $this->assertArrayHasKey('data', $info);
 
@@ -90,8 +90,8 @@ final class PngParserAlphaTest extends TestCase
     public function test_parse_nonexistent_file_throws(): void
     {
         $this->expectException(FpdfException::class);
-        $fileIO = self::createFileIO();
-        $parser = new PngParser($fileIO, $fileIO);
-        $parser->parse('/nonexistent/file.png');
+        $fileIO    = self::createFileIO();
+        $pngParser = new PngParser($fileIO, $fileIO);
+        $pngParser->parse('/nonexistent/file.png');
     }
 }

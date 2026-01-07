@@ -29,7 +29,7 @@ use function strtolower;
 use PXP\PDF\Fpdf\Exceptions\Exception\FpdfException;
 use PXP\PDF\Fpdf\IO\StreamFactoryInterface;
 
-final class GifParser implements ImageParserInterface
+final readonly class GifParser implements ImageParserInterface
 {
     public function __construct(
         private PngParser $pngParser,

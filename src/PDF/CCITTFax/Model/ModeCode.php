@@ -15,17 +15,8 @@ namespace PXP\PDF\CCITTFax\Model;
 
 class ModeCode
 {
-    public int $bitsUsed;
-    public int $mask;
-    public int $value;
-    public Mode $type;
-
-    public function __construct(int $bitsUsed, int $mask, int $value, Mode $type)
+    public function __construct(public int $bitsUsed, public int $mask, public int $value, public Mode $type)
     {
-        $this->bitsUsed = $bitsUsed;
-        $this->mask     = $mask;
-        $this->value    = $value;
-        $this->type     = $type;
     }
 
     public function getVerticalOffset(): int

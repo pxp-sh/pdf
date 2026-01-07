@@ -57,28 +57,29 @@ final class CatalogDictionary extends PDFDictionary
      */
     public function setOpenAction(array $action): self
     {
-        $actionArray = new PDFArray;
+        $pdfArray = new PDFArray;
 
         // Page reference
         if (is_int($action[0])) {
-            $actionArray->add(new PDFReference($action[0]));
+            $pdfArray->add(new PDFReference($action[0]));
         } else {
-            $actionArray->add($action[0]);
+            $pdfArray->add($action[0]);
         }
 
         // Action type
-        $actionArray->add(new PDFName($action[1]));
+        $pdfArray->add(new PDFName($action[1]));
+        $counter = count($action);
 
         // Optional parameters
-        for ($i = 2; $i < count($action); $i++) {
+        for ($i = 2; $i < $counter; $i++) {
             if ($action[$i] === null) {
-                $actionArray->add(new PDFNull);
+                $pdfArray->add(new PDFNull);
             } else {
-                $actionArray->add(new PDFNumber($action[$i]));
+                $pdfArray->add(new PDFNumber($action[$i]));
             }
         }
 
-        $this->addEntry('/OpenAction', $actionArray);
+        $this->addEntry('/OpenAction', $pdfArray);
 
         return $this;
     }

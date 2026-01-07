@@ -31,6 +31,7 @@ use PXP\PDF\Fpdf\Core\Object\Base\PDFReference;
 use PXP\PDF\Fpdf\Core\Object\Parser\PDFParser;
 use PXP\PDF\Fpdf\Core\Stream\PDFStream;
 use PXP\PDF\Fpdf\Core\Tree\PDFDocument;
+use PXP\PDF\Fpdf\Core\Tree\PDFObjectNode;
 use PXP\PDF\Fpdf\IO\FileIO;
 use PXP\PDF\Fpdf\IO\FileReaderInterface;
 use RuntimeException;
@@ -40,15 +41,8 @@ use RuntimeException;
  */
 class Text
 {
-    private ?FileReaderInterface $fileReader = null;
-    private ?PDFParser $parser               = null;
-
-    public function __construct(
-        ?FileReaderInterface $fileReader = null,
-        ?PDFParser $parser = null,
-    ) {
-        $this->fileReader = $fileReader ?? new FileIO;
-        $this->parser     = $parser ?? new PDFParser;
+    public function __construct(private readonly ?FileReaderInterface $fileReader = new FileIO, private readonly ?PDFParser $pdfParser = new PDFParser)
+    {
     }
 
     /**
@@ -74,7 +68,7 @@ class Text
      */
     public function extractFromString(string $pdfContent): string
     {
-        $document = $this->parser->parseDocument($pdfContent);
+        $document = $this->pdfParser->parseDocument($pdfContent);
 
         return $this->extractTextFromDocument($document);
     }
@@ -123,7 +117,7 @@ class Text
     public function extractFromFilePage(string $filePath, int $pageNumber): string
     {
         $content  = $this->fileReader->readFile($filePath);
-        $document = $this->parser->parseDocument($content);
+        $document = $this->pdfParser->parseDocument($content);
 
         return $this->extractTextFromDocumentPage($document, $pageNumber);
     }
@@ -167,7 +161,7 @@ class Text
      */
     public function extractFromStringPage(string $pdfContent, int $pageNumber): string
     {
-        $document = $this->parser->parseDocument($pdfContent);
+        $document = $this->pdfParser->parseDocument($pdfContent);
 
         return $this->extractTextFromDocumentPage($document, $pageNumber);
     }
@@ -184,7 +178,7 @@ class Text
     public function extractFromFilePages(string $filePath, int $startPage, int $endPage): array
     {
         $content  = $this->fileReader->readFile($filePath);
-        $document = $this->parser->parseDocument($content);
+        $document = $this->pdfParser->parseDocument($content);
 
         return $this->extractTextFromDocumentPages($document, $startPage, $endPage);
     }
@@ -200,7 +194,7 @@ class Text
      */
     public function extractFromStringPages(string $pdfContent, int $startPage, int $endPage): array
     {
-        $document = $this->parser->parseDocument($pdfContent);
+        $document = $this->pdfParser->parseDocument($pdfContent);
 
         return $this->extractTextFromDocumentPages($document, $startPage, $endPage);
     }
@@ -215,13 +209,13 @@ class Text
     public function getPageCount(string $filePath): int
     {
         $content  = $this->fileReader->readFile($filePath);
-        $document = $this->parser->parseDocument($content);
+        $document = $this->pdfParser->parseDocument($content);
 
         try {
             $pages = $document->getAllPages();
 
             return count($pages);
-        } catch (Exception $e) {
+        } catch (Exception) {
             return 0;
         }
     }
@@ -241,13 +235,13 @@ class Text
      */
     public function createSmallBuffer(string $filePath, array $pageNumbers): string
     {
-        if (empty($pageNumbers)) {
+        if ($pageNumbers === []) {
             throw new InvalidArgumentException('Page numbers array cannot be empty');
         }
 
         // For single page, extract directly without merging
         if (count($pageNumbers) === 1) {
-            return $this->extractSinglePageAsBuffer($filePath, $pageNumbers[0]);
+            return $this->extractSinglePageAsBuffer();
         }
 
         // For multiple pages, we need to use splitter/merger
@@ -274,7 +268,7 @@ class Text
         $content    = $this->fileReader->readFile($filePath);
         $bufferSize = strlen($content);
 
-        $document = $this->parser->parseDocument($content);
+        $document = $this->pdfParser->parseDocument($content);
         $text     = $this->extractTextFromDocumentPages($document, $startPage, $endPage);
 
         return [
@@ -287,12 +281,9 @@ class Text
      * Extract a single page as a complete PDF buffer.
      * This creates a minimal, complete PDF containing just one page.
      *
-     * @param string $filePath   Path to the PDF file
-     * @param int    $pageNumber Page number (1-based)
-     *
      * @return string Complete PDF content containing just the specified page
      */
-    private function extractSinglePageAsBuffer(string $filePath, int $pageNumber): string
+    private function extractSinglePageAsBuffer(): string
     {
         // For now, this requires external tools. In practice, you'd use PDFSplitter
         // This method serves as a placeholder for the interface design
@@ -305,23 +296,23 @@ class Text
     /**
      * Extract text from a PDFDocument object.
      *
-     * @param PDFDocument $document The PDF document
+     * @param PDFDocument $pdfDocument The PDF document
      *
      * @return string Extracted text
      */
-    private function extractTextFromDocument(PDFDocument $document): string
+    private function extractTextFromDocument(PDFDocument $pdfDocument): string
     {
         $text = '';
 
         // Get all pages
         try {
-            $pages = $document->getAllPages();
-        } catch (Exception $e) {
+            $pages = $pdfDocument->getAllPages();
+        } catch (Exception) {
             // No pages found or error retrieving pages
             return '';
         }
 
-        if (empty($pages)) {
+        if ($pages === []) {
             return '';
         }
 
@@ -331,7 +322,7 @@ class Text
                 continue;
             }
 
-            $pageText = $this->extractTextFromPage($page, $document);
+            $pageText = $this->extractTextFromPage($page, $pdfDocument);
 
             if ($pageText !== '') {
                 $text .= $pageText . "\n";
@@ -344,20 +335,20 @@ class Text
     /**
      * Extract text from a specific page in a PDFDocument.
      *
-     * @param PDFDocument $document   The PDF document
-     * @param int         $pageNumber Page number (1-based)
+     * @param PDFDocument $pdfDocument The PDF document
+     * @param int         $pageNumber  Page number (1-based)
      *
      * @return string Extracted text from the specified page
      */
-    private function extractTextFromDocumentPage(PDFDocument $document, int $pageNumber): string
+    private function extractTextFromDocumentPage(PDFDocument $pdfDocument, int $pageNumber): string
     {
         try {
-            $pages = $document->getAllPages();
-        } catch (Exception $e) {
+            $pages = $pdfDocument->getAllPages();
+        } catch (Exception) {
             return '';
         }
 
-        if (empty($pages) || $pageNumber < 1 || $pageNumber > count($pages)) {
+        if ($pages === [] || $pageNumber < 1 || $pageNumber > count($pages)) {
             return '';
         }
 
@@ -367,29 +358,29 @@ class Text
             return '';
         }
 
-        return trim($this->extractTextFromPage($page, $document));
+        return trim($this->extractTextFromPage($page, $pdfDocument));
     }
 
     /**
      * Extract text from a range of pages in a PDFDocument.
      *
-     * @param PDFDocument $document  The PDF document
-     * @param int         $startPage Start page number (1-based, inclusive)
-     * @param int         $endPage   End page number (1-based, inclusive)
+     * @param PDFDocument $pdfDocument The PDF document
+     * @param int         $startPage   Start page number (1-based, inclusive)
+     * @param int         $endPage     End page number (1-based, inclusive)
      *
      * @return array<int, string> Array of page numbers => extracted text
      */
-    private function extractTextFromDocumentPages(PDFDocument $document, int $startPage, int $endPage): array
+    private function extractTextFromDocumentPages(PDFDocument $pdfDocument, int $startPage, int $endPage): array
     {
         $result = [];
 
         try {
-            $pages = $document->getAllPages();
-        } catch (Exception $e) {
+            $pages = $pdfDocument->getAllPages();
+        } catch (Exception) {
             return $result;
         }
 
-        if (empty($pages)) {
+        if ($pages === []) {
             return $result;
         }
 
@@ -406,7 +397,7 @@ class Text
                 continue;
             }
 
-            $result[$pageNum] = trim($this->extractTextFromPage($page, $document));
+            $result[$pageNum] = trim($this->extractTextFromPage($page, $pdfDocument));
         }
 
         return $result;
@@ -415,12 +406,12 @@ class Text
     /**
      * Extract text from a page object.
      *
-     * @param mixed       $page     The page object
-     * @param PDFDocument $document The PDF document for resolving references
+     * @param mixed       $page        The page object
+     * @param PDFDocument $pdfDocument The PDF document for resolving references
      *
      * @return string Extracted text
      */
-    private function extractTextFromPage($page, PDFDocument $document): string
+    private function extractTextFromPage($page, PDFDocument $pdfDocument): string
     {
         // Get the page's Contents entry
         $pageDict = $page->getValue();
@@ -440,9 +431,9 @@ class Text
 
         // Resolve reference if needed
         if ($contentsEntry instanceof PDFReference) {
-            $contentObj = $document->getObject($contentsEntry->getObjectNumber());
+            $contentObj = $pdfDocument->getObject($contentsEntry->getObjectNumber());
 
-            if ($contentObj !== null) {
+            if ($contentObj instanceof PDFObjectNode) {
                 $contentsEntry = $contentObj->getValue();
             }
         }
@@ -455,9 +446,9 @@ class Text
         elseif ($contentsEntry instanceof PDFArray) {
             foreach ($contentsEntry->getAll() as $streamRef) {
                 if ($streamRef instanceof PDFReference) {
-                    $streamObj = $document->getObject($streamRef->getObjectNumber());
+                    $streamObj = $pdfDocument->getObject($streamRef->getObjectNumber());
 
-                    if ($streamObj !== null && $streamObj->getValue() instanceof PDFStream) {
+                    if ($streamObj instanceof PDFObjectNode && $streamObj->getValue() instanceof PDFStream) {
                         $contentStreams[] = $streamObj->getValue();
                     }
                 } elseif ($streamRef instanceof PDFStream) {
@@ -469,8 +460,8 @@ class Text
         // Extract text from all content streams
         $text = '';
 
-        foreach ($contentStreams as $stream) {
-            $text .= $this->extractTextFromContentStream($stream);
+        foreach ($contentStreams as $contentStream) {
+            $text .= $this->extractTextFromContentStream($contentStream);
         }
 
         return $text;
@@ -479,14 +470,14 @@ class Text
     /**
      * Extract text from a content stream.
      *
-     * @param PDFStream $stream The content stream
+     * @param PDFStream $pdfStream The content stream
      *
      * @return string Extracted text
      */
-    private function extractTextFromContentStream(PDFStream $stream): string
+    private function extractTextFromContentStream(PDFStream $pdfStream): string
     {
         // Get decoded stream data
-        $content = $stream->getDecodedData();
+        $content = $pdfStream->getDecodedData();
 
         return $this->parseTextFromContent($content);
     }

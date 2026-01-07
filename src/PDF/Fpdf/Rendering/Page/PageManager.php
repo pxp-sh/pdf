@@ -25,9 +25,7 @@ use function strlen;
 use function sys_get_temp_dir;
 use function uniqid;
 use function unlink;
-use Psr\EventDispatcher\EventDispatcherInterface;
 use Psr\Log\LoggerInterface;
-use PXP\PDF\Fpdf\Events\Event\NullDispatcher;
 use PXP\PDF\Fpdf\Events\Log\NullLogger;
 use PXP\PDF\Fpdf\Exceptions\Exception\FpdfException;
 use PXP\PDF\Fpdf\IO\FileIOInterface;
@@ -40,31 +38,23 @@ final class PageManager
     private array $pageInfo  = [];
     private ?string $tempDir = null;
     private array $tempFiles = [];
-    private LoggerInterface $logger;
-    private EventDispatcherInterface $dispatcher;
 
     public function __construct(
-        private FileIOInterface $fileIO,
-        ?LoggerInterface $logger = null,
-        ?EventDispatcherInterface $dispatcher = null,
+        private readonly FileIOInterface $fileIO,
+        private readonly ?LoggerInterface $logger = new NullLogger,
     ) {
-        $this->logger     = $logger ?? new NullLogger;
-        $this->dispatcher = $dispatcher ?? new NullDispatcher;
-
         // Create temporary directory for page storage
         $this->tempDir = sys_get_temp_dir() . '/pxp_pdf_' . uniqid('', true);
         $this->logger->debug('Creating temporary directory for page storage', [
             'temp_dir' => $this->tempDir,
         ]);
 
-        if (!is_dir($this->tempDir)) {
-            if (!mkdir($this->tempDir, 0o777, true) && !is_dir($this->tempDir)) {
-                $this->logger->error('Failed to create temporary directory for PDF pages', [
-                    'temp_dir' => $this->tempDir,
-                ]);
+        if (!is_dir($this->tempDir) && (!mkdir($this->tempDir, 0o777, true) && !is_dir($this->tempDir))) {
+            $this->logger->error('Failed to create temporary directory for PDF pages', [
+                'temp_dir' => $this->tempDir,
+            ]);
 
-                throw new RuntimeException('Failed to create temporary directory for PDF pages: ' . $this->tempDir);
-            }
+            throw new RuntimeException('Failed to create temporary directory for PDF pages: ' . $this->tempDir);
         }
     }
 
@@ -195,7 +185,7 @@ final class PageManager
                 $content = $this->fileIO->readFile($this->tempFiles[$page]);
                 $content = str_replace($search, $replace, $content);
                 $this->fileIO->writeFile($this->tempFiles[$page], $content);
-            } catch (FpdfException $e) {
+            } catch (FpdfException) {
                 // Ignore errors, fall through to memory check
             }
         } elseif (isset($this->pages[$page])) {
@@ -256,7 +246,7 @@ final class PageManager
             return;
         }
 
-        $contentLength = strlen($this->pages[$page]);
+        $contentLength = strlen((string) $this->pages[$page]);
         $tempFile      = $this->tempDir . '/page_' . $page . '.tmp';
 
         $this->logger->debug('Finalizing page', [

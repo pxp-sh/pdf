@@ -22,7 +22,7 @@ use RuntimeException;
 class Modes
 {
     /** @var ModeCode[] */
-    private array $modes;
+    private readonly array $modes;
 
     public function __construct()
     {

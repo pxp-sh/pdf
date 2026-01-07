@@ -46,9 +46,9 @@ final class PDFXrefTable
     public function addCompressedEntry(int $objectNumber, int $objectStreamNumber, int $index): void
     {
         // Create an entry with offset -1 (placeholder) and mark compressed
-        $entry = new XrefEntry(-1, 0, false);
-        $entry->setCompressed($objectStreamNumber, $index);
-        $this->entries[$objectNumber] = $entry;
+        $xrefEntry = new XrefEntry(-1, 0, false);
+        $xrefEntry->setCompressed($objectStreamNumber, $index);
+        $this->entries[$objectNumber] = $xrefEntry;
     }
 
     /**
@@ -149,7 +149,7 @@ final class PDFXrefTable
             }
 
             // Subsection header: "start count"
-            if (preg_match('/^([0-9]+)\s+([0-9]+)$/', $line, $headerMatches) === 1) {
+            if (preg_match('/^(\d+)\s+(\d+)$/', $line, $headerMatches) === 1) {
                 $startObj = (int) $headerMatches[1];
                 $count    = (int) $headerMatches[2];
 
@@ -164,12 +164,24 @@ final class PDFXrefTable
                     $entryLine = trim($lines[$i]);
 
                     // Entry format: 10-digit offset, 5-digit generation, flag n|f (flag required)
-                    if (preg_match('/^([0-9]{10})\s+([0-9]{5})\s+([nf])\s*$/', $entryLine, $entryMatches) === 1) {
+                    if (preg_match('/^(\d{10})\s+(\d{5})\s+([nf])\s*$/', $entryLine, $entryMatches) === 1) {
                         $offsetNum  = (int) ltrim($entryMatches[1], '0');
                         $generation = (int) $entryMatches[2];
                         $flag       = $entryMatches[3];
+                        $objNum     = $startObj + $j;
 
-                        $objNum = $startObj + $j;
+                        if ('n' === $flag) {
+                            $this->addEntry($objNum, $offsetNum, $generation, false);
+                        } else {
+                            $this->addEntry($objNum, $offsetNum, $generation, true);
+                        }
+                    } elseif (preg_match('/^(\d+)\s+(\d+)\s+([nf])\s*$/', $entryLine, $entryMatches2) === 1) {
+                        // If the line doesn't match an entry, treat it as subsection header or stop
+                        // To be tolerant, try to parse a more permissive entry pattern (allow variable digit counts)
+                        $offsetNum  = (int) $entryMatches2[1];
+                        $generation = (int) $entryMatches2[2];
+                        $flag       = $entryMatches2[3];
+                        $objNum     = $startObj + $j;
 
                         if ('n' === $flag) {
                             $this->addEntry($objNum, $offsetNum, $generation, false);
@@ -177,24 +189,8 @@ final class PDFXrefTable
                             $this->addEntry($objNum, $offsetNum, $generation, true);
                         }
                     } else {
-                        // If the line doesn't match an entry, treat it as subsection header or stop
-                        // To be tolerant, try to parse a more permissive entry pattern (allow variable digit counts)
-                        if (preg_match('/^([0-9]+)\s+([0-9]+)\s+([nf])\s*$/', $entryLine, $entryMatches2) === 1) {
-                            $offsetNum  = (int) $entryMatches2[1];
-                            $generation = (int) $entryMatches2[2];
-                            $flag       = $entryMatches2[3];
-
-                            $objNum = $startObj + $j;
-
-                            if ('n' === $flag) {
-                                $this->addEntry($objNum, $offsetNum, $generation, false);
-                            } else {
-                                $this->addEntry($objNum, $offsetNum, $generation, true);
-                            }
-                        } else {
-                            // Malformed entry - stop parsing
-                            break 2;
-                        }
+                        // Malformed entry - stop parsing
+                        break 2;
                     }
                 }
 
@@ -217,9 +213,9 @@ final class PDFXrefTable
      */
     public function mergeEntries(self $otherTable): void
     {
-        foreach ($otherTable->getAllEntries() as $objectNumber => $entry) {
+        foreach ($otherTable->getAllEntries() as $objectNumber => $xrefEntry) {
             // Merge entries from another table; entries from the other table override existing ones.
-            $this->entries[$objectNumber] = $entry;
+            $this->entries[$objectNumber] = $xrefEntry;
         }
     }
 
@@ -228,7 +224,7 @@ final class PDFXrefTable
      */
     public function serialize(): string
     {
-        if (empty($this->entries)) {
+        if ($this->entries === []) {
             return "xref\n0 0\n";
         }
 
@@ -246,7 +242,7 @@ final class PDFXrefTable
                 $objNum = $startObj + $i;
 
                 if (isset($this->entries[$objNum])) {
-                    $result .= (string) $this->entries[$objNum] . "\n";
+                    $result .= $this->entries[$objNum] . "\n";
                 } else {
                     // Free entry
                     $result .= "0000000000 65535 f \n";
@@ -268,14 +264,15 @@ final class PDFXrefTable
         $objectNumbers = array_keys($this->entries);
         sort($objectNumbers);
 
-        if (empty($objectNumbers)) {
+        if ($objectNumbers === []) {
             return [];
         }
 
         $currentStart = $objectNumbers[0];
         $currentCount = 1;
+        $counter      = count($objectNumbers);
 
-        for ($i = 1; $i < count($objectNumbers); $i++) {
+        for ($i = 1; $i < $counter; $i++) {
             if ($objectNumbers[$i] === $objectNumbers[$i - 1] + 1) {
                 $currentCount++;
             } else {

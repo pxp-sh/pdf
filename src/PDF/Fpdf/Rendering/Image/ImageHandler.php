@@ -36,17 +36,15 @@ final class ImageHandler
 {
     private array $images  = [];
     private array $parsers = [];
-    private LoggerInterface $logger;
-    private CacheItemPoolInterface $cache;
+    private readonly CacheItemPoolInterface $cacheItemPool;
 
     public function __construct(
         FileReaderInterface $fileReader,
         StreamFactoryInterface $streamFactory,
-        ?LoggerInterface $logger = null,
-        ?CacheItemPoolInterface $cache = null,
+        private readonly ?LoggerInterface $logger = new NullLogger,
+        ?CacheItemPoolInterface $cacheItemPool = null,
     ) {
-        $this->logger = $logger ?? new NullLogger;
-        $this->cache  = $cache ?? new NullCache;
+        $this->cacheItemPool = $cacheItemPool ?? new NullCache;
 
         $pngParser       = new PngParser($fileReader, $streamFactory);
         $this->parsers[] = new JpegParser($fileReader);
@@ -71,7 +69,7 @@ final class ImageHandler
 
         // Check cache first
         $cacheKey  = 'pxp_pdf_image_' . md5($file);
-        $cacheItem = $this->cache->getItem($cacheKey);
+        $cacheItem = $this->cacheItemPool->getItem($cacheKey);
 
         if ($cacheItem->isHit()) {
             $cachedInfo = $cacheItem->get();
@@ -122,7 +120,7 @@ final class ImageHandler
 
         $parser = $this->findParser($type);
 
-        if ($parser === null) {
+        if (!$parser instanceof ImageParserInterface) {
             $this->logger->error('Unsupported image type', [
                 'file_path' => $absolutePath,
                 'type'      => $type,
@@ -143,7 +141,7 @@ final class ImageHandler
 
         // Cache the processed image info
         $cacheItem->set($info);
-        $this->cache->save($cacheItem);
+        $this->cacheItemPool->save($cacheItem);
 
         $this->logger->debug('Image processed and cached', [
             'file_path'          => $absolutePath,

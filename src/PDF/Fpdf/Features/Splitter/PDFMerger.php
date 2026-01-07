@@ -65,8 +65,8 @@ use PXP\PDF\Fpdf\Core\Object\PDFObjectInterface;
 use PXP\PDF\Fpdf\Core\Stream\PDFStream;
 use PXP\PDF\Fpdf\Core\Stream\StreamEncoder;
 use PXP\PDF\Fpdf\Core\Tree\PDFDocument;
+use PXP\PDF\Fpdf\Core\Tree\PDFObjectNode;
 use PXP\PDF\Fpdf\Core\Tree\PDFObjectRegistry;
-use PXP\PDF\Fpdf\Events\Event\NullDispatcher;
 use PXP\PDF\Fpdf\Events\Log\NullLogger;
 use PXP\PDF\Fpdf\Exceptions\Exception\FpdfException;
 use PXP\PDF\Fpdf\Features\Merger\IncrementalPageProcessor;
@@ -78,21 +78,15 @@ use Throwable;
 
 class PDFMerger
 {
-    private LoggerInterface $logger;
-    private EventDispatcherInterface $dispatcher;
-    private CacheItemPoolInterface $cache;
-    private FileIOInterface $fileIO;
+    private readonly CacheItemPoolInterface $cacheItemPool;
 
     public function __construct(
-        FileIOInterface $fileIO,
-        ?LoggerInterface $logger = null,
-        ?EventDispatcherInterface $dispatcher = null,
-        ?CacheItemPoolInterface $cache = null,
+        private readonly FileIOInterface $fileIO,
+        private readonly ?LoggerInterface $logger = new NullLogger,
+        ?EventDispatcherInterface $eventDispatcher = null,
+        ?CacheItemPoolInterface $cacheItemPool = null,
     ) {
-        $this->fileIO     = $fileIO;
-        $this->logger     = $logger ?? new NullLogger;
-        $this->dispatcher = $dispatcher ?? new NullDispatcher;
-        $this->cache      = $cache ?? new NullCache;
+        $this->cacheItemPool = $cacheItemPool ?? new NullCache;
     }
 
     /**
@@ -126,7 +120,7 @@ class PDFMerger
      */
     public function mergeBatch(array $pdfFilePaths, string $outputPath): void
     {
-        if (empty($pdfFilePaths)) {
+        if ($pdfFilePaths === []) {
             throw new InvalidArgumentException('At least one PDF file is required for merging');
         }
 
@@ -145,14 +139,13 @@ class PDFMerger
         }
 
         // Create new merged document
-        $registry  = new PDFObjectRegistry(null, null, null, null, null, $this->cache, $this->logger);
-        $mergedDoc = new PDFDocument('1.3', $registry);
+        $pdfObjectRegistry = new PDFObjectRegistry(null, null, null, null, null, $this->cacheItemPool, $this->logger);
+        $pdfDocument       = new PDFDocument('1.3', $pdfObjectRegistry);
 
-        $parser           = new PDFParser($this->logger, $this->cache);
+        $pdfParser        = new PDFParser($this->logger, $this->cacheItemPool);
         $allPages         = [];
         $nextObjectNumber = 1;
-        $globalResources  = new ResourcesDictionary;
-        $resourceNameMap  = []; // Map to handle resource name conflicts
+        new ResourcesDictionary; // Map to handle resource name conflicts
 
         // Process each input PDF
         foreach ($pdfFilePaths as $pdfIndex => $pdfPath) {
@@ -162,7 +155,7 @@ class PDFMerger
                 'file_path'  => $absolutePath,
             ]);
 
-            $document          = $parser->parseDocumentFromFile($pdfPath, $this->fileIO);
+            $document          = $pdfParser->parseDocumentFromFile($pdfPath, $this->fileIO);
             $pageCount         = $this->getPageCount($document);
             $originalPageCount = $pageCount; // Keep original expected count for fallback placeholder creation
 
@@ -181,7 +174,7 @@ class PDFMerger
                     // Verify page exists before extracting
                     $pageNode = $document->getPage($pageNum);
 
-                    if ($pageNode === null) {
+                    if (!$pageNode instanceof PDFObjectNode) {
                         $this->logger->warning('Page not found, skipping', [
                             'file_path'      => $absolutePath,
                             'page_number'    => $pageNum,
@@ -200,7 +193,7 @@ class PDFMerger
                     }
 
                     try {
-                        $pageData = $this->extractPageData($document, $pageNum, $nextObjectNumber, $mergedDoc, $resourceNameMap);
+                        $pageData = $this->extractPageData($document, $pageNum);
                         // avoid keeping the entire parsed document in memory for each page: store the source file path instead
                         $pageData['sourcePath'] = $absolutePath;
                         unset($pageData['sourceDoc']);
@@ -241,7 +234,7 @@ class PDFMerger
                     // record fallback page nodes so we can derive an authoritative page count if needed
                     $fallbackAllPageNodes = $allPageNodes;
 
-                    if (!empty($allPageNodes)) {
+                    if ($allPageNodes !== []) {
                         // Limit to expected page count to avoid extracting embedded pages
                         $pagesToExtract = min(count($allPageNodes), $expectedPageCount > 0 ? $expectedPageCount : count($allPageNodes));
 
@@ -251,7 +244,7 @@ class PDFMerger
 
                             try {
                                 // First try the existing extraction by page number
-                                $pageData               = $this->extractPageData($document, $pageNum, $nextObjectNumber, $mergedDoc, $resourceNameMap);
+                                $pageData               = $this->extractPageData($document, $pageNum);
                                 $pageData['sourcePath'] = $absolutePath;
                                 unset($pageData['sourceDoc']);
                                 $allPages[] = $pageData;
@@ -265,7 +258,7 @@ class PDFMerger
 
                                 // Try extracting directly from the page node if available
                                 try {
-                                    $pageData               = $this->extractPageDataFromNode($document, $pageNode, $nextObjectNumber, $mergedDoc, $resourceNameMap);
+                                    $pageData               = $this->extractPageDataFromNode($document, $pageNode);
                                     $pageData['sourcePath'] = $absolutePath;
                                     unset($pageData['sourceDoc']);
                                     $allPages[] = $pageData;
@@ -306,13 +299,13 @@ class PDFMerger
                     while ($pageNum <= $maxAttempts) {
                         $pageNode = $document->getPage($pageNum);
 
-                        if ($pageNode === null) {
+                        if (!$pageNode instanceof PDFObjectNode) {
                             // No more pages found
                             break;
                         }
 
                         try {
-                            $pageData               = $this->extractPageData($document, $pageNum, $nextObjectNumber, $mergedDoc, $resourceNameMap);
+                            $pageData               = $this->extractPageData($document, $pageNum);
                             $pageData['sourcePath'] = $absolutePath;
                             unset($pageData['sourceDoc']);
                             $allPages[] = $pageData;
@@ -344,19 +337,19 @@ class PDFMerger
                         try {
                             $this->logger->info('Retrying extraction after re-parsing document', ['file_path' => $absolutePath]);
                             // Re-parse document to clear any transient state that might have prevented extraction
-                            $document = $parser->parseDocumentFromFile($pdfPath, $this->fileIO);
+                            $document = $pdfParser->parseDocumentFromFile($pdfPath, $this->fileIO);
 
                             $pageNum = 1;
 
                             while ($pageNum <= $maxAttempts) {
                                 $pageNode = $document->getPage($pageNum);
 
-                                if ($pageNode === null) {
+                                if (!$pageNode instanceof PDFObjectNode) {
                                     break;
                                 }
 
                                 try {
-                                    $pageData               = $this->extractPageData($document, $pageNum, $nextObjectNumber, $mergedDoc, $resourceNameMap);
+                                    $pageData               = $this->extractPageData($document, $pageNum);
                                     $pageData['sourcePath'] = $absolutePath;
                                     unset($pageData['sourceDoc']);
                                     $allPages[] = $pageData;
@@ -401,7 +394,7 @@ class PDFMerger
                     $cmd = 'pdfinfo ' . escapeshellarg($absolutePath) . ' 2>&1';
                     @exec($cmd, $pdfInfoOutput, $pdfReturn);
 
-                    if (isset($pdfReturn) && $pdfReturn === 0 && !empty($pdfInfoOutput)) {
+                    if (isset($pdfReturn) && $pdfReturn === 0 && $pdfInfoOutput !== []) {
                         $pdfInfoStr = implode("\n", $pdfInfoOutput);
 
                         if (preg_match('/Pages:\s*(\d+)/i', $pdfInfoStr, $m)) {
@@ -412,7 +405,7 @@ class PDFMerger
                             }
                         }
                     }
-                } catch (Throwable $e) {
+                } catch (Throwable) {
                     // ignore failures of external utility
                 }
             }
@@ -474,7 +467,7 @@ class PDFMerger
                     'extracted'          => $pagesExtractedForThisPdf,
                     'total_pages_so_far' => count($allPages),
                 ], JSON_THROW_ON_ERROR) . PHP_EOL, FILE_APPEND);
-            } catch (Throwable $e) {
+            } catch (Throwable) {
                 // ignore
             }
 
@@ -488,7 +481,7 @@ class PDFMerger
             }
         }
 
-        if (empty($allPages)) {
+        if ($allPages === []) {
             throw new FpdfException('No pages found in input PDFs');
         }
 
@@ -497,7 +490,7 @@ class PDFMerger
         ]);
 
         // Build merged PDF structure
-        $this->buildMergedPdf($mergedDoc, $allPages, $nextObjectNumber);
+        $this->buildMergedPdf($pdfDocument, $allPages, $nextObjectNumber);
 
         // Stream-serialize and write to file to avoid assembling the entire PDF in memory.
         $handle       = $this->fileIO->openWriteStream($outputPath);
@@ -518,7 +511,7 @@ class PDFMerger
                 $bytesWritten += $written;
             };
 
-            $mergedDoc->serializeToStream($writer);
+            $pdfDocument->serializeToStream($writer);
         } finally {
             fclose($handle);
         }
@@ -554,7 +547,7 @@ class PDFMerger
      */
     public function mergeIncremental(array $pdfFilePaths, string $outputPath): void
     {
-        if (empty($pdfFilePaths)) {
+        if ($pdfFilePaths === []) {
             throw new InvalidArgumentException('At least one PDF file is required for merging');
         }
 
@@ -578,16 +571,16 @@ class PDFMerger
 
         try {
             // Create merged document (only for catalog/pages structure)
-            $registry = new PDFObjectRegistry(
+            $pdfObjectRegistry = new PDFObjectRegistry(
                 null,
                 null,
                 null,
                 null,
                 null,
-                $this->cache,
+                $this->cacheItemPool,
                 $this->logger,
             );
-            $mergedDoc = new PDFDocument('1.3', $registry);
+            $pdfDocument = new PDFDocument('1.3', $pdfObjectRegistry);
 
             // Write PDF header IMMEDIATELY
             $writer = static function (string $chunk) use ($handle, &$bytesWritten): void
@@ -600,7 +593,7 @@ class PDFMerger
                 $bytesWritten += $written;
             };
 
-            $headerStr = (string) $mergedDoc->getHeader();
+            $headerStr = (string) $pdfDocument->getHeader();
             $writer($headerStr);
             $currentOffset = strlen($headerStr);
 
@@ -609,14 +602,14 @@ class PDFMerger
             ]);
 
             // Initialize incremental processor WITH STREAMING WRITER
-            $processor = new IncrementalPageProcessor(
-                $mergedDoc,
+            $incrementalPageProcessor = new IncrementalPageProcessor(
+                $pdfDocument,
                 $this->logger,
                 2, // Start at object 2 (object 1 is Pages dict)
                 $writer,
                 $currentOffset,
             );
-            $parser = new PDFParser($this->logger, $this->cache);
+            $pdfParser = new PDFParser($this->logger, $this->cacheItemPool);
 
             $resourceNameMap     = [];
             $totalPagesProcessed = 0;
@@ -632,7 +625,7 @@ class PDFMerger
                 ]);
 
                 // Parse document
-                $sourceDoc = $parser->parseDocumentFromFile($pdfPath, $this->fileIO);
+                $sourceDoc = $pdfParser->parseDocumentFromFile($pdfPath, $this->fileIO);
                 $pageCount = $this->getPageCount($sourceDoc);
 
                 $this->logger->debug('File loaded', [
@@ -647,7 +640,7 @@ class PDFMerger
                     try {
                         $pageNode = $sourceDoc->getPage($pageNum);
 
-                        if ($pageNode === null) {
+                        if (!$pageNode instanceof PDFObjectNode) {
                             continue;
                         }
 
@@ -664,7 +657,7 @@ class PDFMerger
 
                         // CRITICAL: appendPage() writes objects to disk IMMEDIATELY
                         // Objects are NOT stored in memory after this call
-                        $processor->appendPage(
+                        $incrementalPageProcessor->appendPage(
                             $pageData,
                             $resourceNameMap,
                             $sourceDocCache,
@@ -711,43 +704,43 @@ class PDFMerger
             ]);
 
             // Get current offset and object offsets tracked during streaming
-            $currentOffset = $processor->getCurrentOffset();
-            $objectOffsets = $processor->getObjectOffsets();
+            $currentOffset = $incrementalPageProcessor->getCurrentOffset();
+            $objectOffsets = $incrementalPageProcessor->getObjectOffsets();
 
             // Write Pages dictionary (object 1) to stream
-            $pagesNode = $mergedDoc->getObjectRegistry()->get(1);
+            $pagesNode = $pdfDocument->getObjectRegistry()->get(1);
 
-            if ($pagesNode !== null) {
+            if ($pagesNode instanceof PDFObjectNode) {
                 $objectOffsets[1] = $currentOffset;
-                $objStr           = (string) $pagesNode . "\n";
+                $objStr           = $pagesNode . "\n";
                 $writer($objStr);
                 $currentOffset += strlen($objStr);
             }
 
             // Finalize creates catalog in registry
-            $processor->finalize();
+            $incrementalPageProcessor->finalize();
 
             // Write Catalog to stream
-            $catalogObjNum = $processor->getNextObjectNumber() - 1;
-            $catalogNode   = $mergedDoc->getObjectRegistry()->get($catalogObjNum);
+            $catalogObjNum = $incrementalPageProcessor->getNextObjectNumber() - 1;
+            $catalogNode   = $pdfDocument->getObjectRegistry()->get($catalogObjNum);
 
-            if ($catalogNode !== null) {
+            if ($catalogNode instanceof PDFObjectNode) {
                 $objectOffsets[$catalogObjNum] = $currentOffset;
-                $objStr                        = (string) $catalogNode . "\n";
+                $objStr                        = $catalogNode . "\n";
                 $writer($objStr);
                 $currentOffset += strlen($objStr);
             }
 
             // Build and write xref table
-            $mergedDoc->getXrefTable()->rebuild($objectOffsets);
+            $pdfDocument->getXrefTable()->rebuild($objectOffsets);
             $xrefOffset = $currentOffset;
-            $xrefStr    = $mergedDoc->getXrefTable()->serialize();
+            $xrefStr    = $pdfDocument->getXrefTable()->serialize();
             $writer($xrefStr);
             $currentOffset += strlen($xrefStr);
 
             // Write trailer
-            $mergedDoc->getTrailer()->setSize($processor->getNextObjectNumber());
-            $trailerStr = $mergedDoc->getTrailer()->serialize($xrefOffset);
+            $pdfDocument->getTrailer()->setSize($incrementalPageProcessor->getNextObjectNumber());
+            $trailerStr = $pdfDocument->getTrailer()->serialize($xrefOffset);
             $writer($trailerStr);
 
             $duration = (microtime(true) - $startTime) * 1000;
@@ -768,12 +761,12 @@ class PDFMerger
     /**
      * Get page count from a PDF document.
      */
-    private function getPageCount(PDFDocument $document): int
+    private function getPageCount(PDFDocument $pdfDocument): int
     {
         // Prefer authoritative /Count from Pages dictionary when available
-        $pagesNode = $document->getPages();
+        $pagesNode = $pdfDocument->getPages();
 
-        if ($pagesNode !== null) {
+        if ($pagesNode instanceof PDFObjectNode) {
             $pagesDict = $pagesNode->getValue();
 
             if ($pagesDict instanceof PDFDictionary) {
@@ -790,65 +783,63 @@ class PDFMerger
         }
 
         // First try to read /Count from file content (fallback to naive scan)
-        $registry     = $document->getObjectRegistry();
-        $reflection   = new ReflectionClass($registry);
-        $filePathProp = $reflection->getProperty('filePath');
-        $filePathProp->setAccessible(true);
-        $filePath   = $filePathProp->getValue($registry);
-        $fileIOProp = $reflection->getProperty('fileIO');
-        $fileIOProp->setAccessible(true);
-        $regFileIO = $fileIOProp->getValue($registry);
+        $pdfObjectRegistry  = $pdfDocument->getObjectRegistry();
+        $reflectionClass    = new ReflectionClass($pdfObjectRegistry);
+        $reflectionProperty = $reflectionClass->getProperty('filePath');
+        $filePath           = $reflectionProperty->getValue($pdfObjectRegistry);
+        $fileIOProp         = $reflectionClass->getProperty('fileIO');
+        $regFileIO          = $fileIOProp->getValue($pdfObjectRegistry);
 
         if ($filePath !== null && file_exists($filePath)) {
             try {
                 $content = $regFileIO !== null ? $regFileIO->readFile($filePath) : file_get_contents($filePath);
 
                 // Use same pattern as test - finds first /Count match
-                if (preg_match('/\/Count\s+(\d+)/', $content, $matches)) {
+                if (preg_match('/\/Count\s+(\d+)/', (string) $content, $matches)) {
                     $count = (int) $matches[1];
 
                     if ($count > 0) {
                         return $count;
                     }
                 }
-            } catch (Exception $e) {
+            } catch (Exception) {
                 // Continue to next method
             }
         }
 
         // Fallback: Try to get /Count from Pages dictionary (for PDFs where file content search fails)
-        $pagesNode = $document->getPages();
+        $pagesNode = $pdfDocument->getPages();
 
-        if ($pagesNode === null) {
+        if (!$pagesNode instanceof PDFObjectNode) {
             // Try to load Pages from root if not already loaded
-            $root = $document->getRoot();
+            $root = $pdfDocument->getRoot();
 
-            if ($root === null) {
-                $rootRef = $document->getTrailer()->getRoot();
+            if (!$root instanceof PDFObjectNode) {
+                $rootRef = $pdfDocument->getTrailer()->getRoot();
 
-                if ($rootRef !== null) {
-                    $root = $document->getObject($rootRef->getObjectNumber());
+                if ($rootRef instanceof PDFReference) {
+                    $root = $pdfDocument->getObject($rootRef->getObjectNumber());
 
-                    if ($root !== null) {
-                        $document->setRoot($root);
+                    if ($root instanceof PDFObjectNode) {
+                        $pdfDocument->setRoot($root);
                     }
                 }
             }
 
-            if ($root !== null) {
+            if ($root instanceof PDFObjectNode) {
                 $rootDict = $root->getValue();
 
                 if ($rootDict instanceof PDFDictionary) {
                     $pagesRef = $rootDict->getEntry('/Pages');
 
                     if ($pagesRef instanceof PDFReference) {
-                        $pagesNode = $document->getObject($pagesRef->getObjectNumber());
+                        $pagesNode = $pdfDocument->getObject($pagesRef->getObjectNumber());
                     }
                 }
             }
         }
 
-        if ($pagesNode !== null) {
+        if ($pagesNode instanceof PDFObjectNode) {
             $pagesDict = $pagesNode->getValue();
 
             if ($pagesDict instanceof PDFDictionary) {
@@ -871,9 +862,9 @@ class PDFMerger
             $maxAttempts = 10000; // safety limit
 
             for ($i = 1; $i <= $maxAttempts; $i++) {
-                $pageNode = $document->getPage($i);
+                $pageNode = $pdfDocument->getPage($i);
 
-                if ($pageNode === null) {
+                if (!$pageNode instanceof PDFObjectNode) {
                     break;
                 }
                 $count++;
@@ -882,7 +873,7 @@ class PDFMerger
             if ($count > 0) {
                 return $count;
             }
-        } catch (Throwable $e) {
+        } catch (Throwable) {
             // ignore and fall through to default
         }
 
@@ -896,28 +887,25 @@ class PDFMerger
      * @return array{pageDict: PDFDictionary, content: string, resources: null|PDFDictionary, mediaBox: null|array<float>, hasMediaBox: bool}
      */
     private function extractPageData(
-        PDFDocument $sourceDoc,
-        int $pageNumber,
-        int &$nextObjectNumber,
-        PDFDocument $targetDoc,
-        array &$resourceNameMap
+        PDFDocument $pdfDocument,
+        int $pageNumber
     ): array {
-        $pageNode = $sourceDoc->getPage($pageNumber);
+        $pageNode = $pdfDocument->getPage($pageNumber);
 
-        if ($pageNode === null) {
+        if (!$pageNode instanceof PDFObjectNode) {
             throw new FpdfException('Invalid page number: ' . $pageNumber);
         }
 
-        $pageDict = $pageNode->getValue();
+        $pdfObject = $pageNode->getValue();
 
-        if (!$pageDict instanceof PDFDictionary) {
+        if (!$pdfObject instanceof PDFDictionary) {
             throw new FpdfException('Page object is not a dictionary');
         }
 
         // Extract MediaBox
         $mediaBox        = null;
         $pageHasMediaBox = false;
-        $mediaBoxEntry   = $pageDict->getEntry('/MediaBox');
+        $mediaBoxEntry   = $pdfObject->getEntry('/MediaBox');
 
         if ($mediaBoxEntry instanceof MediaBoxArray) {
             $mediaBox        = $mediaBoxEntry->getValues();
@@ -939,12 +927,12 @@ class PDFMerger
 
         // If page doesn't have MediaBox, check parent
         if (!$pageHasMediaBox) {
-            $parentRef = $pageDict->getEntry('/Parent');
+            $parentRef = $pdfObject->getEntry('/Parent');
 
             if ($parentRef instanceof PDFReference) {
-                $parentNode = $sourceDoc->getObject($parentRef->getObjectNumber());
+                $parentNode = $pdfDocument->getObject($parentRef->getObjectNumber());
 
-                if ($parentNode !== null) {
+                if ($parentNode instanceof PDFObjectNode) {
                     $parentDict = $parentNode->getValue();
 
                     if ($parentDict instanceof PDFDictionary) {
@@ -971,13 +959,13 @@ class PDFMerger
         }
 
         // Extract Contents
-        $contentsRef    = $pageDict->getEntry('/Contents');
+        $contentsRef    = $pdfObject->getEntry('/Contents');
         $contentStreams = [];
 
         if ($contentsRef instanceof PDFReference) {
-            $contentNode = $sourceDoc->getObject($contentsRef->getObjectNumber());
+            $contentNode = $pdfDocument->getObject($contentsRef->getObjectNumber());
 
-            if ($contentNode !== null) {
+            if ($contentNode instanceof PDFObjectNode) {
                 $contentObj = $contentNode->getValue();
 
                 if ($contentObj instanceof PDFStream) {
@@ -987,9 +975,9 @@ class PDFMerger
         } elseif ($contentsRef instanceof PDFArray) {
             foreach ($contentsRef->getAll() as $item) {
                 if ($item instanceof PDFReference) {
-                    $contentNode = $sourceDoc->getObject($item->getObjectNumber());
+                    $contentNode = $pdfDocument->getObject($item->getObjectNumber());
 
-                    if ($contentNode !== null) {
+                    if ($contentNode instanceof PDFObjectNode) {
                         $contentObj = $contentNode->getValue();
 
                         if ($contentObj instanceof PDFStream) {
@@ -1003,18 +991,18 @@ class PDFMerger
         // Combine content streams
         $combinedContent = '';
 
-        foreach ($contentStreams as $stream) {
-            $combinedContent .= $stream->getDecodedData();
+        foreach ($contentStreams as $contentStream) {
+            $combinedContent .= $contentStream->getDecodedData();
         }
 
         // Extract Resources
-        $resourcesRef  = $pageDict->getEntry('/Resources');
+        $resourcesRef  = $pdfObject->getEntry('/Resources');
         $resourcesDict = null;
 
         if ($resourcesRef instanceof PDFReference) {
-            $resourcesNode = $sourceDoc->getObject($resourcesRef->getObjectNumber());
+            $resourcesNode = $pdfDocument->getObject($resourcesRef->getObjectNumber());
 
-            if ($resourcesNode !== null) {
+            if ($resourcesNode instanceof PDFObjectNode) {
                 $resourcesObj = $resourcesNode->getValue();
 
                 if ($resourcesObj instanceof PDFDictionary) {
@@ -1026,32 +1014,34 @@ class PDFMerger
         }
 
         return [
-            'pageDict'    => $pageDict,
+            'pageDict'    => $pdfObject,
             'content'     => $combinedContent,
             'resources'   => $resourcesDict,
             'mediaBox'    => $mediaBox,
             'hasMediaBox' => $pageHasMediaBox,
-            'sourceDoc'   => $sourceDoc, // Keep reference to source document for resource copying
+            'sourceDoc'   => $pdfDocument, // Keep reference to source document for resource copying
         ];
     }
 
     /**
      * Build the merged PDF document structure.
+     *
+     * @param array<int, mixed> $allPages
      */
     private function buildMergedPdf(
-        PDFDocument $mergedDoc,
+        PDFDocument $pdfDocument,
         array $allPages,
         int &$nextObjectNumber
     ): void {
         // Object 1: Pages dictionary
         $pagesDict = new PDFDictionary;
         $pagesDict->addEntry('/Type', new PDFName('Pages'));
-        $kids = new KidsArray;
+        $kidsArray = new KidsArray;
 
         // Determine MediaBox (use first page's MediaBox as default)
         $defaultMediaBox = null;
 
-        if (!empty($allPages) && $allPages[0]['mediaBox'] !== null) {
+        if ($allPages !== [] && $allPages[0]['mediaBox'] !== null) {
             $defaultMediaBox = $allPages[0]['mediaBox'];
         } else {
             // Default A4 MediaBox
@@ -1087,17 +1077,16 @@ class PDFMerger
                 $this->copyResourcesForPage(
                     $pageData['resources'],
                     $pageData['sourcePath'],
-                    $mergedDoc,
+                    $pdfDocument,
                     $resourcesObjNum,
                     $currentObjNum,
                     $resourceNameMap,
-                    $localResourceMap,
                     $sourceDocCache,
                     $globalObjectMap,
                 );
             } else {
                 $emptyResources = new ResourcesDictionary;
-                $mergedDoc->addObject($emptyResources, $resourcesObjNum);
+                $pdfDocument->addObject($emptyResources, $resourcesObjNum);
             }
 
             // Determine content streams from page dictionary and copy them directly without decoding
@@ -1107,15 +1096,15 @@ class PDFMerger
             if ($contentsEntry instanceof PDFReference) {
                 $contentNums = [$contentsEntry->getObjectNumber()];
             } elseif ($contentsEntry instanceof PDFArray) {
-                $contentNums = array_map(static fn ($ref) => $ref instanceof PDFReference ? $ref->getObjectNumber() : null, $contentsEntry->getAll());
-                $contentNums = array_filter($contentNums, static fn ($n) => $n !== null);
+                $contentNums = array_map(static fn (float|int|\PXP\PDF\Fpdf\Core\Object\PDFObjectInterface|string $ref): ?int => $ref instanceof PDFReference ? $ref->getObjectNumber() : null, $contentsEntry->getAll());
+                $contentNums = array_filter($contentNums, static fn (?int $n): bool => $n !== null);
             } else {
                 $contentNums = [];
             }
 
-            if (!empty($contentNums)) {
+            if ($contentNums !== []) {
                 // Allocate object numbers for each content stream
-                foreach ($contentNums as $_) {
+                foreach ($contentNums as $contentNum) {
                     $contentObjNums[] = $currentObjNum++;
                 }
 
@@ -1129,7 +1118,7 @@ class PDFMerger
 
                     // Ensure source doc is parsed and cached
                     if (!isset($sourceDocCache[$srcPath])) {
-                        $parser                   = new PDFParser($this->logger, $this->cache);
+                        $parser                   = new PDFParser($this->logger, $this->cacheItemPool);
                         $sourceDocCache[$srcPath] = $parser->parseDocumentFromFile($srcPath, $this->fileIO);
                     }
                     $sourceDoc = $sourceDocCache[$srcPath];
@@ -1139,7 +1128,7 @@ class PDFMerger
                     if ($node === null) {
                         // Add empty stream as fallback
                         $emptyStream = new PDFStream(new PDFDictionary, '');
-                        $mergedDoc->addObject($emptyStream, $contentObjNums[$idx]);
+                        $pdfDocument->addObject($emptyStream, $contentObjNums[$idx]);
 
                         continue;
                     }
@@ -1155,14 +1144,14 @@ class PDFMerger
                     // to use the new resource names; this requires decoding, performing replacements, then
                     // re-encoding at serialize time. This avoids leaving content referring to old names
                     // (e.g., /F8) while the resources dictionary uses unique names (e.g., /F8_1).
-                    if (!empty($localResourceMap) && $streamObj instanceof PDFStream) {
+                    if ($localResourceMap !== [] && $streamObj instanceof PDFStream) {
                         // Decode content, perform textual name mapping, then re-encode to avoid keeping large decoded
                         // buffers for many pages simultaneously. Re-encoding stores the compressed bytes which are
                         // typically smaller and are freed sooner.
                         $decoded = $streamObj->getDecodedData();
 
                         // Replace resource names for known categories (Font, XObject)
-                        foreach ($localResourceMap as $resType => $map) {
+                        foreach ($localResourceMap as $map) {
                             foreach ($map as $oldName => $newName) {
                                 // Replace occurrences like /F8 with /F8_1
                                 // Use regex with word boundaries to avoid partial matches (e.g., /F1 inside /F11)
@@ -1170,14 +1159,14 @@ class PDFMerger
                                 $decoded        = preg_replace(
                                     '/\/' . $escapedOldName . '(?![a-zA-Z0-9_])/',
                                     '/' . $newName,
-                                    $decoded,
+                                    (string) $decoded,
                                 );
                             }
                         }
 
                         // Copy stream dictionary and attach re-encoded data so we don't keep decoded content in memory
                         $streamDict = $streamObj->getDictionary();
-                        $copiedDict = $this->copyObjectWithReferences($streamDict, $sourceDoc, $mergedDoc, $nextObjectNumber, $objectMap, $copyingObjects);
+                        $copiedDict = $this->copyObjectWithReferences($streamDict, $sourceDoc, $pdfDocument, $nextObjectNumber, $objectMap, $copyingObjects);
 
                         if (!$copiedDict instanceof PDFDictionary) {
                             $copiedDict = new PDFDictionary;
@@ -1186,9 +1175,9 @@ class PDFMerger
                         // If the original stream had filters, re-encode using same filters and store encoded bytes
                         $filters = $streamObj->getFilters();
 
-                        if (!empty($filters)) {
-                            $encoder = new StreamEncoder;
-                            $encoded = $encoder->encode($decoded, $filters);
+                        if ($filters !== []) {
+                            $streamEncoder = new StreamEncoder;
+                            $encoded       = $streamEncoder->encode($decoded, $filters);
 
                             $newStream = new PDFStream($copiedDict, '', true);
                             $newStream->setEncodedData($encoded);
@@ -1204,24 +1193,24 @@ class PDFMerger
                         $decoded = '';
                         unset($decoded);
 
-                        $mergedDoc->addObject($newStream, $contentObjNums[$idx]);
+                        $pdfDocument->addObject($newStream, $contentObjNums[$idx]);
 
                         // Update counters (copyObjectWithReferences may have advanced nextObjectNumber)
                         $currentObjNum = max($currentObjNum, $nextObjectNumber);
                     } else {
-                        $copiedStream = $this->copyObjectWithReferences($streamObj, $sourceDoc, $mergedDoc, $nextObjectNumber, $objectMap, $copyingObjects);
+                        $copiedStream = $this->copyObjectWithReferences($streamObj, $sourceDoc, $pdfDocument, $nextObjectNumber, $objectMap, $copyingObjects);
 
                         // After copying, ensure current object counter is up-to-date
                         $currentObjNum = max($currentObjNum, $nextObjectNumber);
 
-                        $mergedDoc->addObject($copiedStream, $contentObjNums[$idx]);
+                        $pdfDocument->addObject($copiedStream, $contentObjNums[$idx]);
                     }
                 }
             } else {
                 // No content: create an empty stream
                 $contentObjNums[] = $currentObjNum++;
                 $emptyStream      = new PDFStream(new PDFDictionary, '');
-                $mergedDoc->addObject($emptyStream, $contentObjNums[0]);
+                $pdfDocument->addObject($emptyStream, $contentObjNums[0]);
             }
 
             // If there are multiple content streams, set /Contents to an array of references
@@ -1229,16 +1218,16 @@ class PDFMerger
                 $contentObjNum = $contentObjNums[0];
             } else {
                 // Create an array of references for contents
-                $contentsArray = new PDFArray;
+                $pdfArray = new PDFArray;
 
                 foreach ($contentObjNums as $num) {
-                    $contentsArray->add(new PDFReference($num));
+                    $pdfArray->add(new PDFReference($num));
                 }
                 // We'll add this array to the resources by creating a temporary dictionary entry
                 // and then set the page's /Contents entry directly
                 // Note: PageDictionary::setContents expects a reference, so we set the array directly on the page dict
                 // Keep the contents array to apply to the new page dict later
-                $contentsArrayForPage = $contentsArray;
+                $contentsArrayForPage = $pdfArray;
                 $contentObjNum        = null;
             }
 
@@ -1250,7 +1239,7 @@ class PDFMerger
             $newPageDict = new PageDictionary;
             $newPageDict->setResources($resourcesObjNum);
 
-            if (!empty($contentsArrayForPage)) {
+            if ($contentsArrayForPage instanceof PDFArray) {
                 $newPageDict->addEntry('/Contents', $contentsArrayForPage);
             } else {
                 $newPageDict->setContents($contentObjNum);
@@ -1276,7 +1265,7 @@ class PDFMerger
 
             if ($srcPath !== null) {
                 if (!isset($sourceDocCache[$srcPath])) {
-                    $parser                   = new PDFParser($this->logger, $this->cache);
+                    $parser                   = new PDFParser($this->logger, $this->cacheItemPool);
                     $sourceDocCache[$srcPath] = $parser->parseDocumentFromFile($srcPath, $this->fileIO);
                 }
                 $sourceDocForPage = $sourceDocCache[$srcPath];
@@ -1285,22 +1274,22 @@ class PDFMerger
                 // Ensure nextObjectNumber is beyond any reserved allocations (such as the new page object number)
                 $nextObjectNumber = max($nextObjectNumber, $currentObjNum);
 
-                foreach ($pageLevelKeys as $key) {
-                    $entry = $pageData['pageDict']->getEntry($key);
+                foreach ($pageLevelKeys as $pageLevelKey) {
+                    $entry = $pageData['pageDict']->getEntry($pageLevelKey);
 
                     if ($entry !== null) {
                         // Copy with references into the merged document
                         $objectMapForPage      = [];
                         $copyingObjectsForPage = [];
-                        $copiedEntry           = $this->copyObjectWithReferences($entry, $sourceDocForPage, $mergedDoc, $nextObjectNumber, $objectMapForPage, $copyingObjectsForPage);
+                        $copiedEntry           = $this->copyObjectWithReferences($entry, $sourceDocForPage, $pdfDocument, $nextObjectNumber, $objectMapForPage, $copyingObjectsForPage);
                         // If result is a reference, add it directly; otherwise set the value
-                        $newPageDict->addEntry($key, $copiedEntry);
+                        $newPageDict->addEntry($pageLevelKey, $copiedEntry);
                     }
                 }
             }
 
-            $mergedDoc->addObject($newPageDict, $pageObjNum);
-            $kids->addPage($pageObjNum);
+            $pdfDocument->addObject($newPageDict, $pageObjNum);
+            $kidsArray->addPage($pageObjNum);
 
             $nextObjectNumber = max($nextObjectNumber, $pageObjNum);
 
@@ -1315,42 +1304,43 @@ class PDFMerger
             }
         }
 
-        $pagesDict->addEntry('/Kids', $kids);
-        $pagesNode = $mergedDoc->addObject($pagesDict, 1);
-        $pagesNode->setObjectNumber(1);
+        $pagesDict->addEntry('/Kids', $kidsArray);
+        $pdfObjectNode = $pdfDocument->addObject($pagesDict, 1);
+        $pdfObjectNode->setObjectNumber(1);
 
         // Set parent reference for all pages
-        foreach ($pageObjectNumbers as $pageObjNum) {
-            $pageNode = $mergedDoc->getObject($pageObjNum);
+        foreach ($pageObjectNumbers as $pageObjectNumber) {
+            $pageNode = $pdfDocument->getObject($pageObjectNumber);
 
-            if ($pageNode !== null) {
+            if ($pageNode instanceof PDFObjectNode) {
                 $pageDict = $pageNode->getValue();
 
                 if ($pageDict instanceof PageDictionary) {
-                    $pageDict->setParent($pagesNode);
+                    $pageDict->setParent($pdfObjectNode);
                 }
             }
         }
 
         // Catalog object
-        $catalogObjNum = $nextObjectNumber + 1;
-        $catalog       = new CatalogDictionary;
-        $catalog->setPages(1);
-        $catalogNode = $mergedDoc->addObject($catalog, $catalogObjNum);
-        $mergedDoc->setRoot($catalogNode);
+        $catalogObjNum     = $nextObjectNumber + 1;
+        $catalogDictionary = new CatalogDictionary;
+        $catalogDictionary->setPages(1);
+        $catalogNode = $pdfDocument->addObject($catalogDictionary, $catalogObjNum);
+        $pdfDocument->setRoot($catalogNode);
     }
 
     /**
      * Copy resources for a page, handling name conflicts and copying referenced objects.
+     *
+     * @param array<string, mixed> $sourceDocCache
      */
     private function copyResourcesForPage(
         PDFDictionary $resourcesDict,
         $sourceDocOrPath,
-        PDFDocument $targetDoc,
+        PDFDocument $pdfDocument,
         int $resourcesObjNum,
         int &$nextObjectNumber,
         array &$resourceNameMap,
-        array &$localResourceMap = [],
         array &$sourceDocCache = [],
         array &$globalObjectMap = []
     ): void {
@@ -1361,8 +1351,8 @@ class PDFMerger
             if (isset($sourceDocCache[$path]) && $sourceDocCache[$path] instanceof PDFDocument) {
                 $sourceDoc = $sourceDocCache[$path];
             } else {
-                $parser                = new PDFParser($this->logger, $this->cache);
-                $sourceDoc             = $parser->parseDocumentFromFile($path, $this->fileIO);
+                $pdfParser             = new PDFParser($this->logger, $this->cacheItemPool);
+                $sourceDoc             = $pdfParser->parseDocumentFromFile($path, $this->fileIO);
                 $sourceDocCache[$path] = $sourceDoc;
             }
         } else {
@@ -1370,7 +1360,7 @@ class PDFMerger
         }
 
         // Use similar approach to PDFSplitter's copyResourcesWithReferences
-        $newResources = new ResourcesDictionary;
+        $resourcesDictionary = new ResourcesDictionary;
         // Use global object map that persists across all pages to prevent number conflicts
         // Key by document ID + object number to avoid collisions between different source PDFs
         $docId     = spl_object_id($sourceDoc);
@@ -1380,10 +1370,10 @@ class PDFMerger
         $procSet = $resourcesDict->getEntry('/ProcSet');
 
         if ($procSet !== null) {
-            $newResources->setProcSet(
+            $resourcesDictionary->setProcSet(
                 $procSet instanceof PDFArray
                 ? array_map(
-                    static fn ($item) => $item instanceof PDFName ? $item->getName() : (string) $item,
+                    static fn (float|int|\PXP\PDF\Fpdf\Core\Object\PDFObjectInterface|string $item): string => $item instanceof PDFName ? $item->getName() : (string) $item,
                     $procSet->getAll(),
                 )
                 : ['PDF', 'Text', 'ImageB', 'ImageC', 'ImageI'],
@@ -1420,8 +1410,8 @@ class PDFMerger
                         $objectMap["{$docId}:{$sourceObjNum}"] = $fontObjNum;
                         $nextObjectNumber++;
 
-                        $copiedFont = $this->copyObjectWithReferences($fontObj, $sourceDoc, $targetDoc, $nextObjectNumber, $objectMap, $copyingObjects);
-                        $targetDoc->addObject($copiedFont, $fontObjNum);
+                        $copiedFont = $this->copyObjectWithReferences($fontObj, $sourceDoc, $pdfDocument, $nextObjectNumber, $objectMap, $copyingObjects);
+                        $pdfDocument->addObject($copiedFont, $fontObjNum);
                         $newFonts->addEntry($uniqueFontName, new PDFReference($fontObjNum));
 
                         // If we had to rename it to keep global uniqueness, also add the original name as an alias
@@ -1434,8 +1424,8 @@ class PDFMerger
                     $fontObjNum = $nextObjectNumber;
                     $nextObjectNumber++;
 
-                    $copiedFont = $this->copyObjectWithReferences($fontRef, $sourceDoc, $targetDoc, $nextObjectNumber, $objectMap, $copyingObjects);
-                    $targetDoc->addObject($copiedFont, $fontObjNum);
+                    $copiedFont = $this->copyObjectWithReferences($fontRef, $sourceDoc, $pdfDocument, $nextObjectNumber, $objectMap, $copyingObjects);
+                    $pdfDocument->addObject($copiedFont, $fontObjNum);
                     $newFonts->addEntry($uniqueFontName, new PDFReference($fontObjNum));
 
                     if ($uniqueFontName !== $fontName) {
@@ -1445,7 +1435,7 @@ class PDFMerger
             }
 
             if (count($newFonts->getAllEntries()) > 0) {
-                $newResources->addEntry('/Font', $newFonts);
+                $resourcesDictionary->addEntry('/Font', $newFonts);
             }
         }
 
@@ -1480,8 +1470,8 @@ class PDFMerger
                         $objectMap[$mapKey] = $xObjectObjNum;
                         $nextObjectNumber++;
 
-                        $copiedXObject = $this->copyObjectWithReferences($xObjectObj, $sourceDoc, $targetDoc, $nextObjectNumber, $objectMap, $copyingObjects);
-                        $targetDoc->addObject($copiedXObject, $xObjectObjNum);
+                        $copiedXObject = $this->copyObjectWithReferences($xObjectObj, $sourceDoc, $pdfDocument, $nextObjectNumber, $objectMap, $copyingObjects);
+                        $pdfDocument->addObject($copiedXObject, $xObjectObjNum);
                         $newXObjects->addEntry($uniqueXObjectName, new PDFReference($xObjectObjNum));
 
                         // Also add original name as alias if we had to rename
@@ -1494,8 +1484,8 @@ class PDFMerger
                     $xObjectObjNum = $nextObjectNumber;
                     $nextObjectNumber++;
 
-                    $copiedXObject = $this->copyObjectWithReferences($xObjectRef, $sourceDoc, $targetDoc, $nextObjectNumber, $objectMap, $copyingObjects);
-                    $targetDoc->addObject($copiedXObject, $xObjectObjNum);
+                    $copiedXObject = $this->copyObjectWithReferences($xObjectRef, $sourceDoc, $pdfDocument, $nextObjectNumber, $objectMap, $copyingObjects);
+                    $pdfDocument->addObject($copiedXObject, $xObjectObjNum);
                     $newXObjects->addEntry($uniqueXObjectName, new PDFReference($xObjectObjNum));
 
                     if ($uniqueXObjectName !== $xObjectName) {
@@ -1503,7 +1493,7 @@ class PDFMerger
                     }
                 }
             }
-            $newResources->addEntry('/XObject', $newXObjects);
+            $resourcesDictionary->addEntry('/XObject', $newXObjects);
         }
 
         // Copy other resource types
@@ -1525,27 +1515,30 @@ class PDFMerger
                     $objectMap["{$docId}:{$sourceObjNum}"] = $resourceObjNum;
                     $nextObjectNumber++;
 
-                    $copiedObj = $this->copyObjectWithReferences($refObj, $sourceDoc, $targetDoc, $nextObjectNumber, $objectMap, $copyingObjects);
-                    $targetDoc->addObject($copiedObj, $resourceObjNum);
-                    $newResources->addEntry($key, new PDFReference($resourceObjNum));
+                    $copiedObj = $this->copyObjectWithReferences($refObj, $sourceDoc, $pdfDocument, $nextObjectNumber, $objectMap, $copyingObjects);
+                    $pdfDocument->addObject($copiedObj, $resourceObjNum);
+                    $resourcesDictionary->addEntry($key, new PDFReference($resourceObjNum));
                 }
             } elseif ($value instanceof PDFDictionary || $value instanceof PDFArray) {
                 $copyingObjects = [];
-                $copiedValue    = $this->copyObjectWithReferences($value, $sourceDoc, $targetDoc, $nextObjectNumber, $objectMap, $copyingObjects);
-                $newResources->addEntry($key, $copiedValue);
+                $copiedValue    = $this->copyObjectWithReferences($value, $sourceDoc, $pdfDocument, $nextObjectNumber, $objectMap, $copyingObjects);
+                $resourcesDictionary->addEntry($key, $copiedValue);
             } else {
-                $newResources->addEntry($key, $value);
+                $resourcesDictionary->addEntry($key, $value);
             }
         }
 
-        $targetDoc->addObject($newResources, $resourcesObjNum);
+        $pdfDocument->addObject($resourcesDictionary, $resourcesObjNum);
     }
 
     /**
      * Recursively copy an object and resolve all references (similar to PDFSplitter).
+     *
+     * @param array<string, mixed> $objectMap
+     * @param array<int, mixed>    $copyingObjects
      */
     private function copyObjectWithReferences(
-        PDFObjectInterface $obj,
+        PDFObjectInterface $pdfObject,
         PDFDocument $sourceDoc,
         PDFDocument $targetDoc,
         int &$nextObjectNumber,
@@ -1554,8 +1547,8 @@ class PDFMerger
     ): PDFObjectInterface {
         $docId = spl_object_id($sourceDoc);
 
-        if ($obj instanceof PDFReference) {
-            $oldObjNum = $obj->getObjectNumber();
+        if ($pdfObject instanceof PDFReference) {
+            $oldObjNum = $pdfObject->getObjectNumber();
             $mapKey    = "{$docId}:{$oldObjNum}";
 
             if (isset($objectMap[$mapKey])) {
@@ -1575,7 +1568,7 @@ class PDFMerger
 
             $refNode = $sourceDoc->getObject($oldObjNum);
 
-            if ($refNode !== null) {
+            if ($refNode instanceof PDFObjectNode) {
                 $refObj = $refNode->getValue();
 
                 $newObjNum          = $nextObjectNumber;
@@ -1592,27 +1585,27 @@ class PDFMerger
                 return new PDFReference($newObjNum);
             }
 
-            return $obj;
+            return $pdfObject;
         }
 
-        if ($obj instanceof PDFDictionary) {
+        if ($pdfObject instanceof PDFDictionary) {
             $newDict = new PDFDictionary;
 
-            foreach ($obj->getAllEntries() as $key => $value) {
-                if ($value instanceof PDFObjectInterface) {
-                    $newDict->addEntry($key, $this->copyObjectWithReferences($value, $sourceDoc, $targetDoc, $nextObjectNumber, $objectMap, $copyingObjects));
+            foreach ($pdfObject->getAllEntries() as $key => $allEntry) {
+                if ($allEntry instanceof PDFObjectInterface) {
+                    $newDict->addEntry($key, $this->copyObjectWithReferences($allEntry, $sourceDoc, $targetDoc, $nextObjectNumber, $objectMap, $copyingObjects));
                 } else {
-                    $newDict->addEntry($key, $value);
+                    $newDict->addEntry($key, $allEntry);
                 }
             }
 
             return $newDict;
         }
 
-        if ($obj instanceof PDFArray) {
+        if ($pdfObject instanceof PDFArray) {
             $newArray = new PDFArray;
 
-            foreach ($obj->getAll() as $item) {
+            foreach ($pdfObject->getAll() as $item) {
                 if ($item instanceof PDFObjectInterface) {
                     $newArray->add($this->copyObjectWithReferences($item, $sourceDoc, $targetDoc, $nextObjectNumber, $objectMap, $copyingObjects));
                 } else {
@@ -1623,10 +1616,10 @@ class PDFMerger
             return $newArray;
         }
 
-        if ($obj instanceof PDFArray) {
+        if ($pdfObject instanceof PDFArray) {
             $newArray = new PDFArray;
 
-            foreach ($obj->getAll() as $item) {
+            foreach ($pdfObject->getAll() as $item) {
                 if ($item instanceof PDFObjectInterface) {
                     $newArray->add($this->copyObjectWithReferences($item, $sourceDoc, $targetDoc, $nextObjectNumber, $objectMap, $copyingObjects));
                 } else {
@@ -1637,8 +1630,8 @@ class PDFMerger
             return $newArray;
         }
 
-        if ($obj instanceof PDFStream) {
-            $streamDict = $obj->getDictionary();
+        if ($pdfObject instanceof PDFStream) {
+            $streamDict = $pdfObject->getDictionary();
             // Copy stream dictionary first
             $copiedDict = $this->copyObjectWithReferences($streamDict, $sourceDoc, $targetDoc, $nextObjectNumber, $objectMap, $copyingObjects);
 
@@ -1647,15 +1640,15 @@ class PDFMerger
             }
 
             // Attempt to copy encoded stream data directly to avoid decoding and re-encoding which increases peak memory usage
-            $encodedData = $obj->getEncodedData();
-            $newStream   = new PDFStream($copiedDict, $encodedData, true);
-            $newStream->setEncodedData($encodedData);
+            $encodedData = $pdfObject->getEncodedData();
+            $pdfStream   = new PDFStream($copiedDict, $encodedData, true);
+            $pdfStream->setEncodedData($encodedData);
 
-            return $newStream;
+            return $pdfStream;
         }
 
         // Default: return original object
-        return $obj;
+        return $pdfObject;
     }
 
     /**
@@ -1664,11 +1657,8 @@ class PDFMerger
      * @return array{pageDict: PDFDictionary, content: string, resources: null|PDFDictionary, mediaBox: null|array<float>, hasMediaBox: bool}
      */
     private function extractPageDataFromNode(
-        PDFDocument $sourceDoc,
-        $pageNode,
-        int &$nextObjectNumber,
-        PDFDocument $targetDoc,
-        array &$resourceNameMap
+        PDFDocument $pdfDocument,
+        $pageNode
     ): array {
         if ($pageNode === null) {
             throw new FpdfException('Page node is null');
@@ -1708,9 +1698,9 @@ class PDFMerger
             $parentRef = $pageDict->getEntry('/Parent');
 
             if ($parentRef instanceof PDFReference) {
-                $parentNode = $sourceDoc->getObject($parentRef->getObjectNumber());
+                $parentNode = $pdfDocument->getObject($parentRef->getObjectNumber());
 
-                if ($parentNode !== null) {
+                if ($parentNode instanceof PDFObjectNode) {
                     $parentDict = $parentNode->getValue();
 
                     if ($parentDict instanceof PDFDictionary) {
@@ -1741,9 +1731,9 @@ class PDFMerger
         $contentStreams = [];
 
         if ($contentsRef instanceof PDFReference) {
-            $contentNode = $sourceDoc->getObject($contentsRef->getObjectNumber());
+            $contentNode = $pdfDocument->getObject($contentsRef->getObjectNumber());
 
-            if ($contentNode !== null) {
+            if ($contentNode instanceof PDFObjectNode) {
                 $contentObj = $contentNode->getValue();
 
                 if ($contentObj instanceof PDFStream) {
@@ -1753,9 +1743,9 @@ class PDFMerger
         } elseif ($contentsRef instanceof PDFArray) {
             foreach ($contentsRef->getAll() as $item) {
                 if ($item instanceof PDFReference) {
-                    $contentNode = $sourceDoc->getObject($item->getObjectNumber());
+                    $contentNode = $pdfDocument->getObject($item->getObjectNumber());
 
-                    if ($contentNode !== null) {
+                    if ($contentNode instanceof PDFObjectNode) {
                         $contentObj = $contentNode->getValue();
 
                         if ($contentObj instanceof PDFStream) {
@@ -1769,8 +1759,8 @@ class PDFMerger
         // Combine content streams
         $combinedContent = '';
 
-        foreach ($contentStreams as $stream) {
-            $combinedContent .= $stream->getDecodedData();
+        foreach ($contentStreams as $contentStream) {
+            $combinedContent .= $contentStream->getDecodedData();
         }
 
         // Extract Resources
@@ -1778,9 +1768,9 @@ class PDFMerger
         $resourcesDict = null;
 
         if ($resourcesRef instanceof PDFReference) {
-            $resourcesNode = $sourceDoc->getObject($resourcesRef->getObjectNumber());
+            $resourcesNode = $pdfDocument->getObject($resourcesRef->getObjectNumber());
 
-            if ($resourcesNode !== null) {
+            if ($resourcesNode instanceof PDFObjectNode) {
                 $resourcesObj = $resourcesNode->getValue();
 
                 if ($resourcesObj instanceof PDFDictionary) {
@@ -1797,12 +1787,14 @@ class PDFMerger
             'resources'   => $resourcesDict,
             'mediaBox'    => $mediaBox,
             'hasMediaBox' => $pageHasMediaBox,
-            'sourceDoc'   => $sourceDoc, // Keep reference to source document for resource copying
+            'sourceDoc'   => $pdfDocument, // Keep reference to source document for resource copying
         ];
     }
 
     /**
      * Get a unique resource name, handling conflicts.
+     *
+     * @param array<string, mixed> $resourceNameMap
      */
     private function getUniqueResourceName(string $name, array &$resourceNameMap, string $type): string
     {
@@ -1830,23 +1822,23 @@ class PDFMerger
     /**
      * Extract minimal page data needed for streaming merge.
      */
-    private function extractMinimalPageData(PDFDocument $sourceDoc, int $pageNum): array
+    private function extractMinimalPageData(PDFDocument $pdfDocument, int $pageNum): array
     {
-        $pageNode = $sourceDoc->getPage($pageNum);
+        $pageNode = $pdfDocument->getPage($pageNum);
 
-        if ($pageNode === null) {
+        if (!$pageNode instanceof PDFObjectNode) {
             throw new FpdfException('Invalid page number: ' . $pageNum);
         }
 
-        $pageDict = $pageNode->getValue();
+        $pdfObject = $pageNode->getValue();
 
-        if (!$pageDict instanceof PDFDictionary) {
+        if (!$pdfObject instanceof PDFDictionary) {
             throw new FpdfException('Page object is not a dictionary');
         }
         // Extract MediaBox
         $mediaBox      = null;
         $hasMediaBox   = false;
-        $mediaBoxEntry = $pageDict->getEntry('/MediaBox');
+        $mediaBoxEntry = $pdfObject->getEntry('/MediaBox');
 
         if ($mediaBoxEntry instanceof MediaBoxArray) {
             $mediaBox    = $mediaBoxEntry->getValues();
@@ -1868,12 +1860,12 @@ class PDFMerger
 
         // If page doesn't have its own MediaBox, inherit from parent
         if ($mediaBox === null) {
-            $parentRef = $pageDict->getEntry('/Parent');
+            $parentRef = $pdfObject->getEntry('/Parent');
 
             if ($parentRef instanceof PDFReference) {
-                $parentNode = $sourceDoc->getObject($parentRef->getObjectNumber());
+                $parentNode = $pdfDocument->getObject($parentRef->getObjectNumber());
 
-                if ($parentNode !== null) {
+                if ($parentNode instanceof PDFObjectNode) {
                     $parentDict = $parentNode->getValue();
 
                     if ($parentDict instanceof PDFDictionary) {
@@ -1901,12 +1893,12 @@ class PDFMerger
 
         // Extract Contents
         $content       = '';
-        $contentsEntry = $pageDict->getEntry('/Contents');
+        $contentsEntry = $pdfObject->getEntry('/Contents');
 
         if ($contentsEntry instanceof PDFReference) {
-            $contentNode = $sourceDoc->getObject($contentsEntry->getObjectNumber());
+            $contentNode = $pdfDocument->getObject($contentsEntry->getObjectNumber());
 
-            if ($contentNode !== null) {
+            if ($contentNode instanceof PDFObjectNode) {
                 $contentObj = $contentNode->getValue();
 
                 if ($contentObj instanceof PDFStream) {
@@ -1916,9 +1908,9 @@ class PDFMerger
         } elseif ($contentsEntry instanceof PDFArray) {
             foreach ($contentsEntry->getAll() as $item) {
                 if ($item instanceof PDFReference) {
-                    $contentNode = $sourceDoc->getObject($item->getObjectNumber());
+                    $contentNode = $pdfDocument->getObject($item->getObjectNumber());
 
-                    if ($contentNode !== null) {
+                    if ($contentNode instanceof PDFObjectNode) {
                         $contentObj = $contentNode->getValue();
 
                         if ($contentObj instanceof PDFStream) {
@@ -1931,12 +1923,12 @@ class PDFMerger
 
         // Extract Resources
         $resources      = null;
-        $resourcesEntry = $pageDict->getEntry('/Resources');
+        $resourcesEntry = $pdfObject->getEntry('/Resources');
 
         if ($resourcesEntry instanceof PDFReference) {
-            $resourcesNode = $sourceDoc->getObject($resourcesEntry->getObjectNumber());
+            $resourcesNode = $pdfDocument->getObject($resourcesEntry->getObjectNumber());
 
-            if ($resourcesNode !== null) {
+            if ($resourcesNode instanceof PDFObjectNode) {
                 $resourcesObj = $resourcesNode->getValue();
 
                 if ($resourcesObj instanceof PDFDictionary) {
@@ -1948,22 +1940,22 @@ class PDFMerger
         }
 
         // Check parent for inherited resources if needed
-        if ($resources === null) {
-            $parentRef = $pageDict->getEntry('/Parent');
+        if (!$resources instanceof PDFDictionary) {
+            $parentRef = $pdfObject->getEntry('/Parent');
 
             if ($parentRef instanceof PDFReference) {
-                $parentNode = $sourceDoc->getObject($parentRef->getObjectNumber());
+                $parentNode = $pdfDocument->getObject($parentRef->getObjectNumber());
 
-                if ($parentNode !== null) {
+                if ($parentNode instanceof PDFObjectNode) {
                     $parentDict = $parentNode->getValue();
 
                     if ($parentDict instanceof PDFDictionary) {
                         $inheritedResources = $parentDict->getEntry('/Resources');
 
                         if ($inheritedResources instanceof PDFReference) {
-                            $inheritedNode = $sourceDoc->getObject($inheritedResources->getObjectNumber());
+                            $inheritedNode = $pdfDocument->getObject($inheritedResources->getObjectNumber());
 
-                            if ($inheritedNode !== null && $inheritedNode->getValue() instanceof PDFDictionary) {
+                            if ($inheritedNode instanceof PDFObjectNode && $inheritedNode->getValue() instanceof PDFDictionary) {
                                 $resources = $inheritedNode->getValue();
                             }
                         } elseif ($inheritedResources instanceof PDFDictionary) {
@@ -1975,7 +1967,7 @@ class PDFMerger
         }
 
         return [
-            'pageDict'    => $pageDict,
+            'pageDict'    => $pdfObject,
             'content'     => $content,
             'resources'   => $resources,
             'mediaBox'    => $mediaBox,

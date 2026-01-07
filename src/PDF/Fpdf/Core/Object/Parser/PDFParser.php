@@ -54,6 +54,7 @@ use PXP\PDF\Fpdf\Core\Tree\PDFHeader;
 use PXP\PDF\Fpdf\Core\Tree\PDFObjectNode;
 use PXP\PDF\Fpdf\Core\Tree\PDFObjectRegistry;
 use PXP\PDF\Fpdf\Core\Xref\PDFXrefTable;
+use PXP\PDF\Fpdf\Core\Xref\XrefEntry;
 use PXP\PDF\Fpdf\Core\Xref\XrefStreamParser;
 use PXP\PDF\Fpdf\Events\Log\NullLogger;
 use PXP\PDF\Fpdf\Exceptions\Exception\FpdfException;
@@ -63,17 +64,10 @@ use PXP\PDF\Fpdf\Utils\Cache\NullCache;
 /**
  * Main parser for reading PDFs into tree structure.
  */
-final class PDFParser
+final readonly class PDFParser
 {
-    private LoggerInterface $logger;
-    private CacheItemPoolInterface $cache;
-
-    public function __construct(
-        ?LoggerInterface $logger = null,
-        ?CacheItemPoolInterface $cache = null,
-    ) {
-        $this->logger = $logger ?? new NullLogger;
-        $this->cache  = $cache ?? new NullCache;
+    public function __construct(private ?LoggerInterface $logger = new NullLogger, private ?CacheItemPoolInterface $cacheItemPool = new NullCache)
+    {
     }
 
     /**
@@ -100,7 +94,7 @@ final class PDFParser
         // Read only header (first 8KB should be enough)
         $headerChunk = $fileIO->readFileChunk($filePath, min(8192, $fileSize), 0);
         $header      = PDFHeader::parse($headerChunk);
-        $version     = $header !== null ? $header->getVersion() : '1.3';
+        $version     = $header instanceof PDFHeader ? $header->getVersion() : '1.3';
 
         $this->logger->debug('PDF header parsed', [
             'file_path' => $absolutePath,
@@ -145,7 +139,7 @@ final class PDFParser
             ]);
 
             // Create registry with file-based lazy loading context
-            $registry = new PDFObjectRegistry(null, $this, $xrefTable, $filePath, $fileIO, $this->cache, $this->logger);
+            $registry = new PDFObjectRegistry(null, $this, $xrefTable, $filePath, $fileIO, $this->cacheItemPool, $this->logger);
 
             // Create document with lazy-loading enabled registry
             $document = new PDFDocument($version, $registry);
@@ -154,7 +148,7 @@ final class PDFParser
             $document->getXrefTable()->mergeEntries($xrefTable);
 
             // Set header version
-            if ($header !== null) {
+            if ($header instanceof PDFHeader) {
                 $document->getHeader()->setVersion($header->getVersion());
             }
 
@@ -182,14 +176,14 @@ final class PDFParser
             // Only parse root object immediately (needed for document structure)
             $rootRef = $document->getTrailer()->getRoot();
 
-            if ($rootRef !== null) {
+            if ($rootRef instanceof PDFReference) {
                 $this->logger->debug('Loading root object', [
                     'file_path'     => $absolutePath,
                     'object_number' => $rootRef->getObjectNumber(),
                 ]);
                 $rootNode = $registry->get($rootRef->getObjectNumber());
 
-                if ($rootNode !== null) {
+                if ($rootNode instanceof PDFObjectNode) {
                     $document->setRoot($rootNode);
                 }
             }
@@ -232,7 +226,7 @@ final class PDFParser
         ]);
 
         // Create registry with file-based lazy loading context
-        $registry = new PDFObjectRegistry(null, $this, $xrefTable, $filePath, $fileIO, $this->cache, $this->logger);
+        $registry = new PDFObjectRegistry(null, $this, $xrefTable, $filePath, $fileIO, $this->cacheItemPool, $this->logger);
 
         // Create document with lazy-loading enabled registry
         $document = new PDFDocument($version, $registry);
@@ -241,7 +235,7 @@ final class PDFParser
         $document->getXrefTable()->mergeEntries($xrefTable);
 
         // Set header version
-        if ($header !== null) {
+        if ($header instanceof PDFHeader) {
             $document->getHeader()->setVersion($header->getVersion());
         }
 
@@ -270,14 +264,14 @@ final class PDFParser
         // Only parse root object immediately (needed for document structure)
         $rootRef = $document->getTrailer()->getRoot();
 
-        if ($rootRef !== null) {
+        if ($rootRef instanceof PDFReference) {
             $this->logger->debug('Loading root object', [
                 'file_path'     => $absolutePath,
                 'object_number' => $rootRef->getObjectNumber(),
             ]);
             $rootNode = $registry->get($rootRef->getObjectNumber());
 
-            if ($rootNode !== null) {
+            if ($rootNode instanceof PDFObjectNode) {
                 $document->setRoot($rootNode);
             }
         }
@@ -308,7 +302,7 @@ final class PDFParser
 
         // Parse header first to get version
         $header  = PDFHeader::parse($content);
-        $version = $header !== null ? $header->getVersion() : '1.3';
+        $version = $header instanceof PDFHeader ? $header->getVersion() : '1.3';
 
         $this->logger->debug('PDF header parsed', [
             'version' => $version,
@@ -351,18 +345,18 @@ final class PDFParser
         ]);
 
         // Create registry with native lazy loading context
-        $registry = new PDFObjectRegistry($content, $this, $xrefTable, null, null, $this->cache, $this->logger);
+        $pdfObjectRegistry = new PDFObjectRegistry($content, $this, $xrefTable, null, null, $this->cacheItemPool, $this->logger);
 
         // Create document with lazy-loading enabled registry
-        $document = new PDFDocument($version, $registry);
+        $pdfDocument = new PDFDocument($version, $pdfObjectRegistry);
 
         // Mirror parsed xref entries into the document's xref table so callers that expect
         // immediate access to xref entries (e.g., feature tests) can read them.
-        $document->getXrefTable()->mergeEntries($xrefTable);
+        $pdfDocument->getXrefTable()->mergeEntries($xrefTable);
 
         // Set header version
-        if ($header !== null) {
-            $document->getHeader()->setVersion($header->getVersion());
+        if ($header instanceof PDFHeader) {
+            $pdfDocument->getHeader()->setVersion($header->getVersion());
         }
 
         // Note: We don't copy xref entries to document's xref table here.
@@ -376,7 +370,7 @@ final class PDFParser
 
             if ($xrefEnd !== false) {
                 $trailerSection = substr($content, $xrefEnd);
-                $this->parseTrailer($trailerSection, $document);
+                $this->parseTrailer($trailerSection, $pdfDocument);
             }
         } else {
             // For xref stream, trailer info is in the stream dictionary
@@ -391,28 +385,28 @@ final class PDFParser
                     $stream = $this->parseObject($objectContent, $objectNumber);
 
                     if ($stream instanceof PDFStream) {
-                        $this->parseTrailerFromStreamDict($stream->getDictionary(), $document);
+                        $this->parseTrailerFromStreamDict($stream->getDictionary(), $pdfDocument);
                     }
                 }
             }
         }
 
         $this->logger->debug('Trailer parsed', [
-            'root_object' => $document->getTrailer()->getRoot()?->getObjectNumber(),
-            'info_object' => $document->getTrailer()->getInfo()?->getObjectNumber(),
+            'root_object' => $pdfDocument->getTrailer()->getRoot()?->getObjectNumber(),
+            'info_object' => $pdfDocument->getTrailer()->getInfo()?->getObjectNumber(),
         ]);
 
         // Only parse root object immediately (needed for document structure)
-        $rootRef = $document->getTrailer()->getRoot();
+        $rootRef = $pdfDocument->getTrailer()->getRoot();
 
-        if ($rootRef !== null) {
+        if ($rootRef instanceof PDFReference) {
             $this->logger->debug('Loading root object', [
                 'object_number' => $rootRef->getObjectNumber(),
             ]);
-            $rootNode = $registry->get($rootRef->getObjectNumber());
+            $rootNode = $pdfObjectRegistry->get($rootRef->getObjectNumber());
 
-            if ($rootNode !== null) {
-                $document->setRoot($rootNode);
+            if ($rootNode instanceof PDFObjectNode) {
+                $pdfDocument->setRoot($rootNode);
             }
         }
 
@@ -423,7 +417,7 @@ final class PDFParser
             'object_count' => $xrefEntryCount,
         ]);
 
-        return $document;
+        return $pdfDocument;
     }
 
     /**
@@ -431,7 +425,7 @@ final class PDFParser
      */
     public function extractObjectContent(string $content, int $offset, int $objectNumber, int $generation): ?string
     {
-        $objStart = strpos($content, (string) $objectNumber . ' ' . $generation . ' obj', $offset);
+        $objStart = strpos($content, $objectNumber . ' ' . $generation . ' obj', $offset);
 
         if ($objStart === false) {
             return null;
@@ -449,7 +443,7 @@ final class PDFParser
     /**
      * Parse a single PDF object.
      */
-    public function parseObject(string $objectContent, int $objectNumber): PDFObjectInterface
+    public function parseObject(string $objectContent): PDFObjectInterface
     {
         // Extract object body (between "obj" and "endobj")
         $objPos = strpos($objectContent, 'obj');
@@ -531,8 +525,8 @@ final class PDFParser
             throw new FpdfException('Invalid dictionary format');
         }
 
-        $content = substr($dictContent, $dictStart + 2, $dictEnd - $dictStart - 2);
-        $dict    = new PDFDictionary;
+        $content       = substr($dictContent, $dictStart + 2, $dictEnd - $dictStart - 2);
+        $pdfDictionary = new PDFDictionary;
 
         // Parse key-value pairs
         $pos    = 0;
@@ -570,10 +564,10 @@ final class PDFParser
 
             // Parse value
             $value = $this->parseValueAt($content, $pos, $pos);
-            $dict->addEntry($key, $value);
+            $pdfDictionary->addEntry($key, $value);
         }
 
-        return $dict;
+        return $pdfDictionary;
     }
 
     /**
@@ -588,8 +582,8 @@ final class PDFParser
             throw new FpdfException('Invalid array format');
         }
 
-        $content = substr($arrayContent, $arrayStart + 1, $arrayEnd - $arrayStart - 1);
-        $array   = new PDFArray;
+        $content  = substr($arrayContent, $arrayStart + 1, $arrayEnd - $arrayStart - 1);
+        $pdfArray = new PDFArray;
 
         $pos    = 0;
         $length = strlen($content);
@@ -606,11 +600,11 @@ final class PDFParser
 
             $end   = $pos;
             $value = $this->parseValueAt($content, $pos, $end);
-            $array->add($value);
+            $pdfArray->add($value);
             $pos = $end; // CRITICAL: Advance position to end of parsed value
         }
 
-        return $array;
+        return $pdfArray;
     }
 
     /**
@@ -631,7 +625,7 @@ final class PDFParser
      * @param string          $filePath     PDF file path
      * @param FileIOInterface $fileIO       File IO interface for reading
      * @param int             $objectNumber Object number to parse
-     * @param PDFXrefTable    $xrefTable    Xref table for object locations
+     * @param PDFXrefTable    $pdfXrefTable Xref table for object locations
      *
      * @return null|PDFObjectNode Parsed object node or null if not found
      */
@@ -639,11 +633,11 @@ final class PDFParser
         string $filePath,
         FileIOInterface $fileIO,
         int $objectNumber,
-        PDFXrefTable $xrefTable
+        PDFXrefTable $pdfXrefTable
     ): ?PDFObjectNode {
-        $xrefEntry = $xrefTable->getEntry($objectNumber);
+        $xrefEntry = $pdfXrefTable->getEntry($objectNumber);
 
-        if ($xrefEntry === null || $xrefEntry->isFree()) {
+        if (!$xrefEntry instanceof XrefEntry || $xrefEntry->isFree()) {
             return null;
         }
 
@@ -654,9 +648,9 @@ final class PDFParser
             return null;
         }
 
-        $object = $this->parseObject($objectContent, $objectNumber);
+        $pdfObject = $this->parseObject($objectContent, $objectNumber);
 
-        return new PDFObjectNode($objectNumber, $object, $xrefEntry->getGeneration(), $offset);
+        return new PDFObjectNode($objectNumber, $pdfObject, $xrefEntry->getGeneration(), $offset);
     }
 
     /**
@@ -666,7 +660,7 @@ final class PDFParser
      * @param FileIOInterface $fileIO             File IO interface
      * @param int             $objectStreamNumber Object number of the ObjStm
      * @param int             $index              Index of the subobject inside the object stream (0-based)
-     * @param PDFXrefTable    $xrefTable          Xref table (for resolving object stream)
+     * @param PDFXrefTable    $pdfXrefTable       Xref table (for resolving object stream)
      *
      * @return null|PDFObjectNode Parsed object node or null if not found
      */
@@ -675,24 +669,24 @@ final class PDFParser
         FileIOInterface $fileIO,
         int $objectStreamNumber,
         int $index,
-        PDFXrefTable $xrefTable
+        PDFXrefTable $pdfXrefTable
     ): ?PDFObjectNode {
         // First load the object stream itself
-        $objStreamNode = $this->parseObjectByNumberFromFile($filePath, $fileIO, $objectStreamNumber, $xrefTable);
+        $objStreamNode = $this->parseObjectByNumberFromFile($filePath, $fileIO, $objectStreamNumber, $pdfXrefTable);
 
-        if ($objStreamNode === null) {
+        if (!$objStreamNode instanceof PDFObjectNode) {
             return null;
         }
 
-        $objStreamValue = $objStreamNode->getValue();
+        $pdfObject = $objStreamNode->getValue();
 
-        if (!($objStreamValue instanceof PDFStream)) {
+        if (!($pdfObject instanceof PDFStream)) {
             return null;
         }
 
-        $dict       = $objStreamValue->getDictionary();
-        $nEntry     = $dict->getEntry('/N');
-        $firstEntry = $dict->getEntry('/First');
+        $pdfDictionary = $pdfObject->getDictionary();
+        $nEntry        = $pdfDictionary->getEntry('/N');
+        $firstEntry    = $pdfDictionary->getEntry('/First');
 
         if (!($nEntry instanceof PDFNumber) || !($firstEntry instanceof PDFNumber)) {
             return null;
@@ -701,7 +695,7 @@ final class PDFParser
         $n     = (int) $nEntry->getValue();
         $first = (int) $firstEntry->getValue();
 
-        $decoded = $objStreamValue->getDecodedData();
+        $decoded = $pdfObject->getDecodedData();
 
         // Extract header tokens (first part before object data)
         $headerRaw = substr($decoded, 0, $first);
@@ -737,8 +731,9 @@ final class PDFParser
 
         // If pairs interpretation yields non-monotonic offsets or failed, try alternate format: first N are object numbers then N offsets
         $offsetsMonotonic = true;
+        $counter          = count($offsets);
 
-        for ($i = 1; $i < count($offsets); $i++) {
+        for ($i = 1; $i < $counter; $i++) {
             if ($offsets[$i] < $offsets[$i - 1]) {
                 $offsetsMonotonic = false;
 
@@ -748,8 +743,8 @@ final class PDFParser
 
         if (!$pairsOk || !$offsetsMonotonic) {
             // Try alternate layout: first N tokens are object numbers, next N are offsets
-            $altObjNums = array_map('intval', array_slice($tokens, 0, $n));
-            $altOffsets = array_map('intval', array_slice($tokens, $n, $n));
+            $altObjNums = array_map(intval(...), array_slice($tokens, 0, $n));
+            $altOffsets = array_map(intval(...), array_slice($tokens, $n, $n));
 
             // Validate
             if (count($altObjNums) === $n && count($altOffsets) === $n) {
@@ -781,7 +776,7 @@ final class PDFParser
 
         try {
             $object = $this->parseObject($fake, $subObjNumber);
-        } catch (FpdfException $e) {
+        } catch (FpdfException) {
             return null;
         }
 
@@ -794,15 +789,15 @@ final class PDFParser
      *
      * @param string       $content      Raw PDF content
      * @param int          $objectNumber Object number to parse
-     * @param PDFXrefTable $xrefTable    Xref table for object locations
+     * @param PDFXrefTable $pdfXrefTable Xref table for object locations
      *
      * @return null|PDFObjectNode Parsed object node or null if not found
      */
-    public function parseObjectByNumber(string $content, int $objectNumber, PDFXrefTable $xrefTable): ?PDFObjectNode
+    public function parseObjectByNumber(string $content, int $objectNumber, PDFXrefTable $pdfXrefTable): ?PDFObjectNode
     {
-        $xrefEntry = $xrefTable->getEntry($objectNumber);
+        $xrefEntry = $pdfXrefTable->getEntry($objectNumber);
 
-        if ($xrefEntry === null || $xrefEntry->isFree()) {
+        if (!$xrefEntry instanceof XrefEntry || $xrefEntry->isFree()) {
             return null;
         }
 
@@ -813,9 +808,9 @@ final class PDFParser
             return null;
         }
 
-        $object = $this->parseObject($objectContent, $objectNumber);
+        $pdfObject = $this->parseObject($objectContent, $objectNumber);
 
-        return new PDFObjectNode($objectNumber, $object, $xrefEntry->getGeneration(), $offset);
+        return new PDFObjectNode($objectNumber, $pdfObject, $xrefEntry->getGeneration(), $offset);
     }
 
     /**
@@ -966,14 +961,14 @@ final class PDFParser
         }
 
         // Parse this xref table
-        $xrefContent = substr($xrefAndTrailer, 4, $xrefEnd - 4); // Skip "xref" keyword
-        $xrefTable   = new PDFXrefTable;
-        $xrefTable->parseFromString($xrefContent);
+        $xrefContent  = substr($xrefAndTrailer, 4, $xrefEnd - 4); // Skip "xref" keyword
+        $pdfXrefTable = new PDFXrefTable;
+        $pdfXrefTable->parseFromString($xrefContent);
 
         // Parse trailer to get Prev offset
         $trailerSection = substr($xrefAndTrailer, $xrefEnd);
-        $tempDocument   = new PDFDocument;
-        $prevOffset     = $this->parseTrailer($trailerSection, $tempDocument);
+        $pdfDocument    = new PDFDocument;
+        $prevOffset     = $this->parseTrailer($trailerSection, $pdfDocument);
 
         // If there's a Prev reference, validate it and parse it recursively and merge
         if ($prevOffset !== null && $prevOffset > 0) {
@@ -985,13 +980,13 @@ final class PDFParser
 
                 $prevXrefTable = $this->parseXrefTableFromFile($filePath, $fileIO, $fileSize, $prevOffset, $absolutePath, $visitedPositions);
                 // Merge entries: merge previous into current, so newer entries (current) override older ones (prev)
-                $xrefTable->mergeEntries($prevXrefTable);
+                $pdfXrefTable->mergeEntries($prevXrefTable);
             } else {
                 $this->logger->warning('Prev reference outside file bounds, ignoring', ['file_path' => $absolutePath, 'prev_offset' => $prevOffset]);
             }
         }
 
-        return $xrefTable;
+        return $pdfXrefTable;
     }
 
     /**
@@ -1038,14 +1033,14 @@ final class PDFParser
         }
 
         // Parse this xref table
-        $xrefContent = substr($content, $xrefPos + 4, $xrefEnd - $xrefPos - 4); // Skip "xref" keyword
-        $xrefTable   = new PDFXrefTable;
-        $xrefTable->parseFromString($xrefContent);
+        $xrefContent  = substr($content, $xrefPos + 4, $xrefEnd - $xrefPos - 4); // Skip "xref" keyword
+        $pdfXrefTable = new PDFXrefTable;
+        $pdfXrefTable->parseFromString($xrefContent);
 
         // Parse trailer to get Prev offset
         $trailerSection = substr($content, $xrefEnd);
-        $tempDocument   = new PDFDocument;
-        $prevOffset     = $this->parseTrailer($trailerSection, $tempDocument);
+        $pdfDocument    = new PDFDocument;
+        $prevOffset     = $this->parseTrailer($trailerSection, $pdfDocument);
 
         // If there's a Prev reference, validate it and parse it recursively and merge
         if ($prevOffset !== null && $prevOffset > 0) {
@@ -1056,13 +1051,13 @@ final class PDFParser
 
                 $prevXrefTable = $this->parseXrefTable($content, $prevOffset);
                 // Merge entries: merge previous into current, so newer entries (current) override older ones (prev)
-                $xrefTable->mergeEntries($prevXrefTable);
+                $pdfXrefTable->mergeEntries($prevXrefTable);
             } else {
                 $this->logger->warning('Prev reference outside content bounds, ignoring', ['prev_offset' => $prevOffset]);
             }
         }
 
-        return $xrefTable;
+        return $pdfXrefTable;
     }
 
     /**
@@ -1103,40 +1098,40 @@ final class PDFParser
      * Parse trailer section and extract all relevant fields including Prev offset.
      *
      * @param string      $trailerSection The trailer section content
-     * @param PDFDocument $document       The document to update
+     * @param PDFDocument $pdfDocument    The document to update
      *
      * @return null|int Previous xref offset if found, null otherwise
      */
-    private function parseTrailer(string $trailerSection, PDFDocument $document): ?int
+    private function parseTrailer(string $trailerSection, PDFDocument $pdfDocument): ?int
     {
         $rootMatch = [];
 
         if (preg_match('/\/Root\s+(\d+)\s+(\d+)\s+R/', $trailerSection, $rootMatch)) {
-            $document->getTrailer()->setRoot(new PDFReference((int) $rootMatch[1], (int) $rootMatch[2]));
+            $pdfDocument->getTrailer()->setRoot(new PDFReference((int) $rootMatch[1], (int) $rootMatch[2]));
         }
 
         $infoMatch = [];
 
         if (preg_match('/\/Info\s+(\d+)\s+(\d+)\s+R/', $trailerSection, $infoMatch)) {
-            $document->getTrailer()->setInfo(new PDFReference((int) $infoMatch[1], (int) $infoMatch[2]));
+            $pdfDocument->getTrailer()->setInfo(new PDFReference((int) $infoMatch[1], (int) $infoMatch[2]));
         }
 
         $sizeMatch = [];
 
         if (preg_match('/\/Size\s+(\d+)/', $trailerSection, $sizeMatch)) {
-            $document->getTrailer()->setSize((int) $sizeMatch[1]);
+            $pdfDocument->getTrailer()->setSize((int) $sizeMatch[1]);
         }
 
         $encryptMatch = [];
 
         if (preg_match('/\/Encrypt\s+(\d+)\s+(\d+)\s+R/', $trailerSection, $encryptMatch)) {
-            $document->getTrailer()->setEncrypt(new PDFReference((int) $encryptMatch[1], (int) $encryptMatch[2]));
+            $pdfDocument->getTrailer()->setEncrypt(new PDFReference((int) $encryptMatch[1], (int) $encryptMatch[2]));
         }
 
         $idMatch = [];
 
         if (preg_match('/\/ID\s*\[\s*<\s*([^>]*)\s*>\s*<\s*([^>]*)\s*>\s*\]/i', $trailerSection, $idMatch)) {
-            $document->getTrailer()->setId([$idMatch[1], $idMatch[2]]);
+            $pdfDocument->getTrailer()->setId([$idMatch[1], $idMatch[2]]);
         }
 
         // Extract Prev offset for incremental updates
@@ -1183,7 +1178,7 @@ final class PDFParser
     /**
      * Parse a value at a specific position.
      */
-    private function parseValueAt(string $content, int $start, int &$end): float|int|PDFObjectInterface|string
+    private function parseValueAt(string $content, int $start, int &$end): PDFObjectInterface
     {
         // Skip whitespace
         while ($start < strlen($content) && preg_match('/\s/', $content[$start])) {
@@ -1385,7 +1380,7 @@ final class PDFParser
         $relativeOffset = $offset - $readStart;
 
         // Search for object start in chunk
-        $objStartMarker  = (string) $objectNumber . ' ' . $generation . ' obj';
+        $objStartMarker  = $objectNumber . ' ' . $generation . ' obj';
         $objStartInChunk = strpos($chunk, $objStartMarker, max(0, $relativeOffset - 100));
 
         if ($objStartInChunk === false) {
@@ -1494,23 +1489,23 @@ final class PDFParser
         }
 
         // Parse the stream object
-        $stream = $this->parseObject($objectContent, $objectNumber);
+        $pdfObject = $this->parseObject($objectContent, $objectNumber);
 
-        if (!($stream instanceof PDFStream)) {
+        if (!($pdfObject instanceof PDFStream)) {
             throw new FpdfException('Xref stream object is not a stream');
         }
 
         // Get decoded stream data
-        $streamData = $stream->getDecodedData();
-        $dict       = $stream->getDictionary();
+        $streamData    = $pdfObject->getDecodedData();
+        $pdfDictionary = $pdfObject->getDictionary();
 
         // Convert dictionary to format expected by XrefStreamParser
-        $streamDict = $this->convertDictionaryToArray($dict);
+        $streamDict = $this->convertDictionaryToArray($pdfDictionary);
 
         // Parse the stream
-        $xrefTable        = new PDFXrefTable;
+        $pdfXrefTable     = new PDFXrefTable;
         $xrefStreamParser = new XrefStreamParser;
-        $prevOffset       = $xrefStreamParser->parseStream($streamData, $streamDict, $xrefTable);
+        $prevOffset       = $xrefStreamParser->parseStream($streamData, $streamDict, $pdfXrefTable);
 
         // If there's a Prev reference, validate it, parse it recursively and merge
         if ($prevOffset !== null && $prevOffset > 0) {
@@ -1532,13 +1527,13 @@ final class PDFParser
                 }
 
                 // Merge entries: merge previous into current, so newer entries (current) override older ones (prev)
-                $xrefTable->mergeEntries($prevXrefTable);
+                $pdfXrefTable->mergeEntries($prevXrefTable);
             } else {
                 $this->logger->warning('Prev reference outside file bounds, ignoring', ['file_path' => $absolutePath, 'prev_offset' => $prevOffset]);
             }
         }
 
-        return $xrefTable;
+        return $pdfXrefTable;
     }
 
     /**
@@ -1584,23 +1579,23 @@ final class PDFParser
         }
 
         // Parse the stream object
-        $stream = $this->parseObject($objectContent, $objectNumber);
+        $pdfObject = $this->parseObject($objectContent, $objectNumber);
 
-        if (!($stream instanceof PDFStream)) {
+        if (!($pdfObject instanceof PDFStream)) {
             throw new FpdfException('Xref stream object is not a stream');
         }
 
         // Get decoded stream data
-        $streamData = $stream->getDecodedData();
-        $dict       = $stream->getDictionary();
+        $streamData    = $pdfObject->getDecodedData();
+        $pdfDictionary = $pdfObject->getDictionary();
 
         // Convert dictionary to format expected by XrefStreamParser
-        $streamDict = $this->convertDictionaryToArray($dict);
+        $streamDict = $this->convertDictionaryToArray($pdfDictionary);
 
         // Parse the stream
-        $xrefTable        = new PDFXrefTable;
+        $pdfXrefTable     = new PDFXrefTable;
         $xrefStreamParser = new XrefStreamParser;
-        $prevOffset       = $xrefStreamParser->parseStream($streamData, $streamDict, $xrefTable);
+        $prevOffset       = $xrefStreamParser->parseStream($streamData, $streamDict, $pdfXrefTable);
 
         // If there's a Prev reference, parse it recursively and merge
         if ($prevOffset !== null && $prevOffset > 0) {
@@ -1618,23 +1613,23 @@ final class PDFParser
             }
 
             // Merge entries: merge previous into current, so newer entries (current) override older ones (prev)
-            $xrefTable->mergeEntries($prevXrefTable);
+            $pdfXrefTable->mergeEntries($prevXrefTable);
         }
 
-        return $xrefTable;
+        return $pdfXrefTable;
     }
 
     /**
      * Convert PDFDictionary to array format expected by XrefStreamParser.
      *
-     * @param PDFDictionary $dict Dictionary to convert
+     * @param PDFDictionary $pdfDictionary Dictionary to convert
      *
      * @return array Dictionary in array format
      */
-    private function convertDictionaryToArray(PDFDictionary $dict): array
+    private function convertDictionaryToArray(PDFDictionary $pdfDictionary): array
     {
         $result  = [];
-        $entries = $dict->getAllEntries();
+        $entries = $pdfDictionary->getAllEntries();
 
         foreach ($entries as $key => $value) {
             // Keys in getAllEntries() don't have leading '/', so add it
@@ -1646,7 +1641,7 @@ final class PDFParser
             } elseif ($value instanceof PDFNumber) {
                 $result[] = ['numeric', (string) $value->getValue()];
             } elseif ($value instanceof PDFReference) {
-                $result[] = ['objref', (string) $value->getObjectNumber() . '_' . (string) $value->getGenerationNumber()];
+                $result[] = ['objref', $value->getObjectNumber() . '_' . $value->getGenerationNumber()];
             } elseif ($value instanceof PDFArray) {
                 $arrayItems = [];
 
@@ -1684,33 +1679,33 @@ final class PDFParser
     /**
      * Parse trailer information from xref stream dictionary.
      *
-     * @param PDFDictionary $dict     Stream dictionary
-     * @param PDFDocument   $document Document to update
+     * @param PDFDictionary $pdfDictionary Stream dictionary
+     * @param PDFDocument   $pdfDocument   Document to update
      */
-    private function parseTrailerFromStreamDict(PDFDictionary $dict, PDFDocument $document): void
+    private function parseTrailerFromStreamDict(PDFDictionary $pdfDictionary, PDFDocument $pdfDocument): void
     {
-        $sizeEntry = $dict->getEntry('/Size');
+        $sizeEntry = $pdfDictionary->getEntry('/Size');
 
         if ($sizeEntry instanceof PDFNumber) {
-            $document->getTrailer()->setSize((int) $sizeEntry->getValue());
+            $pdfDocument->getTrailer()->setSize((int) $sizeEntry->getValue());
         }
 
-        $rootEntry = $dict->getEntry('/Root');
+        $rootEntry = $pdfDictionary->getEntry('/Root');
 
         if ($rootEntry instanceof PDFReference) {
-            $document->getTrailer()->setRoot($rootEntry);
+            $pdfDocument->getTrailer()->setRoot($rootEntry);
         }
 
-        $infoEntry = $dict->getEntry('/Info');
+        $infoEntry = $pdfDictionary->getEntry('/Info');
 
         if ($infoEntry instanceof PDFReference) {
-            $document->getTrailer()->setInfo($infoEntry);
+            $pdfDocument->getTrailer()->setInfo($infoEntry);
         }
 
-        $encryptEntry = $dict->getEntry('/Encrypt');
+        $encryptEntry = $pdfDictionary->getEntry('/Encrypt');
 
         if ($encryptEntry instanceof PDFReference) {
-            $document->getTrailer()->setEncrypt($encryptEntry);
+            $pdfDocument->getTrailer()->setEncrypt($encryptEntry);
         }
     }
 }

@@ -82,18 +82,18 @@ final class ResourceFilteringTest extends TestCase
 
         // Create a test PDF with shared resources if it doesn't exist
         if (!file_exists($pdfPath)) {
-            $this->createTestPdfWithSharedResources($pdfPath);
+            $this->createTestPdfWithSharedResources();
         }
 
-        $fileIO   = new FileIO;
-        $splitter = new PDFSplitter($pdfPath, $fileIO);
+        $fileIO      = new FileIO;
+        $pdfSplitter = new PDFSplitter($pdfPath, $fileIO);
 
-        $pageCount = $splitter->getPageCount();
+        $pageCount = $pdfSplitter->getPageCount();
         $this->assertGreaterThanOrEqual(2, $pageCount, 'Test PDF should have at least 2 pages');
 
         // Extract first page
         $outputPath = $this->testDir . '/page_1.pdf';
-        $splitter->extractPage(1, $outputPath);
+        $pdfSplitter->extractPage(1, $outputPath);
 
         $this->assertFileExists($outputPath);
 
@@ -130,15 +130,15 @@ final class ResourceFilteringTest extends TestCase
 
         // Create test PDF if needed
         if (!file_exists($pdfPath)) {
-            $this->createTestPdfWithManyTemplates($pdfPath);
+            $this->createTestPdfWithManyTemplates();
         }
 
-        $fileIO   = new FileIO;
-        $splitter = new PDFSplitter($pdfPath, $fileIO);
+        $fileIO      = new FileIO;
+        $pdfSplitter = new PDFSplitter($pdfPath, $fileIO);
 
         // Extract first page
         $outputPath = $this->testDir . '/filtered_page.pdf';
-        $splitter->extractPage(1, $outputPath);
+        $pdfSplitter->extractPage(1, $outputPath);
 
         $this->assertFileExists($outputPath);
 
@@ -179,11 +179,11 @@ final class ResourceFilteringTest extends TestCase
             $this->markTestSkipped('Test PDF with 533 templates not available');
         }
 
-        $fileIO   = new FileIO;
-        $splitter = new PDFSplitter($pdfPath, $fileIO);
+        $fileIO      = new FileIO;
+        $pdfSplitter = new PDFSplitter($pdfPath, $fileIO);
 
         $outputPath = $this->testDir . '/page_extracted.pdf';
-        $splitter->extractPage(1, $outputPath);
+        $pdfSplitter->extractPage(1, $outputPath);
 
         $this->assertFileExists($outputPath);
 
@@ -216,13 +216,13 @@ final class ResourceFilteringTest extends TestCase
         $pdfPath      = $resourcesDir . '/multi_page_varied_resources.pdf';
 
         if (!file_exists($pdfPath)) {
-            $this->createTestPdfWithVariedResources($pdfPath);
+            $this->createTestPdfWithVariedResources();
         }
 
-        $fileIO   = new FileIO;
-        $splitter = new PDFSplitter($pdfPath, $fileIO);
+        $fileIO      = new FileIO;
+        $pdfSplitter = new PDFSplitter($pdfPath, $fileIO);
 
-        $pageCount = $splitter->getPageCount();
+        $pageCount = $pdfSplitter->getPageCount();
 
         if ($pageCount < 2) {
             $this->markTestSkipped('Need at least 2 pages for this test');
@@ -232,8 +232,8 @@ final class ResourceFilteringTest extends TestCase
         $page1Path = $this->testDir . '/page_1.pdf';
         $page2Path = $this->testDir . '/page_2.pdf';
 
-        $splitter->extractPage(1, $page1Path);
-        $splitter->extractPage(2, $page2Path);
+        $pdfSplitter->extractPage(1, $page1Path);
+        $pdfSplitter->extractPage(2, $page2Path);
 
         $page1Resources = $this->getResourcesFromPdf($page1Path);
         $page2Resources = $this->getResourcesFromPdf($page2Path);
@@ -246,6 +246,8 @@ final class ResourceFilteringTest extends TestCase
 
     /**
      * Helper: Count XObjects in a PDF's JSON structure.
+     *
+     * @param array<string, mixed> $jsonData
      */
     private function countXObjectsInPdf(array $jsonData): int
     {
@@ -256,8 +258,8 @@ final class ResourceFilteringTest extends TestCase
         $count   = 0;
         $objects = $jsonData['qpdf'][0]['objects'];
 
-        foreach ($objects as $objData) {
-            $value = $objData['value'] ?? [];
+        foreach ($objects as $object) {
+            $value = $object['value'] ?? [];
 
             if (isset($value['/Type']) && $value['/Type'] === '/XObject') {
                 $count++;
@@ -287,14 +289,14 @@ final class ResourceFilteringTest extends TestCase
         $resources = ['xobjects' => [], 'fonts' => []];
         $objects   = $jsonData['qpdf'][0]['objects'];
 
-        foreach ($objects as $objData) {
-            $value = $objData['value'] ?? [];
+        foreach ($objects as $object) {
+            $value = $object['value'] ?? [];
 
             if (isset($value['/Type'])) {
                 if ($value['/Type'] === '/XObject') {
-                    $resources['xobjects'][] = $objData;
+                    $resources['xobjects'][] = $object;
                 } elseif ($value['/Type'] === '/Font') {
-                    $resources['fonts'][] = $objData;
+                    $resources['fonts'][] = $object;
                 }
             }
         }
@@ -305,7 +307,7 @@ final class ResourceFilteringTest extends TestCase
     /**
      * Helper: Create a test PDF with shared resources across pages.
      */
-    private function createTestPdfWithSharedResources(string $outputPath): void
+    private function createTestPdfWithSharedResources(): never
     {
         // Create a simple multi-page PDF where pages share resources
         // For now, we'll use an existing test PDF or skip
@@ -315,7 +317,7 @@ final class ResourceFilteringTest extends TestCase
     /**
      * Helper: Create a test PDF with many template XObjects.
      */
-    private function createTestPdfWithManyTemplates(string $outputPath): void
+    private function createTestPdfWithManyTemplates(): never
     {
         $this->markTestSkipped('Test PDF creation not implemented yet');
     }
@@ -323,7 +325,7 @@ final class ResourceFilteringTest extends TestCase
     /**
      * Helper: Create a test PDF with varied resources per page.
      */
-    private function createTestPdfWithVariedResources(string $outputPath): void
+    private function createTestPdfWithVariedResources(): never
     {
         $this->markTestSkipped('Test PDF creation not implemented yet');
     }

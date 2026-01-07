@@ -49,25 +49,20 @@ use Psr\Log\NullLogger;
  */
 final class MemoryProfiler
 {
-    private LoggerInterface $logger;
-
     /** @var array<string, array{timestamp: float, memory: int, peak: int}> */
     private array $checkpoints = [];
 
     /** @var array<string, int> */
     private array $snapshotCounts = [];
-    private int $startMemory;
-    private int $startPeak;
-    private float $startTime;
-    private bool $enableDetailed;
+    private readonly int $startMemory;
+    private readonly int $startPeak;
+    private readonly float $startTime;
 
-    public function __construct(?LoggerInterface $logger = null, bool $enableDetailed = false)
+    public function __construct(private readonly ?LoggerInterface $logger = new NullLogger, private readonly bool $enableDetailed = false)
     {
-        $this->logger         = $logger ?? new NullLogger;
-        $this->enableDetailed = $enableDetailed;
-        $this->startMemory    = memory_get_usage(true);
-        $this->startPeak      = memory_get_peak_usage(true);
-        $this->startTime      = microtime(true);
+        $this->startMemory = memory_get_usage(true);
+        $this->startPeak   = memory_get_peak_usage(true);
+        $this->startTime   = microtime(true);
 
         $this->checkpoint('start', 'Profiling started');
     }
@@ -156,6 +151,8 @@ final class MemoryProfiler
 
     /**
      * Get memory delta between two checkpoints.
+     *
+     * @return array<string, float|int|string>
      */
     public function getDelta(string $fromCheckpoint, string $toCheckpoint): array
     {
@@ -181,10 +178,7 @@ final class MemoryProfiler
      */
     public function analyzePattern(string $context): ?array
     {
-        $snapshots = array_filter($this->checkpoints, static function ($cp) use ($context)
-        {
-            return str_starts_with($cp, $context);
-        }, ARRAY_FILTER_USE_KEY);
+        $snapshots = array_filter($this->checkpoints, static fn ($cp): bool => str_starts_with((string) $cp, $context), ARRAY_FILTER_USE_KEY);
 
         if (count($snapshots) < 2) {
             return null;
@@ -192,8 +186,9 @@ final class MemoryProfiler
 
         $memories = array_column($snapshots, 'memory');
         $diffs    = [];
+        $counter  = count($memories);
 
-        for ($i = 1; $i < count($memories); $i++) {
+        for ($i = 1; $i < $counter; $i++) {
             $diffs[] = $memories[$i] - $memories[$i - 1];
         }
 
@@ -213,6 +208,8 @@ final class MemoryProfiler
 
     /**
      * Get a summary report of all memory activity.
+     *
+     * @return array<string, array<int|string, array<string, float|string>|int>|float|string>
      */
     public function getSummary(): array
     {
@@ -273,8 +270,8 @@ final class MemoryProfiler
                 print sprintf(
                     "  [%s] %s - Memory: %s, Peak: %s\n",
                     $cp['elapsed'],
-                    str_pad($cp['label'], 30),
-                    str_pad($cp['memory'], 12),
+                    str_pad((string) $cp['label'], 30),
+                    str_pad((string) $cp['memory'], 12),
                     $cp['peak'],
                 );
             }
@@ -310,12 +307,12 @@ final class MemoryProfiler
     public function forceGC(string $context = 'manual'): array
     {
         $beforeMemory = memory_get_usage(true);
-        $beforePeak   = memory_get_peak_usage(true);
+        memory_get_peak_usage(true);
 
         $cycles = gc_collect_cycles();
 
         $afterMemory = memory_get_usage(true);
-        $afterPeak   = memory_get_peak_usage(true);
+        memory_get_peak_usage(true);
 
         $result = [
             'context'                => $context,
@@ -334,6 +331,8 @@ final class MemoryProfiler
     /**
      * Monitor variable memory consumption.
      * CAUTION: This serializes the variable which can be expensive.
+     *
+     * @return array<string, int|string>
      */
     public function measureVariable(string $name, mixed $variable): array
     {
@@ -371,7 +370,7 @@ final class MemoryProfiler
         $negative = $bytes < 0;
         $bytes    = abs($bytes);
 
-        $pow = floor(($bytes ? log($bytes) : 0) / log(1024));
+        $pow = floor(($bytes !== 0 ? log($bytes) : 0) / log(1024));
         $pow = min($pow, count($units) - 1);
         $bytes /= 1024 ** $pow;
 

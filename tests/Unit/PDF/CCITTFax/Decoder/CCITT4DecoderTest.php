@@ -37,6 +37,9 @@ final class CCITT4DecoderTest extends TestCase
 {
     private string $testFilesDir;
 
+    /**
+     * @return array<string, array<int|string>>
+     */
     public static function group4TestFilesProvider(): array
     {
         return [
@@ -70,10 +73,10 @@ final class CCITT4DecoderTest extends TestCase
         $compressedData = file_get_contents($filePath);
         $this->assertNotFalse($compressedData, "Failed to read file: {$filename}");
 
-        $decoder = new CCITT4Decoder($width, $compressedData, false);
+        $ccitt4Decoder = new CCITT4Decoder($width, $compressedData, false);
 
         // Test legacy decode() method
-        $lines = $decoder->decode();
+        $lines = $ccitt4Decoder->decode();
         $this->assertIsArray($lines);
         $this->assertGreaterThan(0, count($lines), "No lines decoded from {$filename}");
 
@@ -98,13 +101,13 @@ final class CCITT4DecoderTest extends TestCase
         $compressedData = file_get_contents($filePath);
         $this->assertNotFalse($compressedData, "Failed to read file: {$filename}");
 
-        $decoder = new CCITT4Decoder($width, $compressedData, false);
+        $ccitt4Decoder = new CCITT4Decoder($width, $compressedData, false);
 
         // Test decodeToStream() method
         $outputStream = fopen('php://temp', 'rb+');
         $this->assertIsResource($outputStream);
 
-        $bytesWritten = $decoder->decodeToStream($outputStream);
+        $bytesWritten = $ccitt4Decoder->decodeToStream($outputStream);
         $this->assertGreaterThanOrEqual(
             $expectedMinBytes,
             $bytesWritten,
@@ -151,10 +154,10 @@ final class CCITT4DecoderTest extends TestCase
         $inputStream = fopen($filePath, 'rb');
         $this->assertIsResource($inputStream);
 
-        $decoder      = new CCITT4Decoder($width, $inputStream, false);
-        $outputStream = fopen('php://temp', 'rb+');
+        $ccitt4Decoder = new CCITT4Decoder($width, $inputStream, false);
+        $outputStream  = fopen('php://temp', 'rb+');
 
-        $bytesWritten = $decoder->decodeToStream($outputStream);
+        $bytesWritten = $ccitt4Decoder->decodeToStream($outputStream);
         $this->assertGreaterThan(0, $bytesWritten);
 
         fclose($inputStream);
@@ -169,8 +172,8 @@ final class CCITT4DecoderTest extends TestCase
         $width = 18;
 
         // Decode with reverseColor = true
-        $decoder = new CCITT4Decoder($width, $compressedData, true);
-        $lines   = $decoder->decode();
+        $ccitt4Decoder = new CCITT4Decoder($width, $compressedData, true);
+        $lines         = $ccitt4Decoder->decode();
 
         $this->assertIsArray($lines);
         $this->assertGreaterThan(0, count($lines));
@@ -178,31 +181,31 @@ final class CCITT4DecoderTest extends TestCase
 
     public function test_invalid_stream_throws_exception(): void
     {
-        $decoder = new CCITT4Decoder(18, "\x00\x10\x01\x00", false);
+        $ccitt4Decoder = new CCITT4Decoder(18, "\x00\x10\x01\x00", false);
 
         $this->expectException(RuntimeException::class);
         $this->expectExceptionMessage('Output must be a valid stream resource');
 
-        $decoder->decodeToStream('not a stream');
+        $ccitt4Decoder->decodeToStream('not a stream');
     }
 
     public function test_get_width(): void
     {
-        $decoder = new CCITT4Decoder(1728, "\x00", false);
-        $this->assertEquals(1728, $decoder->getWidth());
+        $ccitt4Decoder = new CCITT4Decoder(1728, "\x00", false);
+        $this->assertEquals(1728, $ccitt4Decoder->getWidth());
     }
 
     public function test_get_height_returns_zero(): void
     {
         // Group 4 doesn't know height beforehand
-        $decoder = new CCITT4Decoder(1728, "\x00", false);
-        $this->assertEquals(0, $decoder->getHeight());
+        $ccitt4Decoder = new CCITT4Decoder(1728, "\x00", false);
+        $this->assertEquals(0, $ccitt4Decoder->getHeight());
     }
 
     public function test_decode_empty_data(): void
     {
-        $decoder = new CCITT4Decoder(18, "\x00\x00\x00\x00", false);
-        $lines   = $decoder->decode();
+        $ccitt4Decoder = new CCITT4Decoder(18, "\x00\x00\x00\x00", false);
+        $lines         = $ccitt4Decoder->decode();
 
         // Should return empty or minimal lines
         $this->assertIsArray($lines);
@@ -216,9 +219,9 @@ final class CCITT4DecoderTest extends TestCase
 
         $memBefore = memory_get_usage(true);
 
-        $decoder = new CCITT4Decoder(18, $compressedData, false);
-        $stream  = fopen('php://temp', 'rb+');
-        $decoder->decodeToStream($stream);
+        $ccitt4Decoder = new CCITT4Decoder(18, $compressedData, false);
+        $stream        = fopen('php://temp', 'rb+');
+        $ccitt4Decoder->decodeToStream($stream);
         fclose($stream);
 
         $memAfter = memory_get_usage(true);
@@ -237,9 +240,9 @@ final class CCITT4DecoderTest extends TestCase
         }
 
         $compressedData = file_get_contents($filePath);
-        $decoder        = new CCITT4Decoder(80, $compressedData, false);
+        $ccitt4Decoder  = new CCITT4Decoder(80, $compressedData, false);
 
-        $lines = $decoder->decode();
+        $lines = $ccitt4Decoder->decode();
         $this->assertIsArray($lines);
         $this->assertGreaterThan(0, count($lines));
     }

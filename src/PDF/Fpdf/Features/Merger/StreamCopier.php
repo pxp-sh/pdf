@@ -29,13 +29,10 @@ use PXP\PDF\Fpdf\Core\Stream\StreamEncoder;
  * - If resource remapping needed: decode → replace → re-encode
  * - Always uses encoded data when possible to minimize memory
  */
-final class StreamCopier
+final readonly class StreamCopier
 {
-    private LoggerInterface $logger;
-
-    public function __construct(LoggerInterface $logger)
+    public function __construct(private LoggerInterface $logger)
     {
-        $this->logger = $logger;
     }
 
     /**
@@ -44,16 +41,16 @@ final class StreamCopier
      * @param null|array<string, array<string, string>> $nameRemapping Map of old→new resource names
      */
     public function copyStream(
-        PDFStream $sourceStream,
+        PDFStream $pdfStream,
         ?array $nameRemapping = null
     ): PDFStream {
         // Fast path: no remapping needed - copy encoded bytes directly
-        if ($nameRemapping === null || empty($nameRemapping)) {
-            return $this->copyEncodedOnly($sourceStream);
+        if ($nameRemapping === null || $nameRemapping === []) {
+            return $this->copyEncodedOnly($pdfStream);
         }
 
         // Slow path: need to remap resource names
-        return $this->copyWithRemapping($sourceStream, $nameRemapping);
+        return $this->copyWithRemapping($pdfStream, $nameRemapping);
     }
 
     /**
@@ -62,28 +59,21 @@ final class StreamCopier
      * Currently, we always need to decode if there's remapping.
      * Future optimization: binary search/replace for simple filters like FlateDecode.
      */
-    public function canCopyWithoutDecode(
-        PDFStream $stream,
-        ?array $nameRemapping = null
-    ): bool {
-        if ($nameRemapping === null || empty($nameRemapping)) {
-            return true;
-        }
-
+    public function canCopyWithoutDecode(PDFStream $pdfStream, ?array $nameRemapping = null): bool
+    {
         // Future: implement binary replace for FlateDecode
         // $filters = $stream->getFilters();
         // return count($filters) === 1 && $filters[0] === 'FlateDecode';
-
-        return false;
+        return $nameRemapping === null || $nameRemapping === [];
     }
 
     /**
      * Zero-copy: just copy encoded bytes and dictionary.
      */
-    private function copyEncodedOnly(PDFStream $sourceStream): PDFStream
+    private function copyEncodedOnly(PDFStream $pdfStream): PDFStream
     {
-        $dict    = clone $sourceStream->getDictionary();
-        $encoded = $sourceStream->getEncodedData();
+        $dict    = clone $pdfStream->getDictionary();
+        $encoded = $pdfStream->getEncodedData();
 
         $newStream = new PDFStream($dict, $encoded, true);
         $newStream->setEncodedData($encoded);
@@ -116,7 +106,7 @@ final class StreamCopier
         ]);
 
         // Replace all resource names
-        foreach ($nameRemapping as $resType => $map) {
+        foreach ($nameRemapping as $map) {
             foreach ($map as $oldName => $newName) {
                 // Replace /OldName with /NewName
                 $oldPattern = '/' . ltrim($oldName, '/');
@@ -129,9 +119,9 @@ final class StreamCopier
         $dict    = clone $sourceStream->getDictionary();
         $filters = $sourceStream->getFilters();
 
-        if (!empty($filters)) {
-            $encoder = new StreamEncoder;
-            $encoded = $encoder->encode($decoded, $filters);
+        if ($filters !== []) {
+            $streamEncoder = new StreamEncoder;
+            $encoded       = $streamEncoder->encode($decoded, $filters);
 
             $newStream = new PDFStream($dict, $encoded, true);
             $newStream->setEncodedData($encoded);

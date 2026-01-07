@@ -27,9 +27,6 @@ use PXP\PDF\Fpdf\Utils\Charset\CharsetHandler;
  */
 class PDFString extends PDFObject
 {
-    protected string $value;
-    protected bool $isHex                   = false;
-    protected string $charset               = 'UTF-8';
     private ?CharsetHandler $charsetHandler = null;
 
     /**
@@ -37,13 +34,13 @@ class PDFString extends PDFObject
      */
     public static function fromPDFString(string $pdfString, string $charset = 'UTF-8'): self
     {
-        $handler = new CharsetHandler;
+        $charsetHandler = new CharsetHandler;
 
         // Check if hex string
         if (str_starts_with($pdfString, '<') && str_ends_with($pdfString, '>')) {
             $hex     = substr($pdfString, 1, -1);
             $decoded = hex2bin($hex);
-            $value   = $handler->decodeFromPDF($decoded, $charset);
+            $value   = $charsetHandler->decodeFromPDF($decoded, $charset);
 
             return new self($value, true, $charset);
         }
@@ -57,7 +54,7 @@ class PDFString extends PDFObject
                 ['\\', '(', ')', "\r", "\n", "\t"],
                 $content,
             );
-            $value = $handler->decodeFromPDF($unescaped, $charset);
+            $value = $charsetHandler->decodeFromPDF($unescaped, $charset);
 
             return new self($value, false, $charset);
         }
@@ -66,11 +63,8 @@ class PDFString extends PDFObject
         return new self($pdfString, false, $charset);
     }
 
-    public function __construct(string $value, bool $isHex = false, string $charset = 'UTF-8')
+    public function __construct(protected string $value, protected bool $isHex = false, protected string $charset = 'UTF-8')
     {
-        $this->value   = $value;
-        $this->isHex   = $isHex;
-        $this->charset = $charset;
     }
 
     public function __toString(): string
@@ -112,8 +106,8 @@ class PDFString extends PDFObject
      */
     public function toPDFString(): string
     {
-        $handler = $this->getCharsetHandler();
-        $encoded = $handler->encodeToPDF($this->value, $this->charset);
+        $charsetHandler = $this->getCharsetHandler();
+        $encoded        = $charsetHandler->encodeToPDF($this->value, $this->charset);
 
         if ($this->isHex) {
             return '<' . bin2hex($encoded) . '>';
@@ -131,7 +125,7 @@ class PDFString extends PDFObject
 
     private function getCharsetHandler(): CharsetHandler
     {
-        if ($this->charsetHandler === null) {
+        if (!$this->charsetHandler instanceof CharsetHandler) {
             $this->charsetHandler = new CharsetHandler;
         }
 

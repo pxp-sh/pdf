@@ -39,6 +39,9 @@ final class CCITT3DecoderTest extends TestCase
 {
     private string $testFilesDir;
 
+    /**
+     * @return array<string, array<bool|int>>
+     */
     public static function parameterCombinationsProvider(): array
     {
         return [
@@ -69,9 +72,9 @@ final class CCITT3DecoderTest extends TestCase
         }
 
         $compressedData = file_get_contents($filePath);
-        $decoder        = new CCITT3Decoder($params, $compressedData);
+        $ccitt3Decoder  = new CCITT3Decoder($params, $compressedData);
 
-        $lines = $decoder->decode();
+        $lines = $ccitt3Decoder->decode();
         $this->assertIsArray($lines);
         $this->assertGreaterThan(0, count($lines));
     }
@@ -80,9 +83,9 @@ final class CCITT3DecoderTest extends TestCase
     {
         $params = new Params(
             k: 0,
+            endOfLine: false,
             columns: 18,
             rows: 18,
-            endOfLine: false,
         );
 
         $filePath = $this->testFilesDir . '/18x18.bin';
@@ -92,10 +95,10 @@ final class CCITT3DecoderTest extends TestCase
         }
 
         $compressedData = file_get_contents($filePath);
-        $decoder        = new CCITT3Decoder($params, $compressedData);
+        $ccitt3Decoder  = new CCITT3Decoder($params, $compressedData);
 
         $outputStream = fopen('php://temp', 'rb+');
-        $bytesWritten = $decoder->decodeToStream($outputStream);
+        $bytesWritten = $ccitt3Decoder->decodeToStream($outputStream);
 
         $this->assertGreaterThan(0, $bytesWritten);
 
@@ -142,18 +145,18 @@ final class CCITT3DecoderTest extends TestCase
     {
         $params = new Params(
             k: 0,
-            columns: 1728,
-            rows: 0,
             endOfLine: true,
             encodedByteAlign: false,
+            columns: 1728,
+            rows: 0,
         );
 
         // Create simple test data with EOL markers
-        $testData = "\x00\x10" . str_repeat("\xFF", 100);
-        $decoder  = new CCITT3Decoder($params, $testData);
+        $testData      = "\x00\x10" . str_repeat("\xFF", 100);
+        $ccitt3Decoder = new CCITT3Decoder($params, $testData);
 
         try {
-            $lines = $decoder->decode();
+            $lines = $ccitt3Decoder->decode();
             $this->assertIsArray($lines);
         } catch (RuntimeException $e) {
             // Expected for invalid test data
@@ -177,9 +180,9 @@ final class CCITT3DecoderTest extends TestCase
         }
 
         $compressedData = file_get_contents($filePath);
-        $decoder        = new CCITT3Decoder($params, $compressedData);
+        $ccitt3Decoder  = new CCITT3Decoder($params, $compressedData);
 
-        $lines = $decoder->decode();
+        $lines = $ccitt3Decoder->decode();
         $this->assertIsArray($lines);
     }
 
@@ -195,10 +198,10 @@ final class CCITT3DecoderTest extends TestCase
         $inputStream = fopen($filePath, 'rb');
         $this->assertIsResource($inputStream);
 
-        $decoder      = new CCITT3Decoder($params, $inputStream);
-        $outputStream = fopen('php://temp', 'rb+');
+        $ccitt3Decoder = new CCITT3Decoder($params, $inputStream);
+        $outputStream  = fopen('php://temp', 'rb+');
 
-        $bytesWritten = $decoder->decodeToStream($outputStream);
+        $bytesWritten = $ccitt3Decoder->decodeToStream($outputStream);
         $this->assertGreaterThan(0, $bytesWritten);
 
         fclose($inputStream);
@@ -207,30 +210,30 @@ final class CCITT3DecoderTest extends TestCase
 
     public function test_get_width_and_height(): void
     {
-        $params  = new Params(k: 0, columns: 1728, rows: 2200);
-        $decoder = new CCITT3Decoder($params, "\x00");
+        $params        = new Params(k: 0, columns: 1728, rows: 2200);
+        $ccitt3Decoder = new CCITT3Decoder($params, "\x00");
 
-        $this->assertEquals(1728, $decoder->getWidth());
-        $this->assertEquals(2200, $decoder->getHeight());
+        $this->assertEquals(1728, $ccitt3Decoder->getWidth());
+        $this->assertEquals(2200, $ccitt3Decoder->getHeight());
     }
 
     public function test_invalid_stream_throws_exception(): void
     {
-        $params  = new Params(k: 0, columns: 18);
-        $decoder = new CCITT3Decoder($params, "\x00");
+        $params        = new Params(k: 0, columns: 18);
+        $ccitt3Decoder = new CCITT3Decoder($params, "\x00");
 
         $this->expectException(RuntimeException::class);
         $this->expectExceptionMessage('Output must be a valid stream resource');
 
-        $decoder->decodeToStream('not a stream');
+        $ccitt3Decoder->decodeToStream('not a stream');
     }
 
     public function test_decode_empty_data(): void
     {
-        $params  = new Params(k: 0, columns: 18, rows: 1);
-        $decoder = new CCITT3Decoder($params, "\x00\x00\x00\x00");
+        $params        = new Params(k: 0, columns: 18, rows: 1);
+        $ccitt3Decoder = new CCITT3Decoder($params, "\x00\x00\x00\x00");
 
-        $lines = $decoder->decode();
+        $lines = $ccitt3Decoder->decode();
         $this->assertIsArray($lines);
     }
 
@@ -238,17 +241,17 @@ final class CCITT3DecoderTest extends TestCase
     {
         $params = new Params(
             k: 0,
+            endOfLine: true,
             columns: 18,
             rows: 5,
-            endOfLine: true,
             damagedRowsBeforeError: 3,  // Allow 3 damaged rows
         );
 
-        $testData = str_repeat("\xFF\xFF", 50);
-        $decoder  = new CCITT3Decoder($params, $testData);
+        $testData      = str_repeat("\xFF\xFF", 50);
+        $ccitt3Decoder = new CCITT3Decoder($params, $testData);
 
         try {
-            $lines = $decoder->decode();
+            $lines = $ccitt3Decoder->decode();
             $this->assertIsArray($lines);
         } catch (RuntimeException $e) {
             // Expected for heavily damaged data
@@ -268,9 +271,9 @@ final class CCITT3DecoderTest extends TestCase
         $compressedData = file_get_contents($filePath);
         $memBefore      = memory_get_usage(true);
 
-        $decoder = new CCITT3Decoder($params, $compressedData);
-        $stream  = fopen('php://temp', 'rb+');
-        $decoder->decodeToStream($stream);
+        $ccitt3Decoder = new CCITT3Decoder($params, $compressedData);
+        $stream        = fopen('php://temp', 'rb+');
+        $ccitt3Decoder->decodeToStream($stream);
         fclose($stream);
 
         $memAfter = memory_get_usage(true);
@@ -290,10 +293,10 @@ final class CCITT3DecoderTest extends TestCase
 
     public function test_decoder_instantiation(): void
     {
-        $params  = new Params(k: 0, columns: 8);
-        $decoder = new CCITT3Decoder($params, '');
+        $params        = new Params(k: 0, columns: 8);
+        $ccitt3Decoder = new CCITT3Decoder($params, '');
 
-        $this->assertInstanceOf(CCITT3Decoder::class, $decoder);
+        $this->assertInstanceOf(CCITT3Decoder::class, $ccitt3Decoder);
     }
 
     /**
@@ -309,9 +312,9 @@ final class CCITT3DecoderTest extends TestCase
     ): void {
         $params = new Params(
             k: $k,
+            endOfLine: $endOfLine,
             columns: $columns,
             rows: $rows,
-            endOfLine: $endOfLine,
             blackIs1: $blackIs1,
         );
 

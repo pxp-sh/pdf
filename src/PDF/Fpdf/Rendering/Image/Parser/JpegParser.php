@@ -21,13 +21,16 @@ use function strtolower;
 use PXP\PDF\Fpdf\Exceptions\Exception\FpdfException;
 use PXP\PDF\Fpdf\IO\FileReaderInterface;
 
-final class JpegParser implements ImageParserInterface
+final readonly class JpegParser implements ImageParserInterface
 {
     public function __construct(
         private FileReaderInterface $fileReader,
     ) {
     }
 
+    /**
+     * @return array<string, int|string>
+     */
     public function parse(string $file): array
     {
         if (!is_file($file) || !is_readable($file)) {

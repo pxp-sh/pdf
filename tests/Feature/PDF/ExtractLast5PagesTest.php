@@ -43,7 +43,7 @@ use Test\TestCase;
  */
 final class ExtractLast5PagesTest extends TestCase
 {
-    private const TEST_PDF = 'tests/resources/PDF/input/23-grande.pdf';
+    private const string TEST_PDF = 'tests/resources/PDF/input/23-grande.pdf';
 
     /**
      * Test: Extract last 5 pages from 23-grande.pdf and verify 100% match.
@@ -58,7 +58,7 @@ final class ExtractLast5PagesTest extends TestCase
      */
     public function test_extract_last_5_pages_with_100_percent_match(): void
     {
-        $inputPdf = self::getProjectRoot() . '/' . self::TEST_PDF;
+        $inputPdf = $this->getProjectRoot() . '/' . self::TEST_PDF;
 
         if (!file_exists($inputPdf)) {
             $this->markTestSkipped('Test PDF not available: ' . $inputPdf);
@@ -71,8 +71,8 @@ final class ExtractLast5PagesTest extends TestCase
         $fileIO = new FileIO(self::getLogger());
 
         // Step 1: Get total page count
-        $splitter   = new PDFSplitter($inputPdf, $fileIO, self::getLogger());
-        $totalPages = $splitter->getPageCount();
+        $pdfSplitter = new PDFSplitter($inputPdf, $fileIO, self::getLogger());
+        $totalPages  = $pdfSplitter->getPageCount();
 
         $this->assertGreaterThanOrEqual(5, $totalPages, '23-grande.pdf should have at least 5 pages');
 
@@ -87,22 +87,22 @@ final class ExtractLast5PagesTest extends TestCase
         // Step 2: Extract each of the last 5 pages individually
         $extractedPages = [];
 
-        foreach ($lastPages as $pageNum) {
-            $extractedFile = $tmpDir . "/page_{$pageNum}.pdf";
-            $splitter->extractPage($pageNum, $extractedFile);
+        foreach ($lastPages as $lastPage) {
+            $extractedFile = $tmpDir . "/page_{$lastPage}.pdf";
+            $pdfSplitter->extractPage($lastPage, $extractedFile);
 
             // Verify extracted file exists and is valid
-            $this->assertFileExists($extractedFile, "Extracted page {$pageNum} should exist");
-            $this->assertGreaterThan(0, filesize($extractedFile), "Extracted page {$pageNum} should not be empty");
+            $this->assertFileExists($extractedFile, "Extracted page {$lastPage} should exist");
+            $this->assertGreaterThan(0, filesize($extractedFile), "Extracted page {$lastPage} should not be empty");
 
             // Verify it's a valid PDF using streaming read (first 8KB chunk)
             $header = $fileIO->readFileChunk($extractedFile, 8192, 0);
-            $this->assertStringContainsString('%PDF-', $header, "Extracted page {$pageNum} should be a valid PDF");
-            $this->assertStringContainsString('/Count 1', $header, "Extracted page {$pageNum} should have exactly 1 page");
+            $this->assertStringContainsString('%PDF-', $header, "Extracted page {$lastPage} should be a valid PDF");
+            $this->assertStringContainsString('/Count 1', $header, "Extracted page {$lastPage} should have exactly 1 page");
 
-            $extractedPages[$pageNum] = $extractedFile;
+            $extractedPages[$lastPage] = $extractedFile;
 
-            self::getLogger()->info("Extracted page {$pageNum}", [
+            self::getLogger()->info("Extracted page {$lastPage}", [
                 'output_file' => $extractedFile,
                 'size_bytes'  => filesize($extractedFile),
             ]);
@@ -115,9 +115,9 @@ final class ExtractLast5PagesTest extends TestCase
 
         // Step 4: Merge extracted pages back together
         $mergedFile = $tmpDir . '/merged_last_5_pages.pdf';
-        $merger     = new PDFMerger($fileIO, self::getLogger());
+        $pdfMerger  = new PDFMerger($fileIO, self::getLogger());
 
-        $merger->mergeIncremental(array_values($extractedPages), $mergedFile);
+        $pdfMerger->mergeIncremental(array_values($extractedPages), $mergedFile);
 
         // Verify merged file
         $this->assertFileExists($mergedFile, 'Merged PDF should exist');
@@ -137,8 +137,8 @@ final class ExtractLast5PagesTest extends TestCase
         $this->assertMergedPagesMatch100Percent($inputPdf, $mergedFile, $lastPages);
 
         // Cleanup
-        foreach ($extractedPages as $file) {
-            self::unlink($file);
+        foreach ($extractedPages as $extractedPage) {
+            self::unlink($extractedPage);
         }
         self::unlink($mergedFile);
     }
@@ -150,7 +150,7 @@ final class ExtractLast5PagesTest extends TestCase
      */
     public function test_extract_last_5_pages_content_integrity(): void
     {
-        $inputPdf = self::getProjectRoot() . '/' . self::TEST_PDF;
+        $inputPdf = $this->getProjectRoot() . '/' . self::TEST_PDF;
 
         if (!file_exists($inputPdf)) {
             $this->markTestSkipped('Test PDF not available: ' . $inputPdf);
@@ -162,8 +162,8 @@ final class ExtractLast5PagesTest extends TestCase
         $fileIO = new FileIO(self::getLogger());
 
         // Get page count
-        $splitter   = new PDFSplitter($inputPdf, $fileIO, self::getLogger());
-        $totalPages = $splitter->getPageCount();
+        $pdfSplitter = new PDFSplitter($inputPdf, $fileIO, self::getLogger());
+        $totalPages  = $pdfSplitter->getPageCount();
 
         $this->assertGreaterThanOrEqual(5, $totalPages, '23-grande.pdf should have at least 5 pages');
 
@@ -174,7 +174,7 @@ final class ExtractLast5PagesTest extends TestCase
 
         foreach ($lastPages as $pageNum) {
             $extractedFile = $tmpDir . "/page_{$pageNum}.pdf";
-            $splitter->extractPage($pageNum, $extractedFile);
+            $pdfSplitter->extractPage($pageNum, $extractedFile);
             $extractedPages[$pageNum] = $extractedFile;
         }
 
@@ -185,8 +185,8 @@ final class ExtractLast5PagesTest extends TestCase
 
         // Merge and validate
         $mergedFile = $tmpDir . '/merged.pdf';
-        $merger     = new PDFMerger($fileIO, self::getLogger());
-        $merger->mergeIncremental(array_values($extractedPages), $mergedFile);
+        $pdfMerger  = new PDFMerger($fileIO, self::getLogger());
+        $pdfMerger->mergeIncremental(array_values($extractedPages), $mergedFile);
 
         // Validate merged PDF structure
         $this->assertValidPdfStructure($mergedFile, 'Merged PDF');
@@ -196,8 +196,8 @@ final class ExtractLast5PagesTest extends TestCase
         $this->assertEquals(5, $mergedPageCount, 'Merged PDF should have exactly 5 pages');
 
         // Cleanup
-        foreach ($extractedPages as $file) {
-            self::unlink($file);
+        foreach ($extractedPages as $extractedPage) {
+            self::unlink($extractedPage);
         }
         self::unlink($mergedFile);
     }
@@ -210,7 +210,7 @@ final class ExtractLast5PagesTest extends TestCase
      */
     public function test_extract_last_5_pages_idempotency(): void
     {
-        $inputPdf = self::getProjectRoot() . '/' . self::TEST_PDF;
+        $inputPdf = $this->getProjectRoot() . '/' . self::TEST_PDF;
 
         if (!file_exists($inputPdf)) {
             $this->markTestSkipped('Test PDF not available: ' . $inputPdf);
@@ -290,8 +290,8 @@ final class ExtractLast5PagesTest extends TestCase
     {
         $mergedPageNum = 1;
 
-        foreach ($pageNumbers as $originalPageNum) {
-            self::getLogger()->info("Validating merged page {$mergedPageNum} against original page {$originalPageNum}");
+        foreach ($pageNumbers as $pageNumber) {
+            self::getLogger()->info("Validating merged page {$mergedPageNum} against original page {$pageNumber}");
 
             // Compare merged page with original page
             // Create temporary single-page extract from merged PDF
@@ -307,14 +307,14 @@ final class ExtractLast5PagesTest extends TestCase
             $this->assertPdfPagesSimilar(
                 $originalPdf,
                 $tempExtract,
-                $originalPageNum,
+                $pageNumber,
                 1.0, // 100% match required
-                sprintf('Merged page %d must match original page %d with 100%% accuracy', $mergedPageNum, $originalPageNum),
+                sprintf('Merged page %d must match original page %d with 100%% accuracy', $mergedPageNum, $pageNumber),
             );
 
             self::unlink($tempExtract);
 
-            self::getLogger()->info("✓ Merged page {$mergedPageNum} validated - 100% match with original page {$originalPageNum}");
+            self::getLogger()->info("✓ Merged page {$mergedPageNum} validated - 100% match with original page {$pageNumber}");
 
             $mergedPageNum++;
         }
@@ -405,7 +405,7 @@ final class ExtractLast5PagesTest extends TestCase
     /**
      * Get project root directory.
      */
-    private static function getProjectRoot(): string
+    private function getProjectRoot(): string
     {
         return dirname(__DIR__, 3);
     }

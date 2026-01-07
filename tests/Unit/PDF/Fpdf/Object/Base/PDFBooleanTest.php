@@ -23,14 +23,14 @@ final class PDFBooleanTest extends TestCase
 {
     public function testToStringWithTrue(): void
     {
-        $bool = new PDFBoolean(true);
-        $this->assertSame('true', (string) $bool);
+        $pdfBoolean = new PDFBoolean(true);
+        $this->assertSame('true', (string) $pdfBoolean);
     }
 
     public function testToStringWithFalse(): void
     {
-        $bool = new PDFBoolean(false);
-        $this->assertSame('false', (string) $bool);
+        $pdfBoolean = new PDFBoolean(false);
+        $this->assertSame('false', (string) $pdfBoolean);
     }
 
     public function testGetValue(): void

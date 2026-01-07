@@ -52,9 +52,9 @@ final class XrefStreamParser
      * - PNG predictor decoding if present
      * - Extracting entries from decoded stream data
      *
-     * @param string       $streamData Decoded stream data
-     * @param array        $streamDict Stream dictionary entries
-     * @param PDFXrefTable $xrefTable  Xref table to populate
+     * @param string            $streamData   Decoded stream data
+     * @param array<int, mixed> $streamDict   Stream dictionary entries
+     * @param PDFXrefTable      $pdfXrefTable Xref table to populate
      *
      * @throws FpdfException
      *
@@ -63,7 +63,7 @@ final class XrefStreamParser
     public function parseStream(
         string $streamData,
         array $streamDict,
-        PDFXrefTable $xrefTable
+        PDFXrefTable $pdfXrefTable
     ): ?int {
         // Extract required dictionary fields
         $type = $this->getDictValue($streamDict, '/Type');
@@ -78,8 +78,9 @@ final class XrefStreamParser
             // Collect available keys for debugging
             $dictKeys      = [];
             $dictStructure = [];
+            $counter       = count($streamDict);
 
-            for ($i = 0; $i < count($streamDict); $i += 2) {
+            for ($i = 0; $i < $counter; $i += 2) {
                 if (isset($streamDict[$i]) && is_array($streamDict[$i]) && ($streamDict[$i][0] ?? '') === '/') {
                     $keyName         = $streamDict[$i][1] ?? 'unknown';
                     $dictKeys[]      = $keyName;
@@ -158,17 +159,17 @@ final class XrefStreamParser
                     break;
 
                 case 1: // In-use, uncompressed
-                    $allEntries = $xrefTable->getAllEntries();
+                    $allEntries = $pdfXrefTable->getAllEntries();
 
                     if (!isset($allEntries[$objNum])) {
-                        $xrefTable->addEntry($objNum, $field1, $field2, false);
+                        $pdfXrefTable->addEntry($objNum, $field1, $field2, false);
                     }
 
                     break;
 
                 case 2: // Compressed object
                     // Record compressed object mapping so registry/parser can resolve it lazily
-                    $xrefTable->addCompressedEntry($objNum, $field1, $field2);
+                    $pdfXrefTable->addCompressedEntry($objNum, $field1, $field2);
 
                     break;
             }
@@ -211,7 +212,7 @@ final class XrefStreamParser
         // Convert stream to array of bytes (unpack returns 1-indexed array)
         $sdata = unpack('C*', $streamData);
 
-        if ($sdata === false || empty($sdata)) {
+        if ($sdata === false || $sdata === []) {
             return [];
         }
 
@@ -223,13 +224,13 @@ final class XrefStreamParser
 
         // Apply PNG predictor if present
         if ($predictor !== null && $columns > 0) {
-            $ddata = $this->applyPngPredictor($ddata, $columns, $predictor);
+            $ddata = $this->applyPngPredictor($ddata, $columns);
         }
 
         // Extract fields from rows
         $result = [];
 
-        foreach ($ddata as $row) {
+        foreach ($ddata as $ddatum) {
             $fields = [0, 0, 0];
 
             if ($wb[0] === 0) {
@@ -240,9 +241,9 @@ final class XrefStreamParser
 
             for ($c = 0; $c < 3; $c++) {
                 for ($b = 0; $b < $wb[$c]; $b++) {
-                    if (isset($row[$i])) {
+                    if (isset($ddatum[$i])) {
                         // Build multi-byte value: most significant byte first
-                        $fields[$c] = ($fields[$c] << 8) | $row[$i];
+                        $fields[$c] = ($fields[$c] << 8) | $ddatum[$i];
                     }
                     $i++;
                 }
@@ -256,21 +257,20 @@ final class XrefStreamParser
     /**
      * Apply PNG predictor to decoded data.
      *
-     * @param array<array<int>> $data      Row data
-     * @param int               $columns   Number of columns
-     * @param int               $predictor Predictor value (10-14)
+     * @param array<array<int>> $data    Row data
+     * @param int               $columns Number of columns
      *
      * @throws FpdfException
      *
      * @return array<array<int>> Decoded data
      */
-    private function applyPngPredictor(array $data, int $columns, int $predictor): array
+    private function applyPngPredictor(array $data, int $columns): array
     {
         $rowlen  = $columns + 1;
         $prevRow = array_fill(0, $rowlen, 0);
         $result  = [];
 
-        foreach ($data as $k => $row) {
+        foreach ($data as $row) {
             $decodedRow = [];
             $predValue  = 10 + ($row[0] ?? 0);
 
@@ -338,16 +338,18 @@ final class XrefStreamParser
      * Dictionary format: [['/', '/Key'], ['type', value], ...]
      * For arrays: [['/', '/Key'], ['[', [['type', value], ...]]]
      *
-     * @param array  $dict Dictionary array
-     * @param string $key  Key to look up
+     * @param array<int, mixed> $dict Dictionary array
+     * @param string            $key  Key to look up
      *
      * @return mixed Value or null if not found
      */
     private function getDictValue(array $dict, string $key): mixed
     {
+        $counter = count($dict);
+
         // Dictionary is an array of [type, value] pairs
         // where keys are at even indices and values at odd indices
-        for ($i = 0; $i < count($dict); $i += 2) {
+        for ($i = 0; $i < $counter; $i += 2) {
             if (!isset($dict[$i]) || !is_array($dict[$i])) {
                 continue;
             }
@@ -358,7 +360,7 @@ final class XrefStreamParser
             // Handle case where key might include '[' if PDF parsing incorrectly extracted it
             $storedKey           = $dict[$i][1] ?? '';
             $searchKey           = ltrim($key, '/');
-            $storedKeyNormalized = ltrim($storedKey, '/');
+            $storedKeyNormalized = ltrim((string) $storedKey, '/');
 
             // If stored key contains '[', extract just the key part before '['
             if (str_contains($storedKeyNormalized, '[')) {
@@ -398,12 +400,7 @@ final class XrefStreamParser
                     return $result;
                 }
 
-                // Handle simple values: ['type', 'value'] or ['/', '/Value']
-                if (isset($valueEntry[1])) {
-                    return $valueEntry[1];
-                }
-
-                return $valueEntry;
+                return $valueEntry[1] ?? $valueEntry;
             }
         }
 

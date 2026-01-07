@@ -48,9 +48,9 @@ final class PDFTrailer
         return $this->root;
     }
 
-    public function setRoot(?PDFReference $root): void
+    public function setRoot(?PDFReference $pdfReference): void
     {
-        $this->root = $root;
+        $this->root = $pdfReference;
     }
 
     public function getInfo(): ?PDFReference
@@ -58,9 +58,9 @@ final class PDFTrailer
         return $this->info;
     }
 
-    public function setInfo(?PDFReference $info): void
+    public function setInfo(?PDFReference $pdfReference): void
     {
-        $this->info = $info;
+        $this->info = $pdfReference;
     }
 
     public function getEncrypt(): ?PDFReference
@@ -68,9 +68,9 @@ final class PDFTrailer
         return $this->encrypt;
     }
 
-    public function setEncrypt(?PDFReference $encrypt): void
+    public function setEncrypt(?PDFReference $pdfReference): void
     {
-        $this->encrypt = $encrypt;
+        $this->encrypt = $pdfReference;
     }
 
     /**
@@ -94,30 +94,30 @@ final class PDFTrailer
      */
     public function toDictionary(): PDFDictionary
     {
-        $dict = new PDFDictionary;
-        $dict->addEntry('/Size', $this->size);
+        $pdfDictionary = new PDFDictionary;
+        $pdfDictionary->addEntry('/Size', $this->size);
 
-        if ($this->root !== null) {
-            $dict->addEntry('/Root', $this->root);
+        if ($this->root instanceof PDFReference) {
+            $pdfDictionary->addEntry('/Root', $this->root);
         }
 
-        if ($this->info !== null) {
-            $dict->addEntry('/Info', $this->info);
+        if ($this->info instanceof PDFReference) {
+            $pdfDictionary->addEntry('/Info', $this->info);
         }
 
-        if ($this->encrypt !== null) {
-            $dict->addEntry('/Encrypt', $this->encrypt);
+        if ($this->encrypt instanceof PDFReference) {
+            $pdfDictionary->addEntry('/Encrypt', $this->encrypt);
         }
 
         if ($this->id !== null) {
-            $idArray = new PDFArray([
+            $pdfArray = new PDFArray([
                 new PDFString($this->id[0], true),
                 new PDFString($this->id[1], true),
             ]);
-            $dict->addEntry('/ID', $idArray);
+            $pdfDictionary->addEntry('/ID', $pdfArray);
         }
 
-        return $dict;
+        return $pdfDictionary;
     }
 
     /**
@@ -126,11 +126,10 @@ final class PDFTrailer
     public function serialize(int $xrefOffset): string
     {
         $result = "trailer\n";
-        $result .= (string) $this->toDictionary() . "\n";
+        $result .= $this->toDictionary() . "\n";
         $result .= "startxref\n";
-        $result .= (string) $xrefOffset . "\n";
-        $result .= "%%EOF\n";
+        $result .= $xrefOffset . "\n";
 
-        return $result;
+        return $result . "%%EOF\n";
     }
 }

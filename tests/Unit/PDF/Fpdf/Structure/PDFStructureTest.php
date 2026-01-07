@@ -78,7 +78,6 @@ final class PDFStructureTest extends TestCase
             withAlpha: false,
             pdfVersion: '1.3',
             logger: self::getLogger(),
-            dispatcher: self::getEventDispatcher(),
         );
     }
 

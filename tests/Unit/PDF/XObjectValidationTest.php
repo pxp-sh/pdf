@@ -79,8 +79,8 @@ class XObjectValidationTest extends TestCase
     {
         $extractedPath = sys_get_temp_dir() . '/xobject_test_extracted.pdf';
         $fileIO        = new FileIO($this->logger);
-        $splitter      = new PDFSplitter($this->testPdfWithImages, $fileIO, $this->logger);
-        $splitter->extractPage(1, $extractedPath);
+        $pdfSplitter   = new PDFSplitter($this->testPdfWithImages, $fileIO, $this->logger);
+        $pdfSplitter->extractPage(1, $extractedPath);
 
         $this->assertFileExists($extractedPath);
 
@@ -107,8 +107,8 @@ class XObjectValidationTest extends TestCase
     {
         $extractedPath = sys_get_temp_dir() . '/xobject_content_test.pdf';
         $fileIO        = new FileIO($this->logger);
-        $splitter      = new PDFSplitter($this->testPdfWithImages, $fileIO, $this->logger);
-        $splitter->extractPage(1, $extractedPath);
+        $pdfSplitter   = new PDFSplitter($this->testPdfWithImages, $fileIO, $this->logger);
+        $pdfSplitter->extractPage(1, $extractedPath);
 
         $fileSize = filesize($extractedPath);
         $this->assertGreaterThan(1000, $fileSize, 'Extracted PDF with images should have substantial content');
@@ -138,8 +138,8 @@ class XObjectValidationTest extends TestCase
     {
         $extractedPath = sys_get_temp_dir() . '/xobject_refs_test.pdf';
         $fileIO        = new FileIO($this->logger);
-        $splitter      = new PDFSplitter($this->testPdfWithImages, $fileIO, $this->logger);
-        $splitter->extractPage(1, $extractedPath);
+        $pdfSplitter   = new PDFSplitter($this->testPdfWithImages, $fileIO, $this->logger);
+        $pdfSplitter->extractPage(1, $extractedPath);
 
         $this->assertFileExists($extractedPath);
 
@@ -180,8 +180,8 @@ class XObjectValidationTest extends TestCase
 
         $extractedPath = sys_get_temp_dir() . '/form_xobject_test.pdf';
         $fileIO        = new FileIO($this->logger);
-        $splitter      = new PDFSplitter($this->testPdfWithImages, $fileIO, $this->logger);
-        $splitter->extractPage(1, $extractedPath);
+        $pdfSplitter   = new PDFSplitter($this->testPdfWithImages, $fileIO, $this->logger);
+        $pdfSplitter->extractPage(1, $extractedPath);
 
         // Verify PDF is valid and parseable
         $this->assertFileExists($extractedPath);
@@ -198,10 +198,10 @@ class XObjectValidationTest extends TestCase
      */
     private function createTestPdfWithImage(): string
     {
-        $pdf = new FPDF;
-        $pdf->AddPage();
-        $pdf->SetFont('Arial', 'B', 16);
-        $pdf->Cell(0, 10, 'Test PDF with Image XObject', 0, 1);
+        $fpdf = new FPDF;
+        $fpdf->AddPage();
+        $fpdf->SetFont('Arial', 'B', 16);
+        $fpdf->Cell(0, 10, 'Test PDF with Image XObject', 0, 1);
 
         // Create a simple test image
         $imageData = $this->createTestImage();
@@ -209,14 +209,14 @@ class XObjectValidationTest extends TestCase
         file_put_contents($imagePath, $imageData);
 
         // Add image to PDF
-        $pdf->Image($imagePath, 50, 40, 100);
+        $fpdf->Image($imagePath, 50, 40, 100);
 
-        $pdf->SetY(160);
-        $pdf->SetFont('Arial', '', 12);
-        $pdf->Cell(0, 10, 'This PDF contains an image XObject above', 0, 1);
+        $fpdf->SetY(160);
+        $fpdf->SetFont('Arial', '', 12);
+        $fpdf->Cell(0, 10, 'This PDF contains an image XObject above', 0, 1);
 
         $testFile = sys_get_temp_dir() . '/test_xobject_' . uniqid() . '.pdf';
-        $pdf->Output('F', $testFile);
+        $fpdf->Output('F', $testFile);
 
         self::unlink($imagePath);
 

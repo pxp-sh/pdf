@@ -24,8 +24,8 @@ final class FontInfoTest extends TestCase
 {
     public function testFontInfoIsReadonly(): void
     {
-        $reflection = new ReflectionClass(FontInfo::class);
-        $this->assertTrue($reflection->isReadOnly());
+        $reflectionClass = new ReflectionClass(FontInfo::class);
+        $this->assertTrue($reflectionClass->isReadOnly());
     }
 
     public function testFontInfoWithRequiredProperties(): void

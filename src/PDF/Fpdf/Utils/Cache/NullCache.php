@@ -87,7 +87,7 @@ final class NullCache implements CacheItemPoolInterface
 /**
  * Null cache item implementation.
  */
-final class NullCacheItem implements CacheItemInterface
+final readonly class NullCacheItem implements CacheItemInterface
 {
     public function __construct(
         private string $key

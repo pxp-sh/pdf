@@ -14,11 +14,12 @@ declare(strict_types=1);
 namespace PXP\PDF\Fpdf\Core\Tree;
 
 use function preg_match;
+use Stringable;
 
 /**
  * Represents the PDF header (version declaration).
  */
-final class PDFHeader
+final class PDFHeader implements Stringable
 {
     /**
      * Parse PDF header from content.

@@ -26,9 +26,7 @@ use function sprintf;
 use function str_ends_with;
 use function strlen;
 use function substr;
-use Psr\EventDispatcher\EventDispatcherInterface;
 use Psr\Log\LoggerInterface;
-use PXP\PDF\Fpdf\Events\Event\NullDispatcher;
 use PXP\PDF\Fpdf\Events\Log\NullLogger;
 use PXP\PDF\Fpdf\Exceptions\Exception\FpdfException;
 use PXP\PDF\Fpdf\Features\Link\LinkManager;
@@ -47,52 +45,34 @@ final class PDFStructure
 {
     private int $n         = 2;
     private array $offsets = [];
-    private LoggerInterface $logger;
-    private EventDispatcherInterface $dispatcher;
 
-    public function __construct(
-        private Buffer $buffer,
-        private PageManager $pageManager,
-        private FontManager $fontManager,
-        private ImageHandler $imageHandler,
-        private LinkManager $linkManager,
-        private Metadata $metadata,
-        private TextRenderer $textRenderer,
-        private FileReaderInterface $fileReader,
-        private bool $compress = true,
-        private bool $withAlpha = false,
-        private string $pdfVersion = '1.3',
-        ?LoggerInterface $logger = null,
-        ?EventDispatcherInterface $dispatcher = null,
-    ) {
-        $this->logger     = $logger ?? new NullLogger;
-        $this->dispatcher = $dispatcher ?? new NullDispatcher;
+    public function __construct(private readonly Buffer $buffer, private readonly PageManager $pageManager, private readonly FontManager $fontManager, private readonly ImageHandler $imageHandler, private readonly LinkManager $linkManager, private readonly Metadata $metadata, private readonly TextRenderer $textRenderer, private readonly FileReaderInterface $fileReader, private readonly bool $compress = true, private bool $withAlpha = false, private string $pdfVersion = '1.3', private readonly ?LoggerInterface $logger = new NullLogger)
+    {
     }
 
     public function build(
-        PageOrientation $defOrientation,
+        PageOrientation $pageOrientation,
         PageSize $defPageSize,
         float $scaleFactor,
         float|string $zoomMode,
         LayoutMode $layoutMode,
-        string $aliasNbPages = '',
     ): void {
         $startTime = microtime(true);
         $pageCount = $this->pageManager->getCurrentPage();
 
         $this->logger->info('PDF structure building started', [
             'page_count'  => $pageCount,
-            'orientation' => $defOrientation->value,
+            'orientation' => $pageOrientation->value,
             'page_size'   => ['width' => $defPageSize->getWidth(), 'height' => $defPageSize->getHeight()],
             'compress'    => $this->compress,
             'pdf_version' => $this->pdfVersion,
         ]);
 
         $this->putHeader();
-        $this->putPages($defOrientation, $defPageSize, $scaleFactor);
+        $this->putPages($pageOrientation, $defPageSize, $scaleFactor);
         $this->putResources();
         $this->putInfo();
-        $this->putCatalog($zoomMode, $layoutMode, $aliasNbPages);
+        $this->putCatalog($zoomMode, $layoutMode);
         $this->putXref();
 
         $duration = (microtime(true) - $startTime) * 1000;
@@ -121,7 +101,7 @@ final class PDFStructure
         $this->put('%PDF-' . $this->pdfVersion);
     }
 
-    private function putPages(PageOrientation $defOrientation, PageSize $defPageSize, float $scaleFactor): void
+    private function putPages(PageOrientation $pageOrientation, PageSize $defPageSize, float $scaleFactor): void
     {
         $nb          = $this->pageManager->getCurrentPage();
         $n           = $this->n;
@@ -129,7 +109,7 @@ final class PDFStructure
 
         $this->logger->debug('Writing pages', [
             'page_count'  => $nb,
-            'orientation' => $defOrientation->value,
+            'orientation' => $pageOrientation->value,
         ]);
 
         for ($i = 1; $i <= $nb; $i++) {
@@ -139,7 +119,7 @@ final class PDFStructure
             $pageLinks       = $this->linkManager->getPageLinks($i);
             $linkNumbers[$i] = [];
 
-            foreach ($pageLinks as $idx => $pl) {
+            foreach (array_keys($pageLinks) as $idx) {
                 $linkNumbers[$i][$idx] = ++$n;
             }
         }
@@ -161,7 +141,7 @@ final class PDFStructure
         $this->put($kids);
         $this->put('/Count ' . $nb);
 
-        if ($defOrientation === PageOrientation::PORTRAIT) {
+        if ($pageOrientation === PageOrientation::PORTRAIT) {
             $w = $defPageSize->getWidth();
             $h = $defPageSize->getHeight();
         } else {
@@ -205,10 +185,10 @@ final class PDFStructure
         $this->put('/Resources 2 0 R');
         $pageLinks = $this->linkManager->getPageLinks($n);
 
-        if (!empty($pageLinks)) {
+        if ($pageLinks !== []) {
             $s = '/Annots [';
 
-            foreach ($pageLinks as $idx => $pl) {
+            foreach (array_keys($pageLinks) as $idx) {
                 $s .= ($linkNumbers[$idx] ?? 0) . ' 0 R ';
             }
 
@@ -252,11 +232,7 @@ final class PDFStructure
                 $l              = $links[$pl[4]] ?? [0, 0];
                 $targetPageInfo = $this->pageManager->getPageInfo($l[0]);
 
-                if (isset($targetPageInfo['size'])) {
-                    $h = $targetPageInfo['size'][1];
-                } else {
-                    $h = 0;
-                }
+                $h = isset($targetPageInfo['size']) ? $targetPageInfo['size'][1] : 0;
 
                 $targetPageN = $targetPageInfo['n'] ?? 0;
                 $s .= sprintf('/Dest [%d 0 R /XYZ 0 %.2F null]>>', $targetPageN, $h - $l[1] * $scaleFactor);
@@ -306,7 +282,7 @@ final class PDFStructure
                 throw new FpdfException('Font file not found: ' . $file);
             }
 
-            $compressed = str_ends_with($file, '.z');
+            $compressed = str_ends_with((string) $file, '.z');
 
             if (!$compressed && isset($info['length2'])) {
                 $font = substr($font, 6, $info['length1']) . substr($font, 6 + $info['length1'] + 6, $info['length2']);
@@ -347,14 +323,12 @@ final class PDFStructure
                 'object_number' => $this->n + 1,
             ]);
 
-            if (isset($font['diff'])) {
-                if (!isset($encodings[$font['enc']])) {
-                    $this->newObj();
-                    $this->put('<</Type /Encoding /BaseEncoding /WinAnsiEncoding /Differences [' . $font['diff'] . ']>>');
-                    $this->put('endobj');
-                    $encodings[$font['enc']] = $this->n;
-                    $this->fontManager->setEncoding($font['enc'], $this->n);
-                }
+            if (isset($font['diff']) && !isset($encodings[$font['enc']])) {
+                $this->newObj();
+                $this->put('<</Type /Encoding /BaseEncoding /WinAnsiEncoding /Differences [' . $font['diff'] . ']>>');
+                $this->put('endobj');
+                $encodings[$font['enc']] = $this->n;
+                $this->fontManager->setEncoding($font['enc'], $this->n);
             }
 
             if (isset($font['uv'])) {
@@ -466,6 +440,9 @@ final class PDFStructure
         }
     }
 
+    /**
+     * @param array<string, mixed> $info
+     */
     private function putImage(?string $file, array &$info): void
     {
         $this->newObj();
@@ -481,7 +458,7 @@ final class PDFStructure
         $this->put('/Height ' . $info['h']);
 
         if ($info['cs'] === 'Indexed') {
-            $this->put('/ColorSpace [/Indexed /DeviceRGB ' . (strlen($info['pal']) / 3 - 1) . ' ' . ($this->n + 1) . ' 0 R]');
+            $this->put('/ColorSpace [/Indexed /DeviceRGB ' . (strlen((string) $info['pal']) / 3 - 1) . ' ' . ($this->n + 1) . ' 0 R]');
         } else {
             $this->put('/ColorSpace /' . $info['cs']);
 
@@ -501,9 +478,10 @@ final class PDFStructure
         }
 
         if (isset($info['trns']) && is_array($info['trns'])) {
-            $trns = '';
+            $trns    = '';
+            $counter = count($info['trns']);
 
-            for ($i = 0; $i < count($info['trns']); $i++) {
+            for ($i = 0; $i < $counter; $i++) {
                 $trns .= $info['trns'][$i] . ' ' . $info['trns'][$i] . ' ';
             }
 
@@ -514,7 +492,7 @@ final class PDFStructure
             $this->put('/SMask ' . ($this->n + 1) . ' 0 R');
         }
 
-        $this->put('/Length ' . strlen($info['data']) . '>>');
+        $this->put('/Length ' . strlen((string) $info['data']) . '>>');
         $this->putStream($info['data']);
         $this->put('endobj');
 
@@ -571,7 +549,7 @@ final class PDFStructure
         $this->put('endobj');
     }
 
-    private function putCatalog(float|string $zoomMode, LayoutMode $layoutMode, string $aliasNbPages): void
+    private function putCatalog(float|string $zoomMode, LayoutMode $layoutMode): void
     {
         $firstPageInfo = $this->pageManager->getPageInfo(1);
         $n             = $firstPageInfo['n'] ?? 0;
@@ -725,16 +703,15 @@ final class PDFStructure
         $s .= "endcmap\n";
         $s .= "CMapName currentdict /CMap defineresource pop\n";
         $s .= "end\n";
-        $s .= 'end';
 
-        return $s;
+        return $s . 'end';
     }
 
     private function readFile(string $file): ?string
     {
         try {
             return $this->fileReader->readFile($file);
-        } catch (FpdfException $e) {
+        } catch (FpdfException) {
             return null;
         }
     }

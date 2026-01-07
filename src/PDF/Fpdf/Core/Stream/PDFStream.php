@@ -30,24 +30,18 @@ use PXP\PDF\Fpdf\Core\Object\Base\PDFObject;
  */
 final class PDFStream extends PDFObject
 {
-    private PDFDictionary $dictionary;
-    private string $data;
     private ?string $encodedData = null;
 
     /**
      * @var array<string>
      */
-    private array $filters      = [];
-    private bool $dataIsEncoded = false;
+    private array $filters = [];
 
     public function __construct(
-        PDFDictionary $dictionary,
-        string $data,
-        bool $dataIsEncoded = false,
+        private readonly PDFDictionary $pdfDictionary,
+        private string $data,
+        private bool $dataIsEncoded = false,
     ) {
-        $this->dictionary    = $dictionary;
-        $this->data          = $data;
-        $this->dataIsEncoded = $dataIsEncoded;
         $this->updateFiltersFromDictionary();
     }
 
@@ -56,7 +50,7 @@ final class PDFStream extends PDFObject
         $this->updateDictionary();
         $encodedData = $this->getEncodedData();
 
-        $result = (string) $this->dictionary . "\n";
+        $result = $this->pdfDictionary . "\n";
         $result .= "stream\n";
         $result .= $encodedData . "\n";
         $result .= 'endstream';
@@ -81,7 +75,7 @@ final class PDFStream extends PDFObject
      */
     public function getDictionary(): PDFDictionary
     {
-        return $this->dictionary;
+        return $this->pdfDictionary;
     }
 
     /**
@@ -90,9 +84,9 @@ final class PDFStream extends PDFObject
     public function getDecodedData(): string
     {
         if ($this->dataIsEncoded) {
-            $decoder = new StreamDecoder;
+            $streamDecoder = new StreamDecoder;
 
-            return $decoder->decode($this->data, $this->dictionary);
+            return $streamDecoder->decode($this->data, $this->pdfDictionary);
         }
 
         return $this->data;
@@ -135,11 +129,11 @@ final class PDFStream extends PDFObject
             return $this->encodedData;
         }
 
-        if (empty($this->filters)) {
+        if ($this->filters === []) {
             $this->encodedData = $this->data;
         } else {
-            $encoder           = new StreamEncoder;
-            $this->encodedData = $encoder->encode($this->data, $this->filters);
+            $streamEncoder     = new StreamEncoder;
+            $this->encodedData = $streamEncoder->encode($this->data, $this->filters);
         }
 
         return $this->encodedData;
@@ -148,7 +142,7 @@ final class PDFStream extends PDFObject
     /**
      * Add a filter to the stream.
      */
-    public function addFilter(string $filterName, ?PDFDictionary $params = null): void
+    public function addFilter(string $filterName, ?PDFDictionary $pdfDictionary = null): void
     {
         $filterName = ltrim($filterName, '/');
 
@@ -166,7 +160,7 @@ final class PDFStream extends PDFObject
     public function removeFilter(string $filterName): void
     {
         $filterName    = ltrim($filterName, '/');
-        $this->filters = array_values(array_filter($this->filters, static fn ($f) => $f !== $filterName));
+        $this->filters = array_values(array_filter($this->filters, static fn (string $f): bool => $f !== $filterName));
         $this->updateDictionary();
         $this->encodedData = null; // Invalidate cache
     }
@@ -196,7 +190,7 @@ final class PDFStream extends PDFObject
      */
     private function updateFiltersFromDictionary(): void
     {
-        $filter        = $this->dictionary->getEntry('/Filter');
+        $filter        = $this->pdfDictionary->getEntry('/Filter');
         $this->filters = [];
 
         if ($filter instanceof PDFName) {
@@ -216,17 +210,17 @@ final class PDFStream extends PDFObject
     private function updateDictionary(): void
     {
         // Update /Filter entry
-        if (empty($this->filters)) {
-            $this->dictionary->removeEntry('/Filter');
+        if ($this->filters === []) {
+            $this->pdfDictionary->removeEntry('/Filter');
         } elseif (count($this->filters) === 1) {
-            $this->dictionary->addEntry('/Filter', new PDFName($this->filters[0]));
+            $this->pdfDictionary->addEntry('/Filter', new PDFName($this->filters[0]));
         } else {
-            $filterArray = new PDFArray;
+            $pdfArray = new PDFArray;
 
             foreach ($this->filters as $filter) {
-                $filterArray->add(new PDFName($filter));
+                $pdfArray->add(new PDFName($filter));
             }
-            $this->dictionary->addEntry('/Filter', $filterArray);
+            $this->pdfDictionary->addEntry('/Filter', $pdfArray);
         }
 
         // Update /Length entry without forcing an encode when possible to avoid unnecessary memory allocations.
@@ -235,7 +229,7 @@ final class PDFStream extends PDFObject
         } elseif ($this->dataIsEncoded) {
             // Raw data is already encoded; use it directly without copying.
             $length = strlen($this->data);
-        } elseif (empty($this->filters)) {
+        } elseif ($this->filters === []) {
             // No filters applied, so data is stored as-is.
             $length = strlen($this->data);
         } else {
@@ -244,6 +238,6 @@ final class PDFStream extends PDFObject
             $length      = strlen($encodedData);
         }
 
-        $this->dictionary->addEntry('/Length', new PDFNumber($length));
+        $this->pdfDictionary->addEntry('/Length', new PDFNumber($length));
     }
 }

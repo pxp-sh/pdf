@@ -13,6 +13,7 @@ declare(strict_types=1);
  */
 namespace PXP\PDF\Fpdf\Features\Splitter;
 
+use function array_keys;
 use function array_map;
 use function array_merge;
 use function array_slice;
@@ -58,38 +59,30 @@ use PXP\PDF\Fpdf\Core\Stream\PDFStream;
 use PXP\PDF\Fpdf\Core\Tree\PDFDocument;
 use PXP\PDF\Fpdf\Core\Tree\PDFObjectNode;
 use PXP\PDF\Fpdf\Core\Tree\PDFObjectRegistry;
-use PXP\PDF\Fpdf\Events\Event\NullDispatcher;
 use PXP\PDF\Fpdf\Events\Log\NullLogger;
 use PXP\PDF\Fpdf\Exceptions\Exception\FpdfException;
 use PXP\PDF\Fpdf\IO\FileIOInterface;
 use PXP\PDF\Fpdf\Utils\Cache\NullCache;
 
-final class PDFSplitter
+final readonly class PDFSplitter
 {
-    private PDFDocument $document;
-    private LoggerInterface $logger;
-    private EventDispatcherInterface $dispatcher;
-    private CacheItemPoolInterface $cache;
+    private PDFDocument $pdfDocument;
 
     public function __construct(
         string $pdfFilePath,
         private FileIOInterface $fileIO,
-        ?LoggerInterface $logger = null,
-        ?EventDispatcherInterface $dispatcher = null,
-        ?CacheItemPoolInterface $cache = null,
+        private ?LoggerInterface $logger = new NullLogger,
+        ?EventDispatcherInterface $eventDispatcher = null,
+        private ?CacheItemPoolInterface $cacheItemPool = new NullCache,
     ) {
-        $this->logger     = $logger ?? new NullLogger;
-        $this->dispatcher = $dispatcher ?? new NullDispatcher;
-        $this->cache      = $cache ?? new NullCache;
-
         $absolutePath = realpath($pdfFilePath) ?: $pdfFilePath;
         $this->logger->info('PDF split operation started', [
             'file_path' => $absolutePath,
         ]);
 
         // Use file-based parsing to avoid loading entire file into memory
-        $parser         = new PDFParser($this->logger, $this->cache);
-        $this->document = $parser->parseDocumentFromFile($pdfFilePath, $this->fileIO);
+        $pdfParser         = new PDFParser($this->logger, $this->cacheItemPool);
+        $this->pdfDocument = $pdfParser->parseDocumentFromFile($pdfFilePath, $this->fileIO);
     }
 
     /**
@@ -162,7 +155,7 @@ final class PDFSplitter
                     'memory_before_mb'     => round($memBefore / 1024 / 1024, 2),
                 ]);
 
-                $this->document->getObjectRegistry()->clearCache();
+                $this->pdfDocument->getObjectRegistry()->clearCache();
 
                 // Force garbage collection to free memory
                 gc_collect_cycles();
@@ -218,7 +211,7 @@ final class PDFSplitter
             'output_path' => $absoluteOutputPath,
         ]);
 
-        $pageNode = $this->document->getPage($pageNumber);
+        $pageNode = $this->pdfDocument->getPage($pageNumber);
 
         if ($pageNode === null) {
             $this->logger->error('Invalid page number', [
@@ -259,7 +252,7 @@ final class PDFSplitter
         unset($pageNode, $pageDict, $bytesWritten);
 
         // Clear document object cache for this page
-        $this->document->getObjectRegistry()->clearCache();
+        $this->pdfDocument->getObjectRegistry()->clearCache();
 
         gc_collect_cycles();
     }
@@ -282,7 +275,7 @@ final class PDFSplitter
             'output_path' => $absoluteOutputPath,
         ]);
 
-        $pageNode = $this->document->getPage($pageNumber);
+        $pageNode = $this->pdfDocument->getPage($pageNumber);
 
         if ($pageNode === null) {
             $this->logger->error('Invalid page number', [
@@ -333,7 +326,7 @@ final class PDFSplitter
 
         try {
             // Use getAllPages() to count actual pages (handles nested Pages trees)
-            $allPages = $this->document->getAllPages(true);
+            $allPages = $this->pdfDocument->getAllPages(true);
             $count    = count($allPages);
             $this->logger->debug('Page count determined', [
                 'page_count' => $count,
@@ -346,7 +339,7 @@ final class PDFSplitter
                 'error' => $e->getMessage(),
             ]);
 
-            $pagesNode = $this->document->getPages();
+            $pagesNode = $this->pdfDocument->getPages();
 
             if ($pagesNode === null) {
                 $this->logger->warning('Pages node not found');
@@ -394,16 +387,16 @@ final class PDFSplitter
     /**
      * Build a single-page PDF from a page node.
      */
-    private function buildSinglePagePdf(PDFObjectNode $pageNode): string
+    private function buildSinglePagePdf(PDFObjectNode $pdfObjectNode): string
     {
-        $pageDict = $pageNode->getValue();
+        $pdfObject = $pdfObjectNode->getValue();
 
-        if (!$pageDict instanceof PDFDictionary) {
+        if (!$pdfObject instanceof PDFDictionary) {
             throw new FpdfException('Page object is not a dictionary');
         }
 
         // Get MediaBox - check page first, then parent Pages dictionary
-        $mediaBoxEntry   = $pageDict->getEntry('/MediaBox');
+        $mediaBoxEntry   = $pdfObject->getEntry('/MediaBox');
         $pageHasMediaBox = false;
         $mediaBox        = [0.0, 0.0, 612.0, 792.0]; // Default
 
@@ -427,10 +420,10 @@ final class PDFSplitter
 
         // If page doesn't have MediaBox, check parent Pages dictionary
         if (!$pageHasMediaBox) {
-            $parentRef = $pageDict->getEntry('/Parent');
+            $parentRef = $pdfObject->getEntry('/Parent');
 
             if ($parentRef instanceof PDFReference) {
-                $parentNode = $this->document->getObject($parentRef->getObjectNumber());
+                $parentNode = $this->pdfDocument->getObject($parentRef->getObjectNumber());
 
                 if ($parentNode !== null) {
                     $parentDict = $parentNode->getValue();
@@ -459,13 +452,13 @@ final class PDFSplitter
         }
 
         // Get Contents - can be a single reference or an array of references
-        $contentsRef    = $pageDict->getEntry('/Contents');
+        $contentsRef    = $pdfObject->getEntry('/Contents');
         $contentStreams = [];
         $allEncoded     = true; // Track if all streams are already encoded
 
         if ($contentsRef instanceof PDFReference) {
             // Single content stream
-            $contentNode = $this->document->getObject($contentsRef->getObjectNumber());
+            $contentNode = $this->pdfDocument->getObject($contentsRef->getObjectNumber());
 
             if ($contentNode !== null) {
                 $contentObj = $contentNode->getValue();
@@ -478,7 +471,7 @@ final class PDFSplitter
             // Multiple content streams
             foreach ($contentsRef->getAll() as $item) {
                 if ($item instanceof PDFReference) {
-                    $contentNode = $this->document->getObject($item->getObjectNumber());
+                    $contentNode = $this->pdfDocument->getObject($item->getObjectNumber());
 
                     if ($contentNode !== null) {
                         $contentObj = $contentNode->getValue();
@@ -503,7 +496,7 @@ final class PDFSplitter
         // Check if we can use encoded data (all streams have same compression)
         $firstHasCompression = false;
 
-        if (!empty($contentStreams)) {
+        if ($contentStreams !== []) {
             $firstHasCompression = $contentStreams[0]->hasFilter('FlateDecode');
             $allSameCompression  = true;
 
@@ -590,16 +583,16 @@ final class PDFSplitter
 
         $this->logger->debug('After content processing', [
             'content_length'   => strlen($combinedContent),
-            'content_is_empty' => empty($combinedContent),
+            'content_is_empty' => $combinedContent === '' || $combinedContent === '0',
             'all_encoded'      => $allEncoded,
         ]);
 
         // Get Resources - can be a reference or inline dictionary
-        $resourcesRef  = $pageDict->getEntry('/Resources');
+        $resourcesRef  = $pdfObject->getEntry('/Resources');
         $resourcesDict = null;
 
         if ($resourcesRef instanceof PDFReference) {
-            $resourcesNode = $this->document->getObject($resourcesRef->getObjectNumber());
+            $resourcesNode = $this->pdfDocument->getObject($resourcesRef->getObjectNumber());
 
             if ($resourcesNode !== null) {
                 $resourcesObj = $resourcesNode->getValue();
@@ -616,7 +609,7 @@ final class PDFSplitter
         // Analyze content to find used resources (for filtering)
         $usedResources = null;
 
-        if (!empty($combinedContent)) {
+        if ($combinedContent !== '' && $combinedContent !== '0') {
             // We need decoded content for analysis
             $contentForAnalysis = $combinedContent;
 
@@ -659,13 +652,13 @@ final class PDFSplitter
             $usedResources = $this->analyzeUsedResources($contentForAnalysis);
 
             $this->logger->info('Before expansion check', [
-                'resourcesDict_is_null' => $resourcesDict === null,
+                'resourcesDict_is_null' => !$resourcesDict instanceof PDFDictionary,
                 'xobjects_empty'        => empty($usedResources['xobjects']),
                 'xobjects_count'        => count($usedResources['xobjects'] ?? []),
             ]);
 
             // Expand XObject dependencies recursively (Form XObjects may reference other XObjects)
-            if ($resourcesDict !== null && !empty($usedResources['xobjects'])) {
+            if ($resourcesDict instanceof PDFDictionary && !empty($usedResources['xobjects'])) {
                 $expandedResources = $this->expandXObjectDependencies(
                     $usedResources['xobjects'],
                     $resourcesDict,
@@ -696,44 +689,44 @@ final class PDFSplitter
         }
 
         // Create new document with cache-enabled registry
-        $registry = new PDFObjectRegistry(null, null, null, null, null, $this->cache, $this->logger);
-        $newDoc   = new PDFDocument('1.3', $registry);
+        $pdfObjectRegistry = new PDFObjectRegistry(null, null, null, null, null, $this->cacheItemPool, $this->logger);
+        $pdfDocument       = new PDFDocument('1.3', $pdfObjectRegistry);
 
         // Object 1: Pages dictionary
         $pagesDict = new PDFDictionary;
         $pagesDict->addEntry('/Type', new PDFName('Pages'));
-        $kids = new KidsArray;
-        $kids->addPage(3); // Page will be object 3
-        $pagesDict->addEntry('/Kids', $kids);
+        $kidsArray = new KidsArray;
+        $kidsArray->addPage(3); // Page will be object 3
+        $pagesDict->addEntry('/Kids', $kidsArray);
         $pagesDict->addEntry('/Count', new PDFNumber(1));
         $pagesDict->addEntry('/MediaBox', new MediaBoxArray($mediaBox));
-        $pagesNode = $newDoc->addObject($pagesDict, 1);
+        $pagesNode = $pdfDocument->addObject($pagesDict, 1);
 
         // Object 2: Resources - copy and resolve all references with filtering
         $nextObjectNumber = 6; // Start after catalog (5)
 
-        if ($resourcesDict !== null) {
-            $newResourcesDict = $this->copyResourcesWithReferences($resourcesDict, $newDoc, $nextObjectNumber, $usedResources);
-            $newDoc->addObject($newResourcesDict, 2);
+        if ($resourcesDict instanceof PDFDictionary) {
+            $newResourcesDict = $this->copyResourcesWithReferences($resourcesDict, $pdfDocument, $nextObjectNumber, $usedResources);
+            $pdfDocument->addObject($newResourcesDict, 2);
         } else {
-            $emptyResources = new ResourcesDictionary;
-            $newDoc->addObject($emptyResources, 2);
+            $resourcesDictionary = new ResourcesDictionary;
+            $pdfDocument->addObject($resourcesDictionary, 2);
         }
 
         // Object 3: Page
-        $newPageDict = new PageDictionary;
-        $newPageDict->setParent($pagesNode);
+        $pageDictionary = new PageDictionary;
+        $pageDictionary->setParent($pagesNode);
 
         // Only set MediaBox on page if original page had it (otherwise inherit from parent)
         if ($pageHasMediaBox) {
-            $newPageDict->setMediaBox($mediaBox);
+            $pageDictionary->setMediaBox($mediaBox);
         }
-        $newPageDict->setResources(2);
-        $newPageDict->setContents(4); // Content stream will be object 4
-        $newDoc->addObject($newPageDict, 3);
+        $pageDictionary->setResources(2);
+        $pageDictionary->setContents(4); // Content stream will be object 4
+        $pdfDocument->addObject($pageDictionary, 3);
 
         // Object 4: Content stream
-        if (!empty($combinedContent)) {
+        if ($combinedContent !== '' && $combinedContent !== '0') {
             // Create new stream with combined content
             $streamDict = new PDFDictionary;
 
@@ -750,24 +743,24 @@ final class PDFSplitter
                     $newStream->addFilter('FlateDecode');
                 }
             }
-            $newDoc->addObject($newStream, 4);
+            $pdfDocument->addObject($newStream, 4);
         } else {
             // Empty stream
             $emptyStream = new PDFStream(new PDFDictionary, '');
-            $newDoc->addObject($emptyStream, 4);
+            $pdfDocument->addObject($emptyStream, 4);
         }
 
         // Clear content immediately
         unset($combinedContent);
 
         // Object 5: Catalog
-        $catalog = new CatalogDictionary;
-        $catalog->setPages(1);
-        $catalogNode = $newDoc->addObject($catalog, 5);
-        $newDoc->setRoot($catalogNode);
+        $catalogDictionary = new CatalogDictionary;
+        $catalogDictionary->setPages(1);
+        $catalogNode = $pdfDocument->addObject($catalogDictionary, 5);
+        $pdfDocument->setRoot($catalogNode);
 
         // Serialize
-        return $newDoc->serialize();
+        return $pdfDocument->serialize();
     }
 
     /**
@@ -786,13 +779,13 @@ final class PDFSplitter
 
         // Match font references: /F1 Tf, /F2 12 Tf, etc.
         // Pattern: /FontName size Tf
-        if (preg_match_all('/\/([A-Za-z][A-Za-z0-9_]*)\s+[\d.]+\s+Tf/', $contentData, $matches)) {
+        if (preg_match_all('/\/([A-Za-z]\w*)\s+[\d.]+\s+Tf/', $contentData, $matches)) {
             $used['fonts'] = array_values(array_unique($matches[1]));
         }
 
         // Match XObject (including images and form XObjects) references: /TPL0 Do, /I1 Do, etc.
         // Pattern: /XObjectName Do
-        if (preg_match_all('/\/([A-Za-z][A-Za-z0-9_]*)\s+Do/', $contentData, $matches)) {
+        if (preg_match_all('/\/([A-Za-z]\w*)\s+Do/', $contentData, $matches)) {
             $used['xobjects'] = array_values(array_unique($matches[1]));
         }
 
@@ -817,12 +810,12 @@ final class PDFSplitter
      * which Form XObjects transitively reference other Form XObjects.
      *
      * @param array<string> $xobjects      Initial list of XObject names
-     * @param PDFDictionary $resourcesDict Original resources dictionary
+     * @param PDFDictionary $pdfDictionary Original resources dictionary
      * @param int           $maxDepth      Maximum recursion depth (prevent infinite loops)
      *
      * @return array{fonts: array<string>, xobjects: array<string>, has_nested_resources: bool} Expanded resource dependencies
      */
-    private function expandXObjectDependencies(array $xobjects, PDFDictionary $resourcesDict, int $maxDepth = 10): array
+    private function expandXObjectDependencies(array $xobjects, PDFDictionary $pdfDictionary, int $maxDepth = 10): array
     {
         $allFonts           = [];
         $allXObjects        = $xobjects;
@@ -831,14 +824,14 @@ final class PDFSplitter
         $depth              = 0;
         $hasNestedResources = false;
 
-        $xobjEntry = $resourcesDict->getEntry('/XObject');
+        $xobjEntry = $pdfDictionary->getEntry('/XObject');
 
         if (!$xobjEntry instanceof PDFDictionary) {
             // No XObjects in resources
             return ['fonts' => [], 'xobjects' => $xobjects, 'has_nested_resources' => false];
         }
 
-        while (!empty($toProcess) && $depth < $maxDepth) {
+        while ($toProcess !== [] && $depth < $maxDepth) {
             $currentBatch = $toProcess;
             $toProcess    = [];
 
@@ -856,7 +849,7 @@ final class PDFSplitter
                 }
 
                 // Get the XObject itself
-                $xobjNode = $this->document->getObject($xobjRef->getObjectNumber());
+                $xobjNode = $this->pdfDocument->getObject($xobjRef->getObjectNumber());
 
                 if ($xobjNode === null) {
                     continue;
@@ -897,14 +890,12 @@ final class PDFSplitter
                     // Check if this XObject exists in the main resources dictionary
                     $nestedXObjRef = $xobjEntry->getEntry('/' . $nestedXObj);
 
-                    if ($nestedXObjRef instanceof PDFReference) {
-                        // It exists in main resources - add it to our list
-                        if (!in_array($nestedXObj, $allXObjects, true)) {
-                            $allXObjects[] = $nestedXObj;
+                    // It exists in main resources - add it to our list
+                    if ($nestedXObjRef instanceof PDFReference && !in_array($nestedXObj, $allXObjects, true)) {
+                        $allXObjects[] = $nestedXObj;
 
-                            if (!isset($processed[$nestedXObj])) {
-                                $toProcess[] = $nestedXObj;
-                            }
+                        if (!isset($processed[$nestedXObj])) {
+                            $toProcess[] = $nestedXObj;
                         }
                     }
                     // If it doesn't exist in main resources, it's in the Form's nested resources
@@ -920,7 +911,7 @@ final class PDFSplitter
 
                     // Resolve if reference
                     if ($formResources instanceof PDFReference) {
-                        $formResourcesNode = $this->document->getObject($formResources->getObjectNumber());
+                        $formResourcesNode = $this->pdfDocument->getObject($formResources->getObjectNumber());
 
                         if ($formResourcesNode !== null) {
                             $formResources = $formResourcesNode->getValue();
@@ -934,7 +925,7 @@ final class PDFSplitter
                         if ($formXObjects !== null) {
                             // Resolve if reference
                             if ($formXObjects instanceof PDFReference) {
-                                $formXObjectsNode = $this->document->getObject($formXObjects->getObjectNumber());
+                                $formXObjectsNode = $this->pdfDocument->getObject($formXObjects->getObjectNumber());
 
                                 if ($formXObjectsNode !== null) {
                                     $formXObjects = $formXObjectsNode->getValue();
@@ -943,19 +934,17 @@ final class PDFSplitter
 
                             if ($formXObjects instanceof PDFDictionary) {
                                 // Add all XObjects from Form's nested resources to main list
-                                foreach ($formXObjects->getAllEntries() as $formXObjName => $formXObjRef) {
+                                foreach (array_keys($formXObjects->getAllEntries()) as $formXObjName) {
                                     $formXObjShortName = ltrim($formXObjName, '/');
                                     // Check if exists in main resources
                                     $mainXObjRef = $xobjEntry->getEntry($formXObjName);
 
-                                    if ($mainXObjRef instanceof PDFReference) {
-                                        // Exists in main resources - add to list
-                                        if (!in_array($formXObjShortName, $allXObjects, true)) {
-                                            $allXObjects[] = $formXObjShortName;
+                                    // Exists in main resources - add to list
+                                    if ($mainXObjRef instanceof PDFReference && !in_array($formXObjShortName, $allXObjects, true)) {
+                                        $allXObjects[] = $formXObjShortName;
 
-                                            if (!isset($processed[$formXObjShortName])) {
-                                                $toProcess[] = $formXObjShortName;
-                                            }
+                                        if (!isset($processed[$formXObjShortName])) {
+                                            $toProcess[] = $formXObjShortName;
                                         }
                                     }
                                 }
@@ -996,7 +985,7 @@ final class PDFSplitter
      * Optionally filters resources to only include those actually used in the content stream.
      *
      * @param PDFDictionary                     $resourcesDict    Original resources dictionary
-     * @param PDFDocument                       $newDoc           New document to add objects to
+     * @param PDFDocument                       $pdfDocument      New document to add objects to
      * @param int                               $nextObjectNumber Next available object number
      * @param null|array<string, array<string>> $usedResources    Optional filter for resources (from analyzeUsedResources)
      *
@@ -1004,21 +993,21 @@ final class PDFSplitter
      */
     private function copyResourcesWithReferences(
         PDFDictionary $resourcesDict,
-        PDFDocument $newDoc,
+        PDFDocument $pdfDocument,
         int &$nextObjectNumber,
         ?array $usedResources = null
     ): ResourcesDictionary {
-        $newResources = new ResourcesDictionary;
-        $objectMap    = []; // Track copied objects to avoid duplicates
+        $resourcesDictionary = new ResourcesDictionary;
+        $objectMap           = []; // Track copied objects to avoid duplicates
 
         // Copy ProcSet if present
         $procSet = $resourcesDict->getEntry('/ProcSet');
 
         if ($procSet !== null) {
-            $newResources->setProcSet(
+            $resourcesDictionary->setProcSet(
                 $procSet instanceof PDFArray
                 ? array_map(
-                    static fn ($item) => $item instanceof PDFName ? $item->getName() : (string) $item,
+                    static fn (float|int|\PXP\PDF\Fpdf\Core\Object\PDFObjectInterface|string $item): string => $item instanceof PDFName ? $item->getName() : (string) $item,
                     $procSet->getAll(),
                 )
                 : ['PDF', 'Text', 'ImageB', 'ImageC', 'ImageI'],
@@ -1047,27 +1036,27 @@ final class PDFSplitter
                 $copyingObjects = [];
 
                 if ($fontRef instanceof PDFReference) {
-                    $fontNode = $this->document->getObject($fontRef->getObjectNumber());
+                    $fontNode = $this->pdfDocument->getObject($fontRef->getObjectNumber());
 
                     if ($fontNode !== null) {
                         $fontObj = $fontNode->getValue();
                         // Copy font object and all its referenced objects recursively
-                        $copiedFont  = $this->copyObjectWithReferences($fontObj, $newDoc, $nextObjectNumber, $objectMap, $copyingObjects);
-                        $newFontNode = $newDoc->addObject($copiedFont, $nextObjectNumber);
+                        $copiedFont  = $this->copyObjectWithReferences($fontObj, $pdfDocument, $nextObjectNumber, $objectMap, $copyingObjects);
+                        $newFontNode = $pdfDocument->addObject($copiedFont, $nextObjectNumber);
                         $newFonts->addEntry($fontName, new PDFReference($nextObjectNumber));
                         $nextObjectNumber++;
                     }
                 } elseif ($fontRef instanceof PDFDictionary) {
                     // Inline font dictionary - copy with references resolved
-                    $copiedFont  = $this->copyObjectWithReferences($fontRef, $newDoc, $nextObjectNumber, $objectMap, $copyingObjects);
-                    $newFontNode = $newDoc->addObject($copiedFont, $nextObjectNumber);
+                    $copiedFont  = $this->copyObjectWithReferences($fontRef, $pdfDocument, $nextObjectNumber, $objectMap, $copyingObjects);
+                    $newFontNode = $pdfDocument->addObject($copiedFont, $nextObjectNumber);
                     $newFonts->addEntry($fontName, new PDFReference($nextObjectNumber));
                     $nextObjectNumber++;
                 }
             }
 
             if (count($newFonts->getAllEntries()) > 0) {
-                $newResources->addEntry('/Font', $newFonts);
+                $resourcesDictionary->addEntry('/Font', $newFonts);
             }
 
             if ($fontsSkipped > 0) {
@@ -1100,20 +1089,20 @@ final class PDFSplitter
                 $copyingObjects = [];
 
                 if ($xObjectRef instanceof PDFReference) {
-                    $xObjectNode = $this->document->getObject($xObjectRef->getObjectNumber());
+                    $xObjectNode = $this->pdfDocument->getObject($xObjectRef->getObjectNumber());
 
                     if ($xObjectNode !== null) {
                         $xObjectObj = $xObjectNode->getValue();
                         // Copy XObject and all its referenced objects recursively
-                        $copiedXObject  = $this->copyObjectWithReferences($xObjectObj, $newDoc, $nextObjectNumber, $objectMap, $copyingObjects);
-                        $newXObjectNode = $newDoc->addObject($copiedXObject, $nextObjectNumber);
+                        $copiedXObject  = $this->copyObjectWithReferences($xObjectObj, $pdfDocument, $nextObjectNumber, $objectMap, $copyingObjects);
+                        $newXObjectNode = $pdfDocument->addObject($copiedXObject, $nextObjectNumber);
                         $newXObjects->addEntry($xObjectName, new PDFReference($nextObjectNumber));
                         $nextObjectNumber++;
                     }
                 } elseif ($xObjectRef instanceof PDFStream) {
                     // Inline XObject stream - copy with references resolved
-                    $copiedXObject  = $this->copyObjectWithReferences($xObjectRef, $newDoc, $nextObjectNumber, $objectMap, $copyingObjects);
-                    $newXObjectNode = $newDoc->addObject($copiedXObject, $nextObjectNumber);
+                    $copiedXObject  = $this->copyObjectWithReferences($xObjectRef, $pdfDocument, $nextObjectNumber, $objectMap, $copyingObjects);
+                    $newXObjectNode = $pdfDocument->addObject($copiedXObject, $nextObjectNumber);
                     $newXObjects->addEntry($xObjectName, new PDFReference($nextObjectNumber));
                     $nextObjectNumber++;
                 }
@@ -1121,7 +1110,7 @@ final class PDFSplitter
 
             // Add XObject dictionary if not empty or if no filtering applied
             if (count($newXObjects->getAllEntries()) > 0 || $usedResources === null) {
-                $newResources->addEntry('/XObject', $newXObjects);
+                $resourcesDictionary->addEntry('/XObject', $newXObjects);
             }
 
             if ($xobjectsSkipped > 0) {
@@ -1140,34 +1129,34 @@ final class PDFSplitter
 
             if ($value instanceof PDFReference) {
                 // Copy referenced object
-                $refNode = $this->document->getObject($value->getObjectNumber());
+                $refNode = $this->pdfDocument->getObject($value->getObjectNumber());
 
                 if ($refNode !== null) {
                     $refObj     = $refNode->getValue();
-                    $newRefNode = $newDoc->addObject($refObj, $nextObjectNumber);
-                    $newResources->addEntry($key, new PDFReference($nextObjectNumber));
+                    $newRefNode = $pdfDocument->addObject($refObj, $nextObjectNumber);
+                    $resourcesDictionary->addEntry($key, new PDFReference($nextObjectNumber));
                     $nextObjectNumber++;
                 }
             } elseif ($value instanceof PDFDictionary || $value instanceof PDFArray) {
                 // Copy inline dictionary or array (may contain references that need resolution)
                 $copyingObjects = [];
-                $copiedValue    = $this->copyObjectWithReferences($value, $newDoc, $nextObjectNumber, $objectMap, $copyingObjects);
-                $newResources->addEntry($key, $copiedValue);
+                $copiedValue    = $this->copyObjectWithReferences($value, $pdfDocument, $nextObjectNumber, $objectMap, $copyingObjects);
+                $resourcesDictionary->addEntry($key, $copiedValue);
             } else {
                 // Copy primitive value as-is
-                $newResources->addEntry($key, $value);
+                $resourcesDictionary->addEntry($key, $value);
             }
         }
 
-        return $newResources;
+        return $resourcesDictionary;
     }
 
     /**
      * Recursively copy an object and resolve all references.
      * Uses a map to track already-copied objects to avoid duplicates.
      *
-     * @param PDFObjectInterface $obj               Object to copy
-     * @param PDFDocument        $newDoc            New document
+     * @param PDFObjectInterface $pdfObject         Object to copy
+     * @param PDFDocument        $pdfDocument       New document
      * @param int                &$nextObjectNumber Next available object number (passed by reference)
      * @param array<int, int>    $objectMap         Map of old object numbers to new object numbers
      * @param array<int, true>   $copyingObjects    Set of object IDs currently being copied (to detect cycles)
@@ -1175,14 +1164,14 @@ final class PDFSplitter
      * @return PDFObjectInterface Copied object
      */
     private function copyObjectWithReferences(
-        PDFObjectInterface $obj,
-        PDFDocument $newDoc,
+        PDFObjectInterface $pdfObject,
+        PDFDocument $pdfDocument,
         int &$nextObjectNumber,
         array &$objectMap = [],
         array &$copyingObjects = []
     ): PDFObjectInterface {
-        if ($obj instanceof PDFReference) {
-            $oldObjNum = $obj->getObjectNumber();
+        if ($pdfObject instanceof PDFReference) {
+            $oldObjNum = $pdfObject->getObjectNumber();
 
             // Check if we've already copied this object
             if (isset($objectMap[$oldObjNum])) {
@@ -1204,7 +1193,7 @@ final class PDFSplitter
                 return new PDFReference($newObjNum);
             }
 
-            $refNode = $this->document->getObject($oldObjNum);
+            $refNode = $this->pdfDocument->getObject($oldObjNum);
 
             if ($refNode !== null) {
                 $refObj = $refNode->getValue();
@@ -1220,10 +1209,10 @@ final class PDFSplitter
                 $copyingObjects[$oldObjNum] = true;
 
                 // Recursively copy the referenced object (now safe from circular refs)
-                $copiedRefObj = $this->copyObjectWithReferences($refObj, $newDoc, $nextObjectNumber, $objectMap, $copyingObjects);
+                $copiedRefObj = $this->copyObjectWithReferences($refObj, $pdfDocument, $nextObjectNumber, $objectMap, $copyingObjects);
 
                 // Add the copied object to the new document
-                $newRefNode = $newDoc->addObject($copiedRefObj, $newObjNum);
+                $newRefNode = $pdfDocument->addObject($copiedRefObj, $newObjNum);
 
                 // Remove from copying set
                 unset($copyingObjects[$oldObjNum]);
@@ -1231,42 +1220,42 @@ final class PDFSplitter
                 return new PDFReference($newObjNum);
             }
 
-            return $obj; // Return original if not found
+            return $pdfObject; // Return original if not found
         }
 
-        if ($obj instanceof PDFDictionary) {
+        if ($pdfObject instanceof PDFDictionary) {
             $newDict = new PDFDictionary;
 
-            foreach ($obj->getAllEntries() as $key => $value) {
-                if ($value instanceof PDFObjectInterface) {
-                    $newDict->addEntry($key, $this->copyObjectWithReferences($value, $newDoc, $nextObjectNumber, $objectMap, $copyingObjects));
+            foreach ($pdfObject->getAllEntries() as $key => $allEntry) {
+                if ($allEntry instanceof PDFObjectInterface) {
+                    $newDict->addEntry($key, $this->copyObjectWithReferences($allEntry, $pdfDocument, $nextObjectNumber, $objectMap, $copyingObjects));
                 } else {
-                    $newDict->addEntry($key, $value);
+                    $newDict->addEntry($key, $allEntry);
                 }
             }
 
             return $newDict;
         }
 
-        if ($obj instanceof PDFArray) {
-            $newArray = new PDFArray;
+        if ($pdfObject instanceof PDFArray) {
+            $pdfArray = new PDFArray;
 
-            foreach ($obj->getAll() as $item) {
+            foreach ($pdfObject->getAll() as $item) {
                 if ($item instanceof PDFObjectInterface) {
-                    $newArray->add($this->copyObjectWithReferences($item, $newDoc, $nextObjectNumber, $objectMap, $copyingObjects));
+                    $pdfArray->add($this->copyObjectWithReferences($item, $pdfDocument, $nextObjectNumber, $objectMap, $copyingObjects));
                 } else {
-                    $newArray->add($item);
+                    $pdfArray->add($item);
                 }
             }
 
-            return $newArray;
+            return $pdfArray;
         }
 
-        if ($obj instanceof PDFStream) {
+        if ($pdfObject instanceof PDFStream) {
             // CRITICAL: Copy stream without decoding/re-encoding to save memory
             // Get the stream dictionary and recursively copy it (preserves /Subtype, /Filter, and all metadata)
-            $streamDict = $obj->getDictionary();
-            $copiedDict = $this->copyObjectWithReferences($streamDict, $newDoc, $nextObjectNumber, $objectMap, $copyingObjects);
+            $streamDict = $pdfObject->getDictionary();
+            $copiedDict = $this->copyObjectWithReferences($streamDict, $pdfDocument, $nextObjectNumber, $objectMap, $copyingObjects);
 
             if (!$copiedDict instanceof PDFDictionary) {
                 $copiedDict = new PDFDictionary;
@@ -1274,11 +1263,11 @@ final class PDFSplitter
 
             // Create new stream with ALREADY ENCODED data to avoid re-encoding
             // Pass true for $dataIsEncoded to indicate data is pre-encoded
-            $newStream = new PDFStream($copiedDict, '', true);
+            $pdfStream = new PDFStream($copiedDict, '', true);
 
             // Set encoded data directly without decoding first (saves massive memory)
-            $encodedData = $obj->getEncodedData();
-            $newStream->setEncodedData($encodedData);
+            $encodedData = $pdfObject->getEncodedData();
+            $pdfStream->setEncodedData($encodedData);
 
             // Clear encoded data immediately to free memory
             unset($encodedData);
@@ -1286,11 +1275,11 @@ final class PDFSplitter
             // NOTE: We don't need to add filters manually - they're already in the copied dictionary
             // and PDFStream's constructor reads them via updateFiltersFromDictionary()
 
-            return $newStream;
+            return $pdfStream;
         }
 
         // For other types (primitives), return as-is
-        return $obj;
+        return $pdfObject;
     }
 
     /**
@@ -1305,20 +1294,20 @@ final class PDFSplitter
      *
      * @return int Total bytes written
      */
-    private function buildSinglePagePdfStreaming(PDFObjectNode $pageNode, $handle): int
+    private function buildSinglePagePdfStreaming(PDFObjectNode $pdfObjectNode, $handle): int
     {
-        $pageDict = $pageNode->getValue();
+        $pdfObject = $pdfObjectNode->getValue();
 
-        if (!$pageDict instanceof PDFDictionary) {
+        if (!$pdfObject instanceof PDFDictionary) {
             throw new FpdfException('Page object is not a dictionary');
         }
 
         // Extract page data
-        $pageData = $this->extractPageDataForStreaming($pageNode);
+        $pageData = $this->extractPageDataForStreaming($pdfObjectNode);
 
         // Create new document with cache-enabled registry
-        $registry = new PDFObjectRegistry(null, null, null, null, null, $this->cache, $this->logger);
-        $newDoc   = new PDFDocument('1.3', $registry);
+        $registry    = new PDFObjectRegistry(null, null, null, null, null, $this->cacheItemPool, $this->logger);
+        $pdfDocument = new PDFDocument('1.3', $registry);
 
         // Track byte offsets for xref table
         $objectOffsets = [];
@@ -1338,12 +1327,12 @@ final class PDFSplitter
         $objectOffsets[1] = $currentOffset;
         $pagesDict        = new PDFDictionary;
         $pagesDict->addEntry('/Type', new PDFName('Pages'));
-        $kids = new KidsArray;
-        $kids->addPage(3); // Page will be object 3
-        $pagesDict->addEntry('/Kids', $kids);
+        $kidsArray = new KidsArray;
+        $kidsArray->addPage(3); // Page will be object 3
+        $pagesDict->addEntry('/Kids', $kidsArray);
         $pagesDict->addEntry('/Count', new PDFNumber(1));
         $pagesDict->addEntry('/MediaBox', new MediaBoxArray($pageData['mediaBox']));
-        $pagesNode = $newDoc->addObject($pagesDict, 1);
+        $pagesNode = $pdfDocument->addObject($pagesDict, 1);
         $currentOffset += $this->writeObjectToStream($handle, $pagesDict, 1);
 
         // CRITICAL FIX: Copy resources and write all resource objects FIRST
@@ -1387,19 +1376,19 @@ final class PDFSplitter
             // Copy resources with filtering - this adds objects to $newDoc starting from $nextObjectNumber
             $newResourcesDict = $this->copyResourcesWithReferences(
                 $pageData['resourcesDict'],
-                $newDoc,
+                $pdfDocument,
                 $nextObjectNumber,
                 $usedResources,  // Pass used resources for filtering
             );
 
             // Now write all the resource objects (fonts, XObjects, etc.) that were added to $newDoc
             // These are objects numbered from 6 to ($nextObjectNumber - 1)
-            $registry = $newDoc->getObjectRegistry();
+            $registry = $pdfDocument->getObjectRegistry();
 
             for ($objNum = 6; $objNum < $nextObjectNumber; $objNum++) {
                 $objNode = $registry->get($objNum);
 
-                if ($objNode !== null) {
+                if ($objNode instanceof PDFObjectNode) {
                     $objectOffsets[$objNum] = $currentOffset;
                     $obj                    = $objNode->getValue();
                     $currentOffset += $this->writeObjectToStream($handle, $obj, $objNum);
@@ -1415,15 +1404,15 @@ final class PDFSplitter
 
         // Object 3: Page dictionary
         $objectOffsets[3] = $currentOffset;
-        $newPageDict      = new PageDictionary;
-        $newPageDict->setParent($pagesNode);
+        $pageDictionary   = new PageDictionary;
+        $pageDictionary->setParent($pagesNode);
 
         if ($pageData['pageHasMediaBox']) {
-            $newPageDict->setMediaBox($pageData['mediaBox']);
+            $pageDictionary->setMediaBox($pageData['mediaBox']);
         }
-        $newPageDict->setResources(2);
-        $newPageDict->setContents(4);
-        $currentOffset += $this->writeObjectToStream($handle, $newPageDict, 3);
+        $pageDictionary->setResources(2);
+        $pageDictionary->setContents(4);
+        $currentOffset += $this->writeObjectToStream($handle, $pageDictionary, 3);
 
         // Free page data immediately
         unset($pageData['resourcesDict']);
@@ -1453,18 +1442,19 @@ final class PDFSplitter
         }
 
         // Object 5: Catalog
-        $objectOffsets[5] = $currentOffset;
-        $catalog          = new CatalogDictionary;
-        $catalog->setPages(1);
-        $currentOffset += $this->writeObjectToStream($handle, $catalog, 5);
+        $objectOffsets[5]  = $currentOffset;
+        $catalogDictionary = new CatalogDictionary;
+        $catalogDictionary->setPages(1);
+        $currentOffset += $this->writeObjectToStream($handle, $catalogDictionary, 5);
 
         // Write xref table
         $xrefOffset = $currentOffset;
         $xref       = "xref\n";
         $xref .= '0 ' . (count($objectOffsets) + 1) . "\n";
         $xref .= "0000000000 65535 f \n";
+        $counter = count($objectOffsets);
 
-        for ($i = 1; $i <= count($objectOffsets); $i++) {
+        for ($i = 1; $i <= $counter; $i++) {
             $xref .= sprintf("%010d 00000 n \n", $objectOffsets[$i]);
         }
 
@@ -1479,9 +1469,8 @@ final class PDFSplitter
         $trailer .= "%%EOF\n";
 
         fwrite($handle, $trailer);
-        $currentOffset += strlen($trailer);
 
-        return $currentOffset;
+        return $currentOffset + strlen($trailer);
     }
 
     /**
@@ -1489,16 +1478,16 @@ final class PDFSplitter
      *
      * @return array{mediaBox: array<float>, pageHasMediaBox: bool, content: string, resourcesDict: null|PDFDictionary, hasCompression: bool}
      */
-    private function extractPageDataForStreaming(PDFObjectNode $pageNode): array
+    private function extractPageDataForStreaming(PDFObjectNode $pdfObjectNode): array
     {
-        $pageDict = $pageNode->getValue();
+        $pdfObject = $pdfObjectNode->getValue();
 
-        if (!$pageDict instanceof PDFDictionary) {
+        if (!$pdfObject instanceof PDFDictionary) {
             throw new FpdfException('Page object is not a dictionary');
         }
 
         // Get MediaBox
-        $mediaBoxEntry   = $pageDict->getEntry('/MediaBox');
+        $mediaBoxEntry   = $pdfObject->getEntry('/MediaBox');
         $pageHasMediaBox = false;
         $mediaBox        = [0.0, 0.0, 612.0, 792.0]; // Default
 
@@ -1522,10 +1511,10 @@ final class PDFSplitter
 
         // If page doesn't have MediaBox, check parent
         if (!$pageHasMediaBox) {
-            $parentRef = $pageDict->getEntry('/Parent');
+            $parentRef = $pdfObject->getEntry('/Parent');
 
             if ($parentRef instanceof PDFReference) {
-                $parentNode = $this->document->getObject($parentRef->getObjectNumber());
+                $parentNode = $this->pdfDocument->getObject($parentRef->getObjectNumber());
 
                 if ($parentNode !== null) {
                     $parentDict = $parentNode->getValue();
@@ -1554,12 +1543,12 @@ final class PDFSplitter
         }
 
         // Get Contents
-        $contentsRef    = $pageDict->getEntry('/Contents');
+        $contentsRef    = $pdfObject->getEntry('/Contents');
         $contentStreams = [];
         $hasCompression = false;
 
         if ($contentsRef instanceof PDFReference) {
-            $contentNode = $this->document->getObject($contentsRef->getObjectNumber());
+            $contentNode = $this->pdfDocument->getObject($contentsRef->getObjectNumber());
 
             if ($contentNode !== null) {
                 $contentObj = $contentNode->getValue();
@@ -1572,7 +1561,7 @@ final class PDFSplitter
         } elseif ($contentsRef instanceof PDFArray) {
             foreach ($contentsRef->getAll() as $item) {
                 if ($item instanceof PDFReference) {
-                    $contentNode = $this->document->getObject($item->getObjectNumber());
+                    $contentNode = $this->pdfDocument->getObject($item->getObjectNumber());
 
                     if ($contentNode !== null) {
                         $contentObj = $contentNode->getValue();
@@ -1606,11 +1595,11 @@ final class PDFSplitter
         }
 
         // Get Resources
-        $resourcesRef  = $pageDict->getEntry('/Resources');
+        $resourcesRef  = $pdfObject->getEntry('/Resources');
         $resourcesDict = null;
 
         if ($resourcesRef instanceof PDFReference) {
-            $resourcesNode = $this->document->getObject($resourcesRef->getObjectNumber());
+            $resourcesNode = $this->pdfDocument->getObject($resourcesRef->getObjectNumber());
 
             if ($resourcesNode !== null) {
                 $resourcesObj = $resourcesNode->getValue();
@@ -1632,7 +1621,7 @@ final class PDFSplitter
         ];
 
         // Clear heavy variables immediately
-        unset($pageDict, $mediaBoxEntry, $contentsRef, $resourcesRef);
+        unset($pdfObject, $mediaBoxEntry, $contentsRef, $resourcesRef);
 
         return $result;
     }
@@ -1642,11 +1631,11 @@ final class PDFSplitter
      *
      * @return int Bytes written
      */
-    private function writeObjectToStream($handle, PDFObjectInterface $obj, int $objNum): int
+    private function writeObjectToStream($handle, PDFObjectInterface $pdfObject, int $objNum): int
     {
         // Create PDFObjectNode for proper serialization
-        $node   = new PDFObjectNode($objNum, $obj);
-        $objStr = (string) $node . "\n";
+        $pdfObjectNode = new PDFObjectNode($objNum, $pdfObject);
+        $objStr        = $pdfObjectNode . "\n";
 
         fwrite($handle, $objStr);
 

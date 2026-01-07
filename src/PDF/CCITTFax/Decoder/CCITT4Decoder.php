@@ -28,24 +28,20 @@ use RuntimeException;
 
 class CCITT4Decoder implements StreamDecoderInterface
 {
-    private int $width;
-    private BitBuffer $buffer;
-    private Modes $modeCodes;
-    private Codes $horizontalCodes;
-    private bool $reverseColor;
+    private readonly BitBuffer $bitBuffer;
+    private readonly Modes $modes;
+    private readonly Codes $horizontalCodes;
 
     /**
      * @param int             $width        Image width in pixels
      * @param resource|string $bytes        Compressed data (string or stream resource)
      * @param bool            $reverseColor Whether to reverse colors (BlackIs1)
      */
-    public function __construct(int $width, $bytes, bool $reverseColor = false)
+    public function __construct(private readonly int $width, $bytes, private readonly bool $reverseColor = false)
     {
-        $this->width           = $width;
-        $this->buffer          = new BitBuffer($bytes);
-        $this->modeCodes       = new Modes;
+        $this->bitBuffer       = new BitBuffer($bytes);
+        $this->modes           = new Modes;
         $this->horizontalCodes = new Codes;
-        $this->reverseColor    = $reverseColor;
 
         // Skip any leading fill bits (0x00 bytes) at the beginning
         $this->skipFillBits();
@@ -64,7 +60,7 @@ class CCITT4Decoder implements StreamDecoderInterface
         $curLine = 0;
         $a0Color = 255; // start white
 
-        while ($this->buffer->hasData()) {
+        while ($this->bitBuffer->hasData()) {
             if ($linePos > $this->width - 1) {
                 $lines[] = $line;
                 $line    = array_fill(0, $this->width, 0);
@@ -72,13 +68,13 @@ class CCITT4Decoder implements StreamDecoderInterface
                 $a0Color = 255; // start white
                 $curLine++;
 
-                if ($this->endOfBlock($this->buffer->getBuffer())) {
+                if ($this->endOfBlock($this->bitBuffer->getBuffer())) {
                     break;
                 }
             }
 
             // end on trailing zeros padding
-            [$v] = $this->buffer->peak32();
+            [$v] = $this->bitBuffer->peak32();
 
             if ($v === 0x00000000) {
                 break;
@@ -95,7 +91,7 @@ class CCITT4Decoder implements StreamDecoderInterface
 
                 throw $e;
             }
-            $this->buffer->flushBits($mode->bitsUsed);
+            $this->bitBuffer->flushBits($mode->bitsUsed);
 
             // act on mode
             switch ($mode->type) {
@@ -130,8 +126,8 @@ class CCITT4Decoder implements StreamDecoderInterface
                         $scan = true;
 
                         while ($scan) {
-                            $h = $this->horizontalCodes->findMatch32($this->buffer->getBuffer(), $isWhite);
-                            $this->buffer->flushBits($h->bitsUsed);
+                            $h = $this->horizontalCodes->findMatch32($this->bitBuffer->getBuffer(), $isWhite);
+                            $this->bitBuffer->flushBits($h->bitsUsed);
                             $length[$i] += $h->pixels;
                             $color[$i] = $h->color;
 
@@ -187,7 +183,9 @@ class CCITT4Decoder implements StreamDecoderInterface
         }
 
         if ($this->reverseColor) {
-            for ($i = 0; $i < count($lines); $i++) {
+            $counter = count($lines);
+
+            for ($i = 0; $i < $counter; $i++) {
                 for ($x = 0; $x < count($lines[$i]); $x++) {
                     $lines[$i][$x] = $this->reverseColorValue($lines[$i][$x]);
                 }
@@ -217,7 +215,7 @@ class CCITT4Decoder implements StreamDecoderInterface
         $curLine       = 0;
         $a0Color       = 255; // start white
 
-        while ($this->buffer->hasData()) {
+        while ($this->bitBuffer->hasData()) {
             if ($linePos > $this->width - 1) {
                 // Write completed line to stream
                 $packed  = BitmapPacker::packLines([$line], $this->width);
@@ -238,13 +236,13 @@ class CCITT4Decoder implements StreamDecoderInterface
                 $a0Color = 255; // start white
                 $curLine++;
 
-                if ($this->endOfBlock($this->buffer->getBuffer())) {
+                if ($this->endOfBlock($this->bitBuffer->getBuffer())) {
                     break;
                 }
             }
 
             // end on trailing zeros padding
-            [$v] = $this->buffer->peak32();
+            [$v] = $this->bitBuffer->peak32();
 
             if ($v === 0x00000000) {
                 break;
@@ -261,7 +259,7 @@ class CCITT4Decoder implements StreamDecoderInterface
 
                 throw $e;
             }
-            $this->buffer->flushBits($mode->bitsUsed);
+            $this->bitBuffer->flushBits($mode->bitsUsed);
 
             // act on mode
             switch ($mode->type) {
@@ -296,8 +294,8 @@ class CCITT4Decoder implements StreamDecoderInterface
                         $scan = true;
 
                         while ($scan) {
-                            $h = $this->horizontalCodes->findMatch32($this->buffer->getBuffer(), $isWhite);
-                            $this->buffer->flushBits($h->bitsUsed);
+                            $h = $this->horizontalCodes->findMatch32($this->bitBuffer->getBuffer(), $isWhite);
+                            $this->bitBuffer->flushBits($h->bitsUsed);
                             $length[$i] += $h->pixels;
                             $color[$i] = $h->color;
 
@@ -389,10 +387,11 @@ class CCITT4Decoder implements StreamDecoderInterface
             $startPos++;
         }
 
-        $b1 = 0;
-        $b2 = 0;
+        $b1      = 0;
+        $b2      = 0;
+        $counter = count($refLine);
 
-        for ($i = $startPos; $i < count($refLine); $i++) {
+        for ($i = $startPos; $i < $counter; $i++) {
             if ($i === 0) {
                 $curColor  = $refLine[0];
                 $lastColor = 255;
@@ -401,18 +400,16 @@ class CCITT4Decoder implements StreamDecoderInterface
                 $lastColor = $refLine[$i - 1];
             }
 
-            if ($b1 !== 0) {
-                if ($curColor === $a0Color && $lastColor === $other) {
-                    $b2 = $i;
+            if ($b1 !== 0 && ($curColor === $a0Color && $lastColor === $other)) {
+                $b2 = $i;
 
-                    return [$b1, $b2];
-                }
+                return [$b1, $b2];
             }
 
             if ($curColor === $other && $lastColor === $a0Color) {
                 $b1 = $i;
 
-                if ($b2 !== 0 || $justb1) {
+                if ($justb1) {
                     return [$b1, $b2];
                 }
             }
@@ -446,16 +443,16 @@ class CCITT4Decoder implements StreamDecoderInterface
 
     private function getMode(): ModeCode
     {
-        [$b8, $valid] = $this->buffer->peak8();
+        [$b8, $valid] = $this->bitBuffer->peak8();
 
         if (!$valid) {
             throw new RuntimeException('Unexpected end of stream while reading mode code');
         }
 
         // Skip fill bits (0x00 bytes) - these are valid padding in CCITT streams
-        while ($b8 === 0 && $this->buffer->available() >= 8) {
-            $this->buffer->getBits(8); // Consume the 0x00 byte
-            [$b8, $valid] = $this->buffer->peak8();
+        while ($b8 === 0 && $this->bitBuffer->available() >= 8) {
+            $this->bitBuffer->getBits(8); // Consume the 0x00 byte
+            [$b8, $valid] = $this->bitBuffer->peak8();
 
             if (!$valid) {
                 throw new RuntimeException('End of stream after fill bits');
@@ -466,7 +463,7 @@ class CCITT4Decoder implements StreamDecoderInterface
             throw new RuntimeException('Invalid mode code 0x00 at end of stream');
         }
 
-        return $this->modeCodes->getMode($b8);
+        return $this->modes->getMode($b8);
     }
 
     /**
@@ -475,11 +472,11 @@ class CCITT4Decoder implements StreamDecoderInterface
      */
     private function skipFillBits(): void
     {
-        while ($this->buffer->available() >= 8) {
-            [$b8] = $this->buffer->peak8();
+        while ($this->bitBuffer->available() >= 8) {
+            [$b8] = $this->bitBuffer->peak8();
 
             if ($b8 === 0) {
-                $this->buffer->getBits(8); // Consume the 0x00 byte
+                $this->bitBuffer->getBits(8); // Consume the 0x00 byte
             } else {
                 break; // Found non-zero byte, stop skipping
             }

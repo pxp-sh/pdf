@@ -65,7 +65,7 @@ final class StreamEncoder
      * Encode with DCTDecode (JPEG).
      * Note: This typically requires external JPEG encoding.
      */
-    public function encodeDCT(string $data, array $params = []): string
+    public function encodeDCT(string $data): string
     {
         // DCTDecode is typically used for already-compressed JPEG data
         // This is a placeholder - actual JPEG encoding would go here
@@ -76,7 +76,7 @@ final class StreamEncoder
      * Encode with LZWDecode.
      * Note: PHP doesn't have built-in LZW, this is a placeholder.
      */
-    public function encodeLZW(string $data): string
+    public function encodeLZW(): string
     {
         throw new FpdfException('LZWDecode encoding is not yet implemented');
     }

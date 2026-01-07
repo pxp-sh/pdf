@@ -23,62 +23,62 @@ final class MediaBoxArrayTest extends TestCase
 {
     public function testConstructorWithDefaultValues(): void
     {
-        $mediaBox = new MediaBoxArray;
-        $values   = $mediaBox->getValues();
+        $mediaBoxArray = new MediaBoxArray;
+        $values        = $mediaBoxArray->getValues();
 
         $this->assertSame([0.0, 0.0, 612.0, 792.0], $values);
     }
 
     public function testConstructorWithCustomValues(): void
     {
-        $mediaBox = new MediaBoxArray([10.0, 20.0, 800.0, 1000.0]);
-        $values   = $mediaBox->getValues();
+        $mediaBoxArray = new MediaBoxArray([10.0, 20.0, 800.0, 1000.0]);
+        $values        = $mediaBoxArray->getValues();
 
         $this->assertSame([10.0, 20.0, 800.0, 1000.0], $values);
     }
 
     public function testSetValues(): void
     {
-        $mediaBox = new MediaBoxArray;
-        $mediaBox->setValues([5.0, 10.0, 500.0, 600.0]);
+        $mediaBoxArray = new MediaBoxArray;
+        $mediaBoxArray->setValues([5.0, 10.0, 500.0, 600.0]);
 
-        $values = $mediaBox->getValues();
+        $values = $mediaBoxArray->getValues();
         $this->assertSame([5.0, 10.0, 500.0, 600.0], $values);
     }
 
     public function testGetLLX(): void
     {
-        $mediaBox = new MediaBoxArray([10.0, 20.0, 800.0, 1000.0]);
-        $this->assertSame(10.0, $mediaBox->getLLX());
+        $mediaBoxArray = new MediaBoxArray([10.0, 20.0, 800.0, 1000.0]);
+        $this->assertSame(10.0, $mediaBoxArray->getLLX());
     }
 
     public function testGetLLY(): void
     {
-        $mediaBox = new MediaBoxArray([10.0, 20.0, 800.0, 1000.0]);
-        $this->assertSame(20.0, $mediaBox->getLLY());
+        $mediaBoxArray = new MediaBoxArray([10.0, 20.0, 800.0, 1000.0]);
+        $this->assertSame(20.0, $mediaBoxArray->getLLY());
     }
 
     public function testGetURX(): void
     {
-        $mediaBox = new MediaBoxArray([10.0, 20.0, 800.0, 1000.0]);
-        $this->assertSame(800.0, $mediaBox->getURX());
+        $mediaBoxArray = new MediaBoxArray([10.0, 20.0, 800.0, 1000.0]);
+        $this->assertSame(800.0, $mediaBoxArray->getURX());
     }
 
     public function testGetURY(): void
     {
-        $mediaBox = new MediaBoxArray([10.0, 20.0, 800.0, 1000.0]);
-        $this->assertSame(1000.0, $mediaBox->getURY());
+        $mediaBoxArray = new MediaBoxArray([10.0, 20.0, 800.0, 1000.0]);
+        $this->assertSame(1000.0, $mediaBoxArray->getURY());
     }
 
     public function testGetWidth(): void
     {
-        $mediaBox = new MediaBoxArray([10.0, 20.0, 800.0, 1000.0]);
-        $this->assertSame(790.0, $mediaBox->getWidth());
+        $mediaBoxArray = new MediaBoxArray([10.0, 20.0, 800.0, 1000.0]);
+        $this->assertSame(790.0, $mediaBoxArray->getWidth());
     }
 
     public function testGetHeight(): void
     {
-        $mediaBox = new MediaBoxArray([10.0, 20.0, 800.0, 1000.0]);
-        $this->assertSame(980.0, $mediaBox->getHeight());
+        $mediaBoxArray = new MediaBoxArray([10.0, 20.0, 800.0, 1000.0]);
+        $this->assertSame(980.0, $mediaBoxArray->getHeight());
     }
 }

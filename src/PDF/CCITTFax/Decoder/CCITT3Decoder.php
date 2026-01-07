@@ -21,6 +21,7 @@ use function min;
 use function sprintf;
 use PXP\PDF\CCITTFax\Constants\Codes;
 use PXP\PDF\CCITTFax\Interface\StreamDecoderInterface;
+use PXP\PDF\CCITTFax\Model\HorizontalCode;
 use PXP\PDF\CCITTFax\Model\Params;
 use PXP\PDF\CCITTFax\Util\BitBuffer;
 use PXP\PDF\CCITTFax\Util\BitmapPacker;
@@ -41,8 +42,7 @@ use RuntimeException;
  */
 final class CCITT3Decoder implements StreamDecoderInterface
 {
-    private BitBuffer $bitBuffer;
-    private Params $params;
+    private readonly BitBuffer $bitBuffer;
 
     /** @var array<int, int> Current line being decoded */
     private array $currentLine = [];
@@ -63,9 +63,8 @@ final class CCITT3Decoder implements StreamDecoderInterface
      * @param Params          $params CCITT Fax parameters
      * @param resource|string $data   Compressed fax data (string or stream resource)
      */
-    public function __construct(Params $params, $data)
+    public function __construct(private readonly Params $params, $data)
     {
-        $this->params    = $params;
         $this->bitBuffer = new BitBuffer($data);
 
         // Initialize first line
@@ -317,7 +316,7 @@ final class CCITT3Decoder implements StreamDecoderInterface
             [$data] = $this->bitBuffer->peak16();
             $code   = Codes::findCode($data, $isWhite, true); // true = look for make-up codes
 
-            if ($code === null) {
+            if (!$code instanceof HorizontalCode) {
                 // No make-up code, try terminating code
                 break;
             }
@@ -336,14 +335,13 @@ final class CCITT3Decoder implements StreamDecoderInterface
         [$data] = $this->bitBuffer->peak16();
         $code   = Codes::findCode($data, $isWhite, false); // false = look for terminating codes
 
-        if ($code === null) {
+        if (!$code instanceof HorizontalCode) {
             return -1; // Invalid code
         }
 
         $this->bitBuffer->flushBits($code->getBitsUsed());
-        $runLength += $code->getRunLength();
 
-        return $runLength;
+        return $runLength + $code->getRunLength();
     }
 
     /**
@@ -430,11 +428,7 @@ final class CCITT3Decoder implements StreamDecoderInterface
         // Simplified: look for multiple EOLs in sequence
         // Pattern: (000000000001){6} but this is complex to match perfectly
         // We'll check if we see mostly zeros which indicates RTC region
-        if ($saved === 0x00000000) {
-            // Likely padding after RTC
-            return true;
-        }
-
-        return false;
+        // Likely padding after RTC
+        return $saved === 0x00000000;
     }
 }

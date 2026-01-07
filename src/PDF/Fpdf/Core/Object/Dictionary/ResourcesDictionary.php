@@ -37,13 +37,13 @@ final class ResourcesDictionary extends PDFDictionary
      */
     public function setProcSet(array $procSet): self
     {
-        $procSetArray = new PDFArray;
+        $pdfArray = new PDFArray;
 
         foreach ($procSet as $proc) {
-            $procSetArray->add(new PDFName($proc));
+            $pdfArray->add(new PDFName($proc));
         }
 
-        $this->addEntry('/ProcSet', $procSetArray);
+        $this->addEntry('/ProcSet', $pdfArray);
 
         return $this;
     }

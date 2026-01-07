@@ -27,6 +27,7 @@ use PXP\PDF\Fpdf\Core\Object\Base\PDFDictionary;
 use PXP\PDF\Fpdf\Core\Object\Base\PDFName;
 use PXP\PDF\Fpdf\Core\Object\Base\PDFReference;
 use PXP\PDF\Fpdf\Core\Object\Parser\PDFParser;
+use PXP\PDF\Fpdf\Core\Object\PDFObjectInterface;
 use PXP\PDF\Fpdf\Core\Stream\PDFStream;
 use PXP\PDF\Fpdf\Features\Splitter\PDFMerger;
 use PXP\PDF\Fpdf\IO\FileIO;
@@ -100,34 +101,34 @@ final class XObjectMappingMultiPageTest extends TestCase
             $testDir . '/page_534.pdf',  // This is the problematic page
         ];
 
-        foreach ($sourceFiles as $file) {
-            if (!file_exists($file)) {
-                $this->markTestSkipped("Test file {$file} not available");
+        foreach ($sourceFiles as $sourceFile) {
+            if (!file_exists($sourceFile)) {
+                $this->markTestSkipped("Test file {$sourceFile} not available");
             }
         }
 
         // Merge all 5 pages
         $mergedPath = $this->tempDir . '/merged_multipage.pdf';
-        $merger     = new PDFMerger($this->fileIO, self::getLogger(), self::getEventDispatcher(), self::getCache());
-        $merger->mergeIncremental($sourceFiles, $mergedPath);
+        $pdfMerger  = new PDFMerger($this->fileIO, self::getLogger(), self::getEventDispatcher(), self::getCache());
+        $pdfMerger->mergeIncremental($sourceFiles, $mergedPath);
 
         $this->assertFileExists($mergedPath);
 
         // Parse merged PDF and check page 5 (the problematic page)
-        $parser    = new PDFParser(self::getLogger(), self::getCache());
-        $mergedDoc = $parser->parseDocumentFromFile($mergedPath, $this->fileIO);
+        $pdfParser   = new PDFParser(self::getLogger(), self::getCache());
+        $pdfDocument = $pdfParser->parseDocumentFromFile($mergedPath, $this->fileIO);
 
-        $page5 = $mergedDoc->getPage(5);
+        $page5 = $pdfDocument->getPage(5);
         $this->assertNotNull($page5, 'Page 5 must exist in merged PDF');
 
-        $page5Dict = $page5->getValue();
-        $this->assertInstanceOf(PDFDictionary::class, $page5Dict);
+        $pdfObject = $page5->getValue();
+        $this->assertInstanceOf(PDFDictionary::class, $pdfObject);
 
         // Get Resources for page 5
-        $resources = $page5Dict->getEntry('/Resources');
+        $resources = $pdfObject->getEntry('/Resources');
 
         if ($resources instanceof PDFReference) {
-            $resourcesNode = $mergedDoc->getObject($resources->getObjectNumber());
+            $resourcesNode = $pdfDocument->getObject($resources->getObjectNumber());
             $resources     = $resourcesNode->getValue();
         }
 
@@ -137,7 +138,7 @@ final class XObjectMappingMultiPageTest extends TestCase
         $xObjects = $resources->getEntry('/XObject');
 
         if ($xObjects instanceof PDFReference) {
-            $xobjNode = $mergedDoc->getObject($xObjects->getObjectNumber());
+            $xobjNode = $pdfDocument->getObject($xObjects->getObjectNumber());
             $xObjects = $xobjNode->getValue();
         }
 
@@ -152,7 +153,7 @@ final class XObjectMappingMultiPageTest extends TestCase
                 "XObject {$name} must be a reference",
             );
 
-            $xobjNode = $mergedDoc->getObject($ref->getObjectNumber());
+            $xobjNode = $pdfDocument->getObject($ref->getObjectNumber());
             $this->assertNotNull(
                 $xobjNode,
                 "XObject {$name} reference (object {$ref->getObjectNumber()}) must resolve",
@@ -165,7 +166,7 @@ final class XObjectMappingMultiPageTest extends TestCase
                 PDFStream::class,
                 $xobj,
                 "CRITICAL BUG: XObject {$name} (page 5) points to " . $xobj::class . ' instead of PDFStream. ' .
-                'Expected Image XObject, got ' . $this->describeObject($xobj, $mergedDoc) . '. ' .
+                'Expected Image XObject, got ' . $this->describeObject($xobj) . '. ' .
                 'This indicates XObject reference points to wrong object (likely ExtGState from earlier page).',
             );
 
@@ -206,23 +207,23 @@ final class XObjectMappingMultiPageTest extends TestCase
             $this->markTestSkipped("Test file {$testFile} not available");
         }
 
-        $parser = new PDFParser(self::getLogger(), self::getCache());
-        $doc    = $parser->parseDocumentFromFile($testFile, $this->fileIO);
+        $pdfParser   = new PDFParser(self::getLogger(), self::getCache());
+        $pdfDocument = $pdfParser->parseDocumentFromFile($testFile, $this->fileIO);
 
-        $page     = $doc->getPage(1);
-        $pageDict = $page->getValue();
+        $page      = $pdfDocument->getPage(1);
+        $pdfObject = $page->getValue();
 
-        $resources = $pageDict->getEntry('/Resources');
+        $resources = $pdfObject->getEntry('/Resources');
 
         if ($resources instanceof PDFReference) {
-            $resourcesNode = $doc->getObject($resources->getObjectNumber());
+            $resourcesNode = $pdfDocument->getObject($resources->getObjectNumber());
             $resources     = $resourcesNode->getValue();
         }
 
         $xObjects = $resources->getEntry('/XObject');
 
         if ($xObjects instanceof PDFReference) {
-            $xobjNode = $doc->getObject($xObjects->getObjectNumber());
+            $xobjNode = $pdfDocument->getObject($xObjects->getObjectNumber());
             $xObjects = $xobjNode->getValue();
         }
 
@@ -231,7 +232,7 @@ final class XObjectMappingMultiPageTest extends TestCase
 
         // Verify all are Image XObjects
         foreach ($xObjects->getAllEntries() as $name => $ref) {
-            $xobjNode = $doc->getObject($ref->getObjectNumber());
+            $xobjNode = $pdfDocument->getObject($ref->getObjectNumber());
             $xobj     = $xobjNode->getValue();
 
             $this->assertInstanceOf(PDFStream::class, $xobj, "Original {$name} must be a Stream");
@@ -248,10 +249,10 @@ final class XObjectMappingMultiPageTest extends TestCase
     /**
      * Helper to describe an object for error messages.
      */
-    private function describeObject($obj, $doc): string
+    private function describeObject(PDFObjectInterface $pdfObject): string
     {
-        if ($obj instanceof PDFDictionary && !($obj instanceof PDFStream)) {
-            $type = $obj->getEntry('/Type');
+        if ($pdfObject instanceof PDFDictionary && !($pdfObject instanceof PDFStream)) {
+            $type = $pdfObject->getEntry('/Type');
 
             if ($type instanceof PDFName) {
                 return 'Dictionary with /Type = ' . $type->getName();
@@ -260,8 +261,8 @@ final class XObjectMappingMultiPageTest extends TestCase
             return 'Dictionary (no /Type)';
         }
 
-        if ($obj instanceof PDFStream) {
-            $dict = $obj->getDictionary();
+        if ($pdfObject instanceof PDFStream) {
+            $dict = $pdfObject->getDictionary();
             $type = $dict->getEntry('/Type');
 
             if ($type instanceof PDFName) {
@@ -271,6 +272,6 @@ final class XObjectMappingMultiPageTest extends TestCase
             return 'Stream (no /Type)';
         }
 
-        return $obj::class;
+        return $pdfObject::class;
     }
 }

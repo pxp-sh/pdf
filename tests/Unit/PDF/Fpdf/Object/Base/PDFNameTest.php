@@ -23,32 +23,32 @@ final class PDFNameTest extends TestCase
 {
     public function testToStringReturnsNameWithSlash(): void
     {
-        $name = new PDFName('Type');
-        $this->assertSame('/Type', (string) $name);
+        $pdfName = new PDFName('Type');
+        $this->assertSame('/Type', (string) $pdfName);
     }
 
     public function testToStringRemovesLeadingSlash(): void
     {
-        $name = new PDFName('/Type');
-        $this->assertSame('/Type', (string) $name);
+        $pdfName = new PDFName('/Type');
+        $this->assertSame('/Type', (string) $pdfName);
     }
 
     public function testToStringEscapesSpecialCharacters(): void
     {
-        $name = new PDFName('Test#Name');
-        $this->assertSame('/Test#23Name', (string) $name);
+        $pdfName = new PDFName('Test#Name');
+        $this->assertSame('/Test#23Name', (string) $pdfName);
     }
 
     public function testGetNameReturnsNameWithoutSlash(): void
     {
-        $name = new PDFName('/Type');
-        $this->assertSame('Type', $name->getName());
+        $pdfName = new PDFName('/Type');
+        $this->assertSame('Type', $pdfName->getName());
     }
 
     public function testEscapesAllSpecialCharacters(): void
     {
-        $name   = new PDFName('Test#(Name)');
-        $result = (string) $name;
+        $pdfName = new PDFName('Test#(Name)');
+        $result  = (string) $pdfName;
         $this->assertStringContainsString('#23', $result);
         $this->assertStringContainsString('#28', $result);
         $this->assertStringContainsString('#29', $result);

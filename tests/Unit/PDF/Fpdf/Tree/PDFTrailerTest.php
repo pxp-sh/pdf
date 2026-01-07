@@ -25,66 +25,66 @@ final class PDFTrailerTest extends TestCase
 {
     public function testGetSetSize(): void
     {
-        $trailer = new PDFTrailer;
-        $trailer->setSize(10);
-        $this->assertSame(10, $trailer->getSize());
+        $pdfTrailer = new PDFTrailer;
+        $pdfTrailer->setSize(10);
+        $this->assertSame(10, $pdfTrailer->getSize());
     }
 
     public function testGetSetRoot(): void
     {
-        $trailer = new PDFTrailer;
-        $ref     = new PDFReference(5, 0);
-        $trailer->setRoot($ref);
+        $pdfTrailer   = new PDFTrailer;
+        $pdfReference = new PDFReference(5, 0);
+        $pdfTrailer->setRoot($pdfReference);
 
-        $this->assertSame($ref, $trailer->getRoot());
+        $this->assertSame($pdfReference, $pdfTrailer->getRoot());
     }
 
     public function testGetSetInfo(): void
     {
-        $trailer = new PDFTrailer;
-        $ref     = new PDFReference(3, 0);
-        $trailer->setInfo($ref);
+        $pdfTrailer   = new PDFTrailer;
+        $pdfReference = new PDFReference(3, 0);
+        $pdfTrailer->setInfo($pdfReference);
 
-        $this->assertSame($ref, $trailer->getInfo());
+        $this->assertSame($pdfReference, $pdfTrailer->getInfo());
     }
 
     public function testGetSetEncrypt(): void
     {
-        $trailer = new PDFTrailer;
-        $ref     = new PDFReference(7, 0);
-        $trailer->setEncrypt($ref);
+        $pdfTrailer   = new PDFTrailer;
+        $pdfReference = new PDFReference(7, 0);
+        $pdfTrailer->setEncrypt($pdfReference);
 
-        $this->assertSame($ref, $trailer->getEncrypt());
+        $this->assertSame($pdfReference, $pdfTrailer->getEncrypt());
     }
 
     public function testGetSetId(): void
     {
-        $trailer = new PDFTrailer;
-        $id      = ['abc123', 'def456'];
-        $trailer->setId($id);
+        $pdfTrailer = new PDFTrailer;
+        $id         = ['abc123', 'def456'];
+        $pdfTrailer->setId($id);
 
-        $this->assertSame($id, $trailer->getId());
+        $this->assertSame($id, $pdfTrailer->getId());
     }
 
     public function testToDictionary(): void
     {
-        $trailer = new PDFTrailer;
-        $trailer->setSize(10);
-        $trailer->setRoot(new PDFReference(5, 0));
+        $pdfTrailer = new PDFTrailer;
+        $pdfTrailer->setSize(10);
+        $pdfTrailer->setRoot(new PDFReference(5, 0));
 
-        $dict = $trailer->toDictionary();
-        $this->assertInstanceOf(PDFDictionary::class, $dict);
-        $this->assertNotNull($dict->getEntry('/Size'));
-        $this->assertNotNull($dict->getEntry('/Root'));
+        $pdfDictionary = $pdfTrailer->toDictionary();
+        $this->assertInstanceOf(PDFDictionary::class, $pdfDictionary);
+        $this->assertNotNull($pdfDictionary->getEntry('/Size'));
+        $this->assertNotNull($pdfDictionary->getEntry('/Root'));
     }
 
     public function testSerialize(): void
     {
-        $trailer = new PDFTrailer;
-        $trailer->setSize(10);
-        $trailer->setRoot(new PDFReference(5, 0));
+        $pdfTrailer = new PDFTrailer;
+        $pdfTrailer->setSize(10);
+        $pdfTrailer->setRoot(new PDFReference(5, 0));
 
-        $result = $trailer->serialize(1000);
+        $result = $pdfTrailer->serialize(1000);
         $this->assertStringContainsString('trailer', $result);
         $this->assertStringContainsString('startxref', $result);
         $this->assertStringContainsString('1000', $result);

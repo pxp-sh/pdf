@@ -24,38 +24,38 @@ final class KidsArrayTest extends TestCase
 {
     public function testAddPage(): void
     {
-        $kids = new KidsArray;
-        $kids->addPage(3);
+        $kidsArray = new KidsArray;
+        $kidsArray->addPage(3);
 
-        $this->assertSame(1, $kids->count());
-        $page = $kids->getPage(0);
+        $this->assertSame(1, $kidsArray->count());
+        $page = $kidsArray->getPage(0);
         $this->assertInstanceOf(PDFReference::class, $page);
         $this->assertSame(3, $page->getObjectNumber());
     }
 
     public function testAddPageWithGeneration(): void
     {
-        $kids = new KidsArray;
-        $kids->addPage(3, 5);
+        $kidsArray = new KidsArray;
+        $kidsArray->addPage(3, 5);
 
-        $page = $kids->getPage(0);
+        $page = $kidsArray->getPage(0);
         $this->assertSame(5, $page->getGenerationNumber());
     }
 
     public function testGetPageNumbers(): void
     {
-        $kids = new KidsArray;
-        $kids->addPage(3);
-        $kids->addPage(5);
-        $kids->addPage(7);
+        $kidsArray = new KidsArray;
+        $kidsArray->addPage(3);
+        $kidsArray->addPage(5);
+        $kidsArray->addPage(7);
 
-        $numbers = $kids->getPageNumbers();
+        $numbers = $kidsArray->getPageNumbers();
         $this->assertSame([3, 5, 7], $numbers);
     }
 
     public function testGetPageReturnsNullForInvalidIndex(): void
     {
-        $kids = new KidsArray;
-        $this->assertNull($kids->getPage(999));
+        $kidsArray = new KidsArray;
+        $this->assertNull($kidsArray->getPage(999));
     }
 }

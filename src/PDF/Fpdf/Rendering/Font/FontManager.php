@@ -35,22 +35,14 @@ use PXP\PDF\Fpdf\Utils\Cache\NullCache;
 
 final class FontManager
 {
-    private const CORE_FONTS = ['courier', 'helvetica', 'times', 'symbol', 'zapfdingbats'];
-    private array $fonts     = [];
-    private array $fontFiles = [];
-    private array $encodings = [];
-    private array $cmaps     = [];
-    private LoggerInterface $logger;
-    private CacheItemPoolInterface $cache;
+    private const array CORE_FONTS = ['courier', 'helvetica', 'times', 'symbol', 'zapfdingbats'];
+    private array $fonts           = [];
+    private array $fontFiles       = [];
+    private array $encodings       = [];
+    private array $cmaps           = [];
 
-    public function __construct(
-        private string $fontPath,
-        private int $defaultCharWidth = 500,
-        ?LoggerInterface $logger = null,
-        ?CacheItemPoolInterface $cache = null,
-    ) {
-        $this->logger = $logger ?? new NullLogger;
-        $this->cache  = $cache ?? new NullCache;
+    public function __construct(private readonly string $fontPath, private int $defaultCharWidth = 500, private readonly ?LoggerInterface $logger = new NullLogger, private readonly ?CacheItemPoolInterface $cacheItemPool = new NullCache)
+    {
     }
 
     public function setDefaultCharWidth(int $w): void
@@ -96,7 +88,7 @@ final class FontManager
 
         // Check cache
         $cacheKey  = 'pxp_pdf_font_' . md5($fontKey . $file);
-        $cacheItem = $this->cache->getItem($cacheKey);
+        $cacheItem = $this->cacheItemPool->getItem($cacheKey);
 
         if ($cacheItem->isHit()) {
             $cachedInfo = $cacheItem->get();
@@ -156,11 +148,7 @@ final class FontManager
                 $count++;
             }
 
-            if ($count > 0) {
-                $avg = (int) round($sum / $count);
-            } else {
-                $avg = $this->defaultCharWidth;
-            }
+            $avg = $count > 0 ? (int) round($sum / $count) : $this->defaultCharWidth;
 
             for ($ci = 32; $ci <= 255; $ci++) {
                 $ch = chr($ci);
@@ -185,7 +173,7 @@ final class FontManager
 
         // Cache the font info
         $cacheItem->set($info);
-        $this->cache->save($cacheItem);
+        $this->cacheItemPool->save($cacheItem);
 
         $this->logger->debug('Font loaded and cached', [
             'font_key'        => $fontKey,

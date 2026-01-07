@@ -27,8 +27,8 @@ final class PageSizeTest extends TestCase
 
     public function testPageSizeIsReadonly(): void
     {
-        $reflection = new ReflectionClass(PageSize::class);
-        $this->assertTrue($reflection->isReadOnly());
+        $reflectionClass = new ReflectionClass(PageSize::class);
+        $this->assertTrue($reflectionClass->isReadOnly());
     }
 
     public function testConstructorWithValidDimensions(): void

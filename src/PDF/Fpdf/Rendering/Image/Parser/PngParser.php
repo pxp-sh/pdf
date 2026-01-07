@@ -36,13 +36,11 @@ use function substr;
 use function unpack;
 use PXP\PDF\Fpdf\Exceptions\Exception\FpdfException;
 use PXP\PDF\Fpdf\IO\FileReaderInterface;
-use PXP\PDF\Fpdf\IO\StreamFactoryInterface;
 
-final class PngParser implements ImageParserInterface
+final readonly class PngParser implements ImageParserInterface
 {
     public function __construct(
         private FileReaderInterface $fileReader,
-        private StreamFactoryInterface $streamFactory,
     ) {
     }
 
@@ -92,7 +90,8 @@ final class PngParser implements ImageParserInterface
 
                 if ($hasAlpha) {
                     $data = gzcompress($raw);
-                    $info = [
+
+                    return [
                         'w'     => $w,
                         'h'     => $h,
                         'cs'    => $trueColor ? 'DeviceRGB' : 'DeviceGray',
@@ -102,8 +101,6 @@ final class PngParser implements ImageParserInterface
                         'data'  => $data,
                         'smask' => gzcompress($alphaRaw),
                     ];
-
-                    return $info;
                 }
             }
         }

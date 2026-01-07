@@ -23,10 +23,10 @@ final class PDFXrefTableTest extends TestCase
 {
     public function testAddEntry(): void
     {
-        $xref = new PDFXrefTable;
-        $xref->addEntry(1, 100, 0, false);
+        $pdfXrefTable = new PDFXrefTable;
+        $pdfXrefTable->addEntry(1, 100, 0, false);
 
-        $entry = $xref->getEntry(1);
+        $entry = $pdfXrefTable->getEntry(1);
         $this->assertNotNull($entry);
         $this->assertSame(100, $entry->getOffset());
         $this->assertSame(0, $entry->getGeneration());
@@ -35,43 +35,43 @@ final class PDFXrefTableTest extends TestCase
 
     public function testGetEntryReturnsNullForMissing(): void
     {
-        $xref = new PDFXrefTable;
-        $this->assertNull($xref->getEntry(999));
+        $pdfXrefTable = new PDFXrefTable;
+        $this->assertNull($pdfXrefTable->getEntry(999));
     }
 
     public function testUpdateOffset(): void
     {
-        $xref = new PDFXrefTable;
-        $xref->addEntry(1, 100);
-        $xref->updateOffset(1, 200);
+        $pdfXrefTable = new PDFXrefTable;
+        $pdfXrefTable->addEntry(1, 100);
+        $pdfXrefTable->updateOffset(1, 200);
 
-        $entry = $xref->getEntry(1);
+        $entry = $pdfXrefTable->getEntry(1);
         $this->assertNotNull($entry);
         $this->assertSame(200, $entry->getOffset());
     }
 
     public function testRebuild(): void
     {
-        $xref = new PDFXrefTable;
-        $xref->rebuild([
+        $pdfXrefTable = new PDFXrefTable;
+        $pdfXrefTable->rebuild([
             1 => 100,
             2 => 200,
             3 => 300,
         ]);
 
-        $this->assertNotNull($xref->getEntry(1));
-        $this->assertNotNull($xref->getEntry(2));
-        $this->assertNotNull($xref->getEntry(3));
-        $this->assertSame(100, $xref->getEntry(1)->getOffset());
+        $this->assertNotNull($pdfXrefTable->getEntry(1));
+        $this->assertNotNull($pdfXrefTable->getEntry(2));
+        $this->assertNotNull($pdfXrefTable->getEntry(3));
+        $this->assertSame(100, $pdfXrefTable->getEntry(1)->getOffset());
     }
 
     public function testSerialize(): void
     {
-        $xref = new PDFXrefTable;
-        $xref->addEntry(1, 100);
-        $xref->addEntry(2, 200);
+        $pdfXrefTable = new PDFXrefTable;
+        $pdfXrefTable->addEntry(1, 100);
+        $pdfXrefTable->addEntry(2, 200);
 
-        $result = $xref->serialize();
+        $result = $pdfXrefTable->serialize();
         $this->assertStringStartsWith('xref', $result);
         $this->assertStringContainsString('100', $result);
         $this->assertStringContainsString('200', $result);
@@ -79,22 +79,22 @@ final class PDFXrefTableTest extends TestCase
 
     public function testParseFromString(): void
     {
-        $xrefContent = "0 3\n0000000000 65535 f \n0000000100 00000 n \n0000000200 00000 n \n";
-        $xref        = new PDFXrefTable;
-        $xref->parseFromString($xrefContent);
+        $xrefContent  = "0 3\n0000000000 65535 f \n0000000100 00000 n \n0000000200 00000 n \n";
+        $pdfXrefTable = new PDFXrefTable;
+        $pdfXrefTable->parseFromString($xrefContent);
 
-        $entry1 = $xref->getEntry(1);
+        $entry1 = $pdfXrefTable->getEntry(1);
         $this->assertNotNull($entry1);
         $this->assertSame(100, $entry1->getOffset());
         $this->assertSame(0, $entry1->getGeneration());
         $this->assertFalse($entry1->isFree());
 
-        $entry2 = $xref->getEntry(2);
+        $entry2 = $pdfXrefTable->getEntry(2);
         $this->assertNotNull($entry2);
         $this->assertSame(200, $entry2->getOffset());
 
         // Entry 0 should be free
-        $entry0 = $xref->getEntry(0);
+        $entry0 = $pdfXrefTable->getEntry(0);
         $this->assertNotNull($entry0);
         $this->assertTrue($entry0->isFree());
     }
@@ -122,36 +122,36 @@ final class PDFXrefTableTest extends TestCase
 
     public function testParseFromStringWithMultipleSubsections(): void
     {
-        $xrefContent = "0 2\n0000000100 00000 n \n0000000200 00000 n \n5 2\n0000000300 00000 n \n0000000400 00000 n \n";
-        $xref        = new PDFXrefTable;
-        $xref->parseFromString($xrefContent);
+        $xrefContent  = "0 2\n0000000100 00000 n \n0000000200 00000 n \n5 2\n0000000300 00000 n \n0000000400 00000 n \n";
+        $pdfXrefTable = new PDFXrefTable;
+        $pdfXrefTable->parseFromString($xrefContent);
 
-        $this->assertNotNull($xref->getEntry(0));
-        $this->assertSame(100, $xref->getEntry(0)->getOffset());
-        $this->assertNotNull($xref->getEntry(1));
-        $this->assertSame(200, $xref->getEntry(1)->getOffset());
-        $this->assertNotNull($xref->getEntry(5));
-        $this->assertSame(300, $xref->getEntry(5)->getOffset());
-        $this->assertNotNull($xref->getEntry(6));
-        $this->assertSame(400, $xref->getEntry(6)->getOffset());
+        $this->assertNotNull($pdfXrefTable->getEntry(0));
+        $this->assertSame(100, $pdfXrefTable->getEntry(0)->getOffset());
+        $this->assertNotNull($pdfXrefTable->getEntry(1));
+        $this->assertSame(200, $pdfXrefTable->getEntry(1)->getOffset());
+        $this->assertNotNull($pdfXrefTable->getEntry(5));
+        $this->assertSame(300, $pdfXrefTable->getEntry(5)->getOffset());
+        $this->assertNotNull($pdfXrefTable->getEntry(6));
+        $this->assertSame(400, $pdfXrefTable->getEntry(6)->getOffset());
     }
 
     public function testParseFromStringWithFreeEntries(): void
     {
-        $xrefContent = "0 3\n0000000000 65535 f \n0000000100 00000 n \n0000000000 65535 f \n";
-        $xref        = new PDFXrefTable;
-        $xref->parseFromString($xrefContent);
+        $xrefContent  = "0 3\n0000000000 65535 f \n0000000100 00000 n \n0000000000 65535 f \n";
+        $pdfXrefTable = new PDFXrefTable;
+        $pdfXrefTable->parseFromString($xrefContent);
 
-        $entry0 = $xref->getEntry(0);
+        $entry0 = $pdfXrefTable->getEntry(0);
         $this->assertNotNull($entry0);
         $this->assertTrue($entry0->isFree());
 
-        $entry1 = $xref->getEntry(1);
+        $entry1 = $pdfXrefTable->getEntry(1);
         $this->assertNotNull($entry1);
         $this->assertFalse($entry1->isFree());
         $this->assertSame(100, $entry1->getOffset());
 
-        $entry2 = $xref->getEntry(2);
+        $entry2 = $pdfXrefTable->getEntry(2);
         $this->assertNotNull($entry2);
         $this->assertTrue($entry2->isFree());
     }

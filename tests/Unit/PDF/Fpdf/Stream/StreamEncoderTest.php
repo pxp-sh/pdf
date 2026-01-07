@@ -23,11 +23,11 @@ use Test\TestCase;
  */
 final class StreamEncoderTest extends TestCase
 {
-    private StreamEncoder $encoder;
+    private StreamEncoder $streamEncoder;
 
     protected function setUp(): void
     {
-        $this->encoder = new StreamEncoder;
+        $this->streamEncoder = new StreamEncoder;
     }
 
     public function testEncodeFlate(): void
@@ -37,7 +37,7 @@ final class StreamEncoderTest extends TestCase
         }
 
         $data    = 'test data';
-        $encoded = $this->encoder->encodeFlate($data);
+        $encoded = $this->streamEncoder->encodeFlate($data);
 
         $this->assertNotSame($data, $encoded);
         $this->assertIsString($encoded);
@@ -50,7 +50,7 @@ final class StreamEncoderTest extends TestCase
         }
 
         $this->expectException(FpdfException::class);
-        $this->encoder->encodeFlate('test');
+        $this->streamEncoder->encodeFlate('test');
     }
 
     public function testEncodeWithMultipleFilters(): void
@@ -60,7 +60,7 @@ final class StreamEncoderTest extends TestCase
         }
 
         $data    = 'test data';
-        $encoded = $this->encoder->encode($data, ['FlateDecode']);
+        $encoded = $this->streamEncoder->encode($data, ['FlateDecode']);
 
         $this->assertIsString($encoded);
     }
@@ -68,6 +68,6 @@ final class StreamEncoderTest extends TestCase
     public function testEncodeThrowsExceptionForUnknownFilter(): void
     {
         $this->expectException(FpdfException::class);
-        $this->encoder->encode('test', ['UnknownFilter']);
+        $this->streamEncoder->encode('test', ['UnknownFilter']);
     }
 }

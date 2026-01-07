@@ -75,6 +75,9 @@ class BitBuffer
         $this->tryFillBuffer();
     }
 
+    /**
+     * @return array<int, int>
+     */
     public function peak8(): array
     {
         return [
@@ -83,6 +86,9 @@ class BitBuffer
         ];
     }
 
+    /**
+     * @return array<int, int>
+     */
     public function peak16(): array
     {
         return [
@@ -91,6 +97,9 @@ class BitBuffer
         ];
     }
 
+    /**
+     * @return array<int, int>
+     */
     public function peak32(): array
     {
         return [
@@ -111,11 +120,7 @@ class BitBuffer
         }
 
         // String mode
-        if ($this->emptyBits === 32 && $this->sourcePos >= strlen($this->source)) {
-            return false;
-        }
-
-        return true;
+        return !($this->emptyBits === 32 && $this->sourcePos >= strlen($this->source));
     }
 
     public function clear(): void

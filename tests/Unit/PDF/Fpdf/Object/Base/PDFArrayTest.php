@@ -26,39 +26,39 @@ final class PDFArrayTest extends TestCase
 {
     public function testToStringWithEmptyArray(): void
     {
-        $array = new PDFArray;
-        $this->assertSame('[]', (string) $array);
+        $pdfArray = new PDFArray;
+        $this->assertSame('[]', (string) $pdfArray);
     }
 
     public function testAddItems(): void
     {
-        $array = new PDFArray;
-        $array->add(new PDFNumber(1));
-        $array->add(new PDFNumber(2));
-        $array->add(new PDFNumber(3));
+        $pdfArray = new PDFArray;
+        $pdfArray->add(new PDFNumber(1));
+        $pdfArray->add(new PDFNumber(2));
+        $pdfArray->add(new PDFNumber(3));
 
-        $this->assertSame(3, $array->count());
-        $this->assertStringContainsString('1', (string) $array);
-        $this->assertStringContainsString('2', (string) $array);
-        $this->assertStringContainsString('3', (string) $array);
+        $this->assertSame(3, $pdfArray->count());
+        $this->assertStringContainsString('1', (string) $pdfArray);
+        $this->assertStringContainsString('2', (string) $pdfArray);
+        $this->assertStringContainsString('3', (string) $pdfArray);
     }
 
     public function testAddAutoConvertsStrings(): void
     {
-        $array = new PDFArray;
-        $array->add('test');
-        $array->add(42);
+        $pdfArray = new PDFArray;
+        $pdfArray->add('test');
+        $pdfArray->add(42);
 
-        $this->assertSame(2, $array->count());
-        $item = $array->get(0);
+        $this->assertSame(2, $pdfArray->count());
+        $item = $pdfArray->get(0);
         $this->assertInstanceOf(PDFString::class, $item);
     }
 
     public function testGetItem(): void
     {
-        $array = new PDFArray;
-        $array->add(new PDFNumber(42));
-        $item = $array->get(0);
+        $pdfArray = new PDFArray;
+        $pdfArray->add(new PDFNumber(42));
+        $item = $pdfArray->get(0);
 
         $this->assertInstanceOf(PDFNumber::class, $item);
         $this->assertSame(42, $item->getValue());
@@ -66,40 +66,40 @@ final class PDFArrayTest extends TestCase
 
     public function testGetItemReturnsNullForInvalidIndex(): void
     {
-        $array = new PDFArray;
-        $this->assertNull($array->get(999));
+        $pdfArray = new PDFArray;
+        $this->assertNull($pdfArray->get(999));
     }
 
     public function testSetItem(): void
     {
-        $array = new PDFArray;
-        $array->add(new PDFNumber(1));
-        $array->set(0, new PDFNumber(42));
+        $pdfArray = new PDFArray;
+        $pdfArray->add(new PDFNumber(1));
+        $pdfArray->set(0, new PDFNumber(42));
 
-        $item = $array->get(0);
+        $item = $pdfArray->get(0);
         $this->assertInstanceOf(PDFNumber::class, $item);
         $this->assertSame(42, $item->getValue());
     }
 
     public function testConstructorWithItems(): void
     {
-        $array = new PDFArray([
+        $pdfArray = new PDFArray([
             new PDFNumber(1),
             new PDFNumber(2),
             new PDFNumber(3),
         ]);
 
-        $this->assertSame(3, $array->count());
+        $this->assertSame(3, $pdfArray->count());
     }
 
     public function testToStringWithMixedTypes(): void
     {
-        $array = new PDFArray;
-        $array->add(new PDFNumber(1));
-        $array->add(new PDFString('test'));
-        $array->add(new PDFReference(3, 0));
+        $pdfArray = new PDFArray;
+        $pdfArray->add(new PDFNumber(1));
+        $pdfArray->add(new PDFString('test'));
+        $pdfArray->add(new PDFReference(3, 0));
 
-        $result = (string) $array;
+        $result = (string) $pdfArray;
         $this->assertStringStartsWith('[', $result);
         $this->assertStringEndsWith(']', $result);
         $this->assertStringContainsString('1', $result);

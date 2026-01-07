@@ -15,27 +15,8 @@ namespace PXP\PDF\CCITTFax\Model;
 
 class HorizontalCode
 {
-    public int $bitsUsed;
-    public int $mask;
-    public int $value;
-    public int $color;
-    public int $pixels;
-    public bool $terminating;
-
-    public function __construct(
-        int $bitsUsed,
-        int $mask,
-        int $value,
-        int $color,
-        int $pixels,
-        bool $terminating = false
-    ) {
-        $this->bitsUsed    = $bitsUsed;
-        $this->mask        = $mask;
-        $this->value       = $value;
-        $this->color       = $color;
-        $this->pixels      = $pixels;
-        $this->terminating = $terminating;
+    public function __construct(public int $bitsUsed, public int $mask, public int $value, public int $color, public int $pixels, public bool $terminating = false)
+    {
     }
 
     public function matches(int $data): bool

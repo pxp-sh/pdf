@@ -91,35 +91,35 @@ final class XObjectMappingRegressionTest extends TestCase
         }
 
         // Parse original to get expected XObject data
-        $parser      = new PDFParser(self::getLogger(), self::getCache());
-        $originalDoc = $parser->parseDocumentFromFile($sourcePath, $this->fileIO);
+        $pdfParser   = new PDFParser(self::getLogger(), self::getCache());
+        $pdfDocument = $pdfParser->parseDocumentFromFile($sourcePath, $this->fileIO);
 
-        $originalPage = $originalDoc->getPage(1);
+        $originalPage = $pdfDocument->getPage(1);
         $this->assertNotNull($originalPage);
 
-        $originalPageDict = $originalPage->getValue();
-        $this->assertInstanceOf(PDFDictionary::class, $originalPageDict);
+        $pdfObject = $originalPage->getValue();
+        $this->assertInstanceOf(PDFDictionary::class, $pdfObject);
 
         // Extract original XObject data for comparison
-        $originalResources = $originalPageDict->getEntry('/Resources');
+        $originalResources = $pdfObject->getEntry('/Resources');
 
         if ($originalResources instanceof PDFReference) {
-            $resourcesNode     = $originalDoc->getObject($originalResources->getObjectNumber());
+            $resourcesNode     = $pdfDocument->getObject($originalResources->getObjectNumber());
             $originalResources = $resourcesNode->getValue();
         }
 
         $originalXObjects = $originalResources->getEntry('/XObject');
 
         if ($originalXObjects instanceof PDFReference) {
-            $xobjNode         = $originalDoc->getObject($originalXObjects->getObjectNumber());
+            $xobjNode         = $pdfDocument->getObject($originalXObjects->getObjectNumber());
             $originalXObjects = $xobjNode->getValue();
         }
 
         // Collect expected XObject hashes and properties
         $expectedXObjects = [];
 
-        foreach ($originalXObjects->getAllEntries() as $name => $ref) {
-            $xobjNode = $originalDoc->getObject($ref->getObjectNumber());
+        foreach ($originalXObjects->getAllEntries() as $name => $allEntry) {
+            $xobjNode = $pdfDocument->getObject($allEntry->getObjectNumber());
             $xobj     = $xobjNode->getValue();
 
             $this->assertInstanceOf(PDFStream::class, $xobj, "Original XObject {$name} should be a Stream");
@@ -142,13 +142,13 @@ final class XObjectMappingRegressionTest extends TestCase
 
         // Merge the PDF
         $mergedPath = $this->tempDir . '/merged_regression.pdf';
-        $merger     = new PDFMerger($this->fileIO, self::getLogger(), self::getEventDispatcher(), self::getCache());
-        $merger->mergeIncremental([$sourcePath], $mergedPath);
+        $pdfMerger  = new PDFMerger($this->fileIO, self::getLogger(), self::getEventDispatcher(), self::getCache());
+        $pdfMerger->mergeIncremental([$sourcePath], $mergedPath);
 
         $this->assertFileExists($mergedPath);
 
         // Parse merged PDF and verify XObjects
-        $mergedDoc  = $parser->parseDocumentFromFile($mergedPath, $this->fileIO);
+        $mergedDoc  = $pdfParser->parseDocumentFromFile($mergedPath, $this->fileIO);
         $mergedPage = $mergedDoc->getPage(1);
         $this->assertNotNull($mergedPage);
 
@@ -275,32 +275,32 @@ final class XObjectMappingRegressionTest extends TestCase
 
         // Merge the PDF
         $mergedPath = $this->tempDir . '/merged_extgstate_test.pdf';
-        $merger     = new PDFMerger($this->fileIO, self::getLogger(), self::getEventDispatcher(), self::getCache());
-        $merger->mergeIncremental([$sourcePath], $mergedPath);
+        $pdfMerger  = new PDFMerger($this->fileIO, self::getLogger(), self::getEventDispatcher(), self::getCache());
+        $pdfMerger->mergeIncremental([$sourcePath], $mergedPath);
 
         // Parse merged PDF
-        $parser         = new PDFParser(self::getLogger(), self::getCache());
-        $mergedDoc      = $parser->parseDocumentFromFile($mergedPath, $this->fileIO);
-        $mergedPage     = $mergedDoc->getPage(1);
-        $mergedPageDict = $mergedPage->getValue();
+        $pdfParser   = new PDFParser(self::getLogger(), self::getCache());
+        $pdfDocument = $pdfParser->parseDocumentFromFile($mergedPath, $this->fileIO);
+        $mergedPage  = $pdfDocument->getPage(1);
+        $pdfObject   = $mergedPage->getValue();
 
-        $mergedResources = $mergedPageDict->getEntry('/Resources');
+        $mergedResources = $pdfObject->getEntry('/Resources');
 
         if ($mergedResources instanceof PDFReference) {
-            $resourcesNode   = $mergedDoc->getObject($mergedResources->getObjectNumber());
+            $resourcesNode   = $pdfDocument->getObject($mergedResources->getObjectNumber());
             $mergedResources = $resourcesNode->getValue();
         }
 
         $mergedXObjects = $mergedResources->getEntry('/XObject');
 
         if ($mergedXObjects instanceof PDFReference) {
-            $xobjNode       = $mergedDoc->getObject($mergedXObjects->getObjectNumber());
+            $xobjNode       = $pdfDocument->getObject($mergedXObjects->getObjectNumber());
             $mergedXObjects = $xobjNode->getValue();
         }
 
         // Check each XObject reference
-        foreach ($mergedXObjects->getAllEntries() as $name => $ref) {
-            $xobjNode = $mergedDoc->getObject($ref->getObjectNumber());
+        foreach ($mergedXObjects->getAllEntries() as $name => $allEntry) {
+            $xobjNode = $pdfDocument->getObject($allEntry->getObjectNumber());
             $xobj     = $xobjNode->getValue();
 
             if ($xobj instanceof PDFDictionary && !($xobj instanceof PDFStream)) {
@@ -311,7 +311,7 @@ final class XObjectMappingRegressionTest extends TestCase
                     $this->assertNotEquals(
                         'ExtGState',
                         $type->getName(),
-                        "XObject {$name} incorrectly points to ExtGState object (object {$ref->getObjectNumber()}). " .
+                        "XObject {$name} incorrectly points to ExtGState object (object {$allEntry->getObjectNumber()}). " .
                         'This is the core bug - XObject references are mapped to wrong object numbers.',
                     );
                 }

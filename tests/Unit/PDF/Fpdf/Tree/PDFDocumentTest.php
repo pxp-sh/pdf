@@ -26,79 +26,79 @@ final class PDFDocumentTest extends TestCase
 {
     public function testConstructorSetsDefaultVersion(): void
     {
-        $doc = new PDFDocument;
-        $this->assertSame('1.3', $doc->getHeader()->getVersion());
+        $pdfDocument = new PDFDocument;
+        $this->assertSame('1.3', $pdfDocument->getHeader()->getVersion());
     }
 
     public function testConstructorWithCustomVersion(): void
     {
-        $doc = new PDFDocument('1.4');
-        $this->assertSame('1.4', $doc->getHeader()->getVersion());
+        $pdfDocument = new PDFDocument('1.4');
+        $this->assertSame('1.4', $pdfDocument->getHeader()->getVersion());
     }
 
     public function testAddObject(): void
     {
-        $doc  = new PDFDocument;
-        $dict = new PDFDictionary;
-        $node = $doc->addObject($dict);
+        $pdfDocument   = new PDFDocument;
+        $pdfDictionary = new PDFDictionary;
+        $pdfObjectNode = $pdfDocument->addObject($pdfDictionary);
 
-        $this->assertSame(1, $node->getObjectNumber());
-        $this->assertSame($dict, $node->getValue());
+        $this->assertSame(1, $pdfObjectNode->getObjectNumber());
+        $this->assertSame($pdfDictionary, $pdfObjectNode->getValue());
     }
 
     public function testAddObjectWithCustomNumber(): void
     {
-        $doc  = new PDFDocument;
-        $dict = new PDFDictionary;
-        $node = $doc->addObject($dict, 5);
+        $pdfDocument   = new PDFDocument;
+        $pdfDictionary = new PDFDictionary;
+        $pdfObjectNode = $pdfDocument->addObject($pdfDictionary, 5);
 
-        $this->assertSame(5, $node->getObjectNumber());
+        $this->assertSame(5, $pdfObjectNode->getObjectNumber());
     }
 
     public function testGetObject(): void
     {
-        $doc  = new PDFDocument;
-        $dict = new PDFDictionary;
-        $node = $doc->addObject($dict, 3);
+        $pdfDocument   = new PDFDocument;
+        $pdfDictionary = new PDFDictionary;
+        $pdfObjectNode = $pdfDocument->addObject($pdfDictionary, 3);
 
-        $retrieved = $doc->getObject(3);
-        $this->assertSame($node, $retrieved);
+        $retrieved = $pdfDocument->getObject(3);
+        $this->assertSame($pdfObjectNode, $retrieved);
     }
 
     public function testGetObjectReturnsNullForMissing(): void
     {
-        $doc = new PDFDocument;
-        $this->assertNull($doc->getObject(999));
+        $pdfDocument = new PDFDocument;
+        $this->assertNull($pdfDocument->getObject(999));
     }
 
     public function testRemoveObject(): void
     {
-        $doc  = new PDFDocument;
-        $dict = new PDFDictionary;
-        $node = $doc->addObject($dict, 3);
+        $pdfDocument   = new PDFDocument;
+        $pdfDictionary = new PDFDictionary;
+        $pdfDocument->addObject($pdfDictionary, 3);
 
-        $doc->removeObject(3);
-        $this->assertNull($doc->getObject(3));
+        $pdfDocument->removeObject(3);
+        $this->assertNull($pdfDocument->getObject(3));
     }
 
     public function testSetRoot(): void
     {
-        $doc         = new PDFDocument;
-        $catalog     = new CatalogDictionary;
-        $catalogNode = $doc->addObject($catalog, 5);
+        $pdfDocument       = new PDFDocument;
+        $catalogDictionary = new CatalogDictionary;
+        $pdfObjectNode     = $pdfDocument->addObject($catalogDictionary, 5);
 
-        $doc->setRoot($catalogNode);
-        $this->assertSame($catalogNode, $doc->getRoot());
+        $pdfDocument->setRoot($pdfObjectNode);
+        $this->assertSame($pdfObjectNode, $pdfDocument->getRoot());
     }
 
     public function testSerializeCreatesValidPDF(): void
     {
-        $doc         = new PDFDocument;
-        $catalog     = new CatalogDictionary;
-        $catalogNode = $doc->addObject($catalog, 5);
-        $doc->setRoot($catalogNode);
+        $pdfDocument       = new PDFDocument;
+        $catalogDictionary = new CatalogDictionary;
+        $pdfObjectNode     = $pdfDocument->addObject($catalogDictionary, 5);
+        $pdfDocument->setRoot($pdfObjectNode);
 
-        $pdf = $doc->serialize();
+        $pdf = $pdfDocument->serialize();
         $this->assertStringStartsWith('%PDF-1.3', $pdf);
         $this->assertStringContainsString('xref', $pdf);
         $this->assertStringContainsString('trailer', $pdf);
@@ -113,13 +113,13 @@ final class PDFDocumentTest extends TestCase
 
     public function testGetPagesReturnsNullWhenNoPages(): void
     {
-        $doc = new PDFDocument;
-        $this->assertNull($doc->getPages());
+        $pdfDocument = new PDFDocument;
+        $this->assertNull($pdfDocument->getPages());
     }
 
     public function testGetPageReturnsNullForInvalidPageNumber(): void
     {
-        $doc = new PDFDocument;
-        $this->assertNull($doc->getPage(1));
+        $pdfDocument = new PDFDocument;
+        $this->assertNull($pdfDocument->getPage(1));
     }
 }

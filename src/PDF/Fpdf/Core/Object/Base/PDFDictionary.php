@@ -49,11 +49,7 @@ class PDFDictionary extends PDFObject
         foreach ($this->entries as $key => $value) {
             $keyObj = new PDFName($key);
 
-            if ($value instanceof PDFObjectInterface) {
-                $parts[] = (string) $keyObj . ' ' . (string) $value;
-            } else {
-                $parts[] = (string) $keyObj . ' ' . (string) $value;
-            }
+            $parts[] = $keyObj . ' ' . $value;
         }
 
         return '<<' . "\n" . implode("\n", $parts) . "\n" . '>>';

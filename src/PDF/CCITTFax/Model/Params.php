@@ -26,7 +26,7 @@ namespace PXP\PDF\CCITTFax\Model;
  * - BlackIs1: Whether 1 bits represent black pixels
  * - DamagedRowsBeforeError: Error tolerance for damaged rows
  */
-final class Params
+final readonly class Params
 {
     /**
      * Create from PDF DecodeParms dictionary values.
@@ -37,12 +37,12 @@ final class Params
     {
         return new self(
             k: isset($params['K']) ? (int) $params['K'] : -1,
-            endOfLine: isset($params['EndOfLine']) ? (bool) $params['EndOfLine'] : false,
-            encodedByteAlign: isset($params['EncodedByteAlign']) ? (bool) $params['EncodedByteAlign'] : false,
+            endOfLine: isset($params['EndOfLine']) && (bool) $params['EndOfLine'],
+            encodedByteAlign: isset($params['EncodedByteAlign']) && (bool) $params['EncodedByteAlign'],
             columns: isset($params['Columns']) ? (int) $params['Columns'] : 1728,
             rows: isset($params['Rows']) ? (int) $params['Rows'] : 0,
             endOfBlock: isset($params['EndOfBlock']) ? (bool) $params['EndOfBlock'] : true,
-            blackIs1: isset($params['BlackIs1']) ? (bool) $params['BlackIs1'] : false,
+            blackIs1: isset($params['BlackIs1']) && (bool) $params['BlackIs1'],
             damagedRowsBeforeError: isset($params['DamagedRowsBeforeError']) ? (int) $params['DamagedRowsBeforeError'] : 0,
         );
     }
@@ -64,14 +64,14 @@ final class Params
      *                                     0 = no errors tolerated (default)
      */
     public function __construct(
-        private readonly int $k = -1,
-        private readonly bool $endOfLine = false,
-        private readonly bool $encodedByteAlign = false,
-        private readonly int $columns = 1728,
-        private readonly int $rows = 0,
-        private readonly bool $endOfBlock = true,
-        private readonly bool $blackIs1 = false,
-        private readonly int $damagedRowsBeforeError = 0,
+        private int $k = -1,
+        private bool $endOfLine = false,
+        private bool $encodedByteAlign = false,
+        private int $columns = 1728,
+        private int $rows = 0,
+        private bool $endOfBlock = true,
+        private bool $blackIs1 = false,
+        private int $damagedRowsBeforeError = 0,
     ) {
     }
 

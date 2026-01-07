@@ -59,10 +59,10 @@ class FPDF
 {
     public const VERSION = '1.86-pxp-sh';
     private int $state   = 0;
-    private float $k;
-    private PageOrientation $defOrientation;
+    private readonly float $k;
+    private readonly PageOrientation $defOrientation;
     private PageOrientation $curOrientation;
-    private PageSize $defPageSize;
+    private readonly PageSize $defPageSize;
     private PageSize $curPageSize;
     private int $curRotation = 0;
     private float $wPt;
@@ -73,7 +73,7 @@ class FPDF
     private float $tMargin;
     private float $rMargin;
     private float $bMargin;
-    private float $cMargin;
+    private readonly float $cMargin;
     private float $x;
     private float $y;
     private float $lasth = 0;
@@ -95,19 +95,18 @@ class FPDF
     private bool $compress;
     private bool $withAlpha    = false;
     private string $pdfVersion = '1.3';
-    private Buffer $buffer;
-    private PageManager $pageManager;
-    private FontManager $fontManager;
-    private ImageHandler $imageHandler;
-    private LinkManager $linkManager;
-    private Metadata $metadata;
-    private ColorManager $colorManager;
-    private TextRenderer $textRenderer;
-    private OutputHandler $outputHandler;
-    private PDFStructure $pdfStructure;
-    private LoggerInterface $logger;
-    private CacheItemPoolInterface $cache;
-    private EventDispatcherInterface $dispatcher;
+    private readonly Buffer $buffer;
+    private readonly PageManager $pageManager;
+    private readonly FontManager $fontManager;
+    private readonly ImageHandler $imageHandler;
+    private readonly LinkManager $linkManager;
+    private readonly Metadata $metadata;
+    private readonly ColorManager $colorManager;
+    private readonly TextRenderer $textRenderer;
+    private readonly OutputHandler $outputHandler;
+    private readonly PDFStructure $pdfStructure;
+    private readonly CacheItemPoolInterface $cacheItemPool;
+    private readonly EventDispatcherInterface $eventDispatcher;
 
     /**
      * Split a PDF file into individual page files.
@@ -116,8 +115,8 @@ class FPDF
      * @param string                        $outputDir       Directory where split PDFs will be saved
      * @param null|string                   $filenamePattern Pattern for output filenames (use %d for page number, default: "page_%d.pdf")
      * @param null|LoggerInterface          $logger          Optional logger instance
-     * @param null|CacheItemPoolInterface   $cache           Optional cache instance
-     * @param null|EventDispatcherInterface $dispatcher      Optional event dispatcher instance
+     * @param null|CacheItemPoolInterface   $cacheItemPool   Optional cache instance
+     * @param null|EventDispatcherInterface $eventDispatcher Optional event dispatcher instance
      *
      * @throws FpdfException
      *
@@ -128,24 +127,24 @@ class FPDF
         string $outputDir,
         ?string $filenamePattern = null,
         ?LoggerInterface $logger = null,
-        ?CacheItemPoolInterface $cache = null,
-        ?EventDispatcherInterface $dispatcher = null,
+        ?CacheItemPoolInterface $cacheItemPool = null,
+        ?EventDispatcherInterface $eventDispatcher = null,
     ): array {
-        $fileIO   = new FileIO($logger);
-        $splitter = new PDFSplitter($pdfFilePath, $fileIO, $logger, $dispatcher, $cache);
+        $fileIO      = new FileIO($logger);
+        $pdfSplitter = new PDFSplitter($pdfFilePath, $fileIO, $logger, $eventDispatcher, $cacheItemPool);
 
-        return $splitter->splitByPage($outputDir, $filenamePattern);
+        return $pdfSplitter->splitByPage($outputDir, $filenamePattern);
     }
 
     /**
      * Extract a single page from a PDF file.
      *
-     * @param string                        $pdfFilePath Path to the PDF file
-     * @param int                           $pageNumber  Page number to extract (1-based)
-     * @param string                        $outputPath  Path where the single-page PDF will be saved
-     * @param null|LoggerInterface          $logger      Optional logger instance
-     * @param null|CacheItemPoolInterface   $cache       Optional cache instance
-     * @param null|EventDispatcherInterface $dispatcher  Optional event dispatcher instance
+     * @param string                        $pdfFilePath     Path to the PDF file
+     * @param int                           $pageNumber      Page number to extract (1-based)
+     * @param string                        $outputPath      Path where the single-page PDF will be saved
+     * @param null|LoggerInterface          $logger          Optional logger instance
+     * @param null|CacheItemPoolInterface   $cacheItemPool   Optional cache instance
+     * @param null|EventDispatcherInterface $eventDispatcher Optional event dispatcher instance
      *
      * @throws FpdfException
      */
@@ -154,22 +153,22 @@ class FPDF
         int $pageNumber,
         string $outputPath,
         ?LoggerInterface $logger = null,
-        ?CacheItemPoolInterface $cache = null,
-        ?EventDispatcherInterface $dispatcher = null,
+        ?CacheItemPoolInterface $cacheItemPool = null,
+        ?EventDispatcherInterface $eventDispatcher = null,
     ): void {
-        $fileIO   = new FileIO($logger);
-        $splitter = new PDFSplitter($pdfFilePath, $fileIO, $logger, $dispatcher, $cache);
-        $splitter->extractPage($pageNumber, $outputPath);
+        $fileIO      = new FileIO($logger);
+        $pdfSplitter = new PDFSplitter($pdfFilePath, $fileIO, $logger, $eventDispatcher, $cacheItemPool);
+        $pdfSplitter->extractPage($pageNumber, $outputPath);
     }
 
     /**
      * Merge multiple PDF files into a single PDF.
      *
-     * @param array<string>                 $pdfFilePaths Array of paths to PDF files to merge
-     * @param string                        $outputPath   Path where the merged PDF will be saved
-     * @param null|LoggerInterface          $logger       Optional logger instance
-     * @param null|CacheItemPoolInterface   $cache        Optional cache instance
-     * @param null|EventDispatcherInterface $dispatcher   Optional event dispatcher instance
+     * @param array<string>                 $pdfFilePaths    Array of paths to PDF files to merge
+     * @param string                        $outputPath      Path where the merged PDF will be saved
+     * @param null|LoggerInterface          $logger          Optional logger instance
+     * @param null|CacheItemPoolInterface   $cacheItemPool   Optional cache instance
+     * @param null|EventDispatcherInterface $eventDispatcher Optional event dispatcher instance
      *
      * @throws FpdfException
      */
@@ -177,12 +176,12 @@ class FPDF
         array $pdfFilePaths,
         string $outputPath,
         ?LoggerInterface $logger = null,
-        ?CacheItemPoolInterface $cache = null,
-        ?EventDispatcherInterface $dispatcher = null,
+        ?CacheItemPoolInterface $cacheItemPool = null,
+        ?EventDispatcherInterface $eventDispatcher = null,
     ): void {
-        $fileIO = new FileIO($logger);
-        $merger = new PDFMerger($fileIO, $logger, $dispatcher, $cache);
-        $merger->merge($pdfFilePaths, $outputPath);
+        $fileIO    = new FileIO($logger);
+        $pdfMerger = new PDFMerger($fileIO, $logger, $eventDispatcher, $cacheItemPool);
+        $pdfMerger->merge($pdfFilePaths, $outputPath);
     }
 
     public function __construct(
@@ -190,15 +189,14 @@ class FPDF
         string|Unit $unit = 'mm',
         array|PageSize|string $size = 'A4',
         ?FileIOInterface $fileIO = null,
-        ?LoggerInterface $logger = null,
-        ?CacheItemPoolInterface $cache = null,
-        ?EventDispatcherInterface $dispatcher = null,
+        private readonly ?LoggerInterface $logger = new NullLogger,
+        ?CacheItemPoolInterface $cacheItemPool = null,
+        ?EventDispatcherInterface $eventDispatcher = null,
     ) {
-        $this->logger     = $logger ?? new NullLogger;
-        $this->cache      = $cache ?? new NullCache;
-        $this->dispatcher = $dispatcher ?? new NullDispatcher;
+        $this->cacheItemPool   = $cacheItemPool ?? new NullCache;
+        $this->eventDispatcher = $eventDispatcher ?? new NullDispatcher;
 
-        if ($fileIO === null) {
+        if (!$fileIO instanceof FileIOInterface) {
             $fileIO = new FileIO($this->logger);
         }
 
@@ -212,11 +210,11 @@ class FPDF
         $this->textRenderer = new TextRenderer;
         $this->colorManager = new ColorManager;
         $this->linkManager  = new LinkManager;
-        $this->imageHandler = new ImageHandler($fileIO, $fileIO, $this->logger, $this->cache);
-        $this->pageManager  = new PageManager($fileIO, $this->logger, $this->dispatcher);
+        $this->imageHandler = new ImageHandler($fileIO, $fileIO, $this->logger, $this->cacheItemPool);
+        $this->pageManager  = new PageManager($fileIO, $this->logger, $this->eventDispatcher);
 
         $fontPath          = defined('FPDF_FONTPATH') ? FPDF_FONTPATH : dirname(__DIR__) . '/IO/font/';
-        $this->fontManager = new FontManager($fontPath, 500, $this->logger, $this->cache);
+        $this->fontManager = new FontManager($fontPath, 500, $this->logger, $this->cacheItemPool);
 
         if (is_string($unit)) {
             $unit = Unit::fromString($unit);
@@ -283,7 +281,7 @@ class FPDF
             $this->withAlpha,
             $this->pdfVersion,
             $this->logger,
-            $this->dispatcher,
+            $this->eventDispatcher,
         );
 
         $this->outputHandler = new OutputHandler($this->textRenderer, $fileIO);
@@ -334,16 +332,12 @@ class FPDF
     {
         $this->zoomMode = ZoomMode::fromValue($zoom);
 
-        if (is_string($layout)) {
-            $this->layoutMode = LayoutMode::fromString($layout);
-        } else {
-            $this->layoutMode = $layout;
-        }
+        $this->layoutMode = is_string($layout) ? LayoutMode::fromString($layout) : $layout;
     }
 
     public function setCompression(bool $compress): void
     {
-        $this->compress = function_exists('gzcompress') ? $compress : false;
+        $this->compress = function_exists('gzcompress') && $compress;
     }
 
     public function setTitle(string $title, bool $isUTF8 = false): void
@@ -432,8 +426,8 @@ class FPDF
         $lw       = $this->lineWidth;
         $dc       = $this->colorManager->getDrawColor();
         $fc       = $this->colorManager->getFillColor();
-        $tc       = $this->colorManager->getTextColor();
-        $cf       = $this->colorManager->hasColorFlag();
+        $this->colorManager->getTextColor();
+        $this->colorManager->hasColorFlag();
 
         if ($this->pageManager->getCurrentPage() > 0) {
             $this->inFooter = true;
@@ -450,23 +444,23 @@ class FPDF
         $this->lineWidth = $lw;
         $this->out(sprintf('%.2F w', $lw * $this->k));
 
-        if ($family) {
+        if ($family !== '' && $family !== '0') {
             $this->setFont($family, $style, $fontSize);
         }
 
-        $this->colorManager->setDrawColor(0, null, null);
+        $this->colorManager->setDrawColor(0);
 
         if ($dc !== '0 G') {
             $this->out($dc);
         }
 
-        $this->colorManager->setFillColor(0, null, null);
+        $this->colorManager->setFillColor(0);
 
         if ($fc !== '0 g') {
             $this->out($fc);
         }
 
-        $this->colorManager->setTextColor(0, null, null);
+        $this->colorManager->setTextColor(0);
 
         $this->inHeader = true;
         $this->header();
@@ -477,21 +471,21 @@ class FPDF
             $this->out(sprintf('%.2F w', $lw * $this->k));
         }
 
-        if ($family) {
+        if ($family !== '' && $family !== '0') {
             $this->setFont($family, $style, $fontSize);
         }
 
         if ($this->colorManager->getDrawColor() !== $dc) {
-            $this->colorManager->setDrawColor(0, null, null);
+            $this->colorManager->setDrawColor(0);
             $this->out($dc);
         }
 
         if ($this->colorManager->getFillColor() !== $fc) {
-            $this->colorManager->setFillColor(0, null, null);
+            $this->colorManager->setFillColor(0);
             $this->out($fc);
         }
 
-        $this->colorManager->setTextColor(0, null, null);
+        $this->colorManager->setTextColor(0);
     }
 
     public function header(): void
@@ -590,11 +584,7 @@ class FPDF
 
     public function setFont(string $family, string $style = '', float $size = 0): void
     {
-        if ($family === '') {
-            $family = $this->fontFamily;
-        } else {
-            $family = strtolower($family);
-        }
+        $family = $family === '' ? $this->fontFamily : strtolower($family);
 
         $style = strtoupper($style);
 
@@ -832,7 +822,7 @@ class FPDF
             }
         }
 
-        if ($s) {
+        if ($s !== '' && $s !== '0') {
             $this->out($s);
         }
 
@@ -886,15 +876,15 @@ class FPDF
             } else {
                 $b2 = '';
 
-                if (str_contains($border, 'L')) {
+                if (str_contains((string) $border, 'L')) {
                     $b2 .= 'L';
                 }
 
-                if (str_contains($border, 'R')) {
+                if (str_contains((string) $border, 'R')) {
                     $b2 .= 'R';
                 }
 
-                $b = str_contains($border, 'T') ? $b2 . 'T' : $b2;
+                $b = str_contains((string) $border, 'T') ? $b2 . 'T' : $b2;
             }
         }
 
@@ -979,7 +969,7 @@ class FPDF
             $this->out('0 Tw');
         }
 
-        if ($border && str_contains($border, 'B')) {
+        if ($border && str_contains((string) $border, 'B')) {
             $b .= 'B';
         }
 
@@ -1216,8 +1206,8 @@ class FPDF
             $name = 'doc.pdf';
         }
 
-        $destination = OutputDestination::fromString($dest);
-        $result      = $this->outputHandler->output($this->buffer->getContent(), $destination, $name, $isUTF8);
+        $outputDestination = OutputDestination::fromString($dest);
+        $result            = $this->outputHandler->output($this->buffer->getContent(), $outputDestination, $name, $isUTF8);
 
         $this->logger->info('PDF output completed', [
             'destination'   => $dest,
@@ -1299,7 +1289,7 @@ class FPDF
     {
         $this->metadata->setCreationDate(time());
 
-        if (!empty($this->aliasNbPages)) {
+        if ($this->aliasNbPages !== '' && $this->aliasNbPages !== '0') {
             $totalPages = $this->pageManager->getCurrentPage();
 
             for ($i = 1; $i <= $totalPages; $i++) {
@@ -1313,7 +1303,6 @@ class FPDF
             $this->k,
             $this->zoomMode,
             $this->layoutMode,
-            $this->aliasNbPages,
         );
         $this->state = 3;
     }

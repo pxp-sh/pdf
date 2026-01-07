@@ -125,13 +125,13 @@ final class PageDictionary extends PDFDictionary
      */
     public function setAnnots(array $annotObjectNumbers): self
     {
-        $annots = new PDFArray;
+        $pdfArray = new PDFArray;
 
-        foreach ($annotObjectNumbers as $objNum) {
-            $annots->add(new PDFReference($objNum));
+        foreach ($annotObjectNumbers as $annotObjectNumber) {
+            $pdfArray->add(new PDFReference($annotObjectNumber));
         }
 
-        $this->addEntry('/Annots', $annots);
+        $this->addEntry('/Annots', $pdfArray);
 
         return $this;
     }

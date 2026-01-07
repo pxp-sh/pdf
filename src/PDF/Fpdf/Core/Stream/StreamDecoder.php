@@ -45,10 +45,10 @@ final class StreamDecoder
     /**
      * Decode stream data based on filters in the dictionary.
      */
-    public function decode(string $data, PDFDictionary $filters): string
+    public function decode(string $data, PDFDictionary $pdfDictionary): string
     {
-        $filter      = $filters->getEntry('/Filter');
-        $decodeParms = $filters->getEntry('/DecodeParms');
+        $filter      = $pdfDictionary->getEntry('/Filter');
+        $decodeParms = $pdfDictionary->getEntry('/DecodeParms');
 
         // Handle single filter
         if ($filter instanceof PDFName) {
@@ -105,7 +105,7 @@ final class StreamDecoder
      * Decode LZWDecode.
      * Note: PHP doesn't have built-in LZW, this is a placeholder.
      */
-    public function decodeLZW(string $data): string
+    public function decodeLZW(): string
     {
         throw new FpdfException('LZWDecode is not yet implemented');
     }
@@ -151,7 +151,7 @@ final class StreamDecoder
     {
         // Remove whitespace and > marker
         $hex = preg_replace('/\s+/', '', $data);
-        $hex = rtrim($hex, '>');
+        $hex = rtrim((string) $hex, '>');
 
         if (strlen($hex) % 2 !== 0) {
             // Pad with 0 if odd length
@@ -168,7 +168,7 @@ final class StreamDecoder
     {
         // Remove whitespace and ~> marker
         $ascii85 = preg_replace('/\s+/', '', $data);
-        $ascii85 = rtrim($ascii85, '~>');
+        $ascii85 = rtrim((string) $ascii85, '~>');
 
         $result = '';
         $length = strlen($ascii85);

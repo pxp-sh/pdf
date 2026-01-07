@@ -48,19 +48,19 @@ final class GenerateAndParsePdfTest extends TestCase
      */
     public function test_generate_pdf_to_string_and_parse_metadata_and_links(): void
     {
-        $pdf = self::createFPDF();
+        $fpdf = self::createFPDF();
 
-        $pdf->setCompression(false);
+        $fpdf->setCompression(false);
 
         $title = 'Test PDF Title';
         $uri   = 'https://example.test/path?query=1';
 
-        $pdf->setTitle($title);
-        $pdf->addPage();
+        $fpdf->setTitle($title);
+        $fpdf->addPage();
 
-        $pdf->link(10, 10, 20, 10, $uri);
+        $fpdf->link(10, 10, 20, 10, $uri);
 
-        $result = $pdf->output('S', 'test.pdf');
+        $result = $fpdf->output('S', 'test.pdf');
 
         $this->assertStringContainsString('%PDF-', $result);
         $this->assertStringContainsString('/Title (' . $title . ')', $result);
@@ -73,19 +73,19 @@ final class GenerateAndParsePdfTest extends TestCase
      */
     public function test_generate_pdf_file_output_and_parse_file_contents(): void
     {
-        $pdf = self::createFPDF('L');
-        $pdf->setCompression(false);
+        $fpdf = self::createFPDF('L');
+        $fpdf->setCompression(false);
 
         $title = 'File Output Title';
         $uri   = 'https://example.test/file';
 
-        $pdf->setTitle($title);
-        $pdf->addPage();
-        $pdf->link(5, 5, 10, 5, $uri);
+        $fpdf->setTitle($title);
+        $fpdf->addPage();
+        $fpdf->link(5, 5, 10, 5, $uri);
 
         $tmpFile = self::getRootDir() . '/pxp_test_pdf_' . uniqid() . '.pdf';
 
-        $pdf->output('F', $tmpFile);
+        $fpdf->output('F', $tmpFile);
 
         $this->assertFileExists($tmpFile);
         $contents = file_get_contents($tmpFile);
@@ -173,14 +173,12 @@ final class GenerateAndParsePdfTest extends TestCase
      */
     public function test_generate_pdf_with_text(): void
     {
-        $pdf = self::createFPDF();
-        $pdf->setCompression(false);
+        $fpdf = self::createFPDF();
+        $fpdf->setCompression(false);
 
-        $ref = new ReflectionProperty($pdf, 'pdfStructure');
-        $ref->setAccessible(true);
-        $pdfStructure = $ref->getValue($pdf);
+        $ref          = new ReflectionProperty($fpdf, 'pdfStructure');
+        $pdfStructure = $ref->getValue($fpdf);
         $prop         = new ReflectionProperty($pdfStructure, 'compress');
-        $prop->setAccessible(true);
         $prop->setValue($pdfStructure, false);
 
         $tmpDir = self::getRootDir() . '/tmp_pf_' . uniqid();
@@ -188,12 +186,12 @@ final class GenerateAndParsePdfTest extends TestCase
         $fontFile = $tmpDir . '/testfont.php';
         file_put_contents($fontFile, '<?php $name="TestFont"; $type="Core"; $cw=[];');
 
-        $pdf->addFont('TestFont', '', 'testfont.php', $tmpDir);
-        $pdf->setFont('TestFont', '', 12);
-        $pdf->addPage();
-        $pdf->cell(0, 10, 'Hello World');
+        $fpdf->addFont('TestFont', '', 'testfont.php', $tmpDir);
+        $fpdf->setFont('TestFont', '', 12);
+        $fpdf->addPage();
+        $fpdf->cell(0, 10, 'Hello World');
 
-        $result = $pdf->output('S', 'text.pdf');
+        $result = $fpdf->output('S', 'text.pdf');
 
         $this->assertStringContainsString('%PDF-', $result);
         $this->assertStringContainsString('(Hello World)', $result);
@@ -202,11 +200,9 @@ final class GenerateAndParsePdfTest extends TestCase
         $tmpFile = $tmpDir . '/text_output.pdf';
         $pdf2    = self::createFPDF();
         $pdf2->setCompression(false);
-        $ref = new ReflectionProperty($pdf2, 'pdfStructure');
-        $ref->setAccessible(true);
+        $ref           = new ReflectionProperty($pdf2, 'pdfStructure');
         $pdfStructure2 = $ref->getValue($pdf2);
         $prop2         = new ReflectionProperty($pdfStructure2, 'compress');
-        $prop2->setAccessible(true);
         $prop2->setValue($pdfStructure2, false);
         $pdf2->addFont('TestFont', '', 'testfont.php', $tmpDir);
         $pdf2->setFont('TestFont', '', 12);
@@ -217,11 +213,9 @@ final class GenerateAndParsePdfTest extends TestCase
         // Create reference PDF for comparison
         $referencePdf = self::createFPDF();
         $referencePdf->setCompression(false);
-        $ref3 = new ReflectionProperty($referencePdf, 'pdfStructure');
-        $ref3->setAccessible(true);
+        $ref3          = new ReflectionProperty($referencePdf, 'pdfStructure');
         $pdfStructure3 = $ref3->getValue($referencePdf);
         $prop3         = new ReflectionProperty($pdfStructure3, 'compress');
-        $prop3->setAccessible(true);
         $prop3->setValue($pdfStructure3, false);
         $referencePdf->addFont('TestFont', '', 'testfont.php', $tmpDir);
         $referencePdf->setFont('TestFont', '', 12);
@@ -242,8 +236,8 @@ final class GenerateAndParsePdfTest extends TestCase
      */
     public function test_generate_pdf_with_image(): void
     {
-        $pdf = self::createFPDF();
-        $pdf->setCompression(false);
+        $fpdf = self::createFPDF();
+        $fpdf->setCompression(false);
 
         $im = imagecreatetruecolor(1, 1);
         // Use a non-white pixel so the rendered image is visible across renderers
@@ -253,10 +247,10 @@ final class GenerateAndParsePdfTest extends TestCase
         imagepng($im, $imgFile);
         imagedestroy($im);
 
-        $pdf->addPage();
-        $pdf->image($imgFile, 10, 10, 10, 10, 'png');
+        $fpdf->addPage();
+        $fpdf->image($imgFile, 10, 10, 10, 10, 'png');
 
-        $result = $pdf->output('S', 'image.pdf');
+        $result = $fpdf->output('S', 'image.pdf');
 
         $this->assertStringContainsString('%PDF-', $result);
         $this->assertStringContainsString('/XObject <<', $result);
@@ -362,11 +356,11 @@ final class GenerateAndParsePdfTest extends TestCase
      */
     public function test_generate_pdf_with_different_page_sizes_and_layouts(): void
     {
-        $pdf = self::createFPDF('P', 'mm', 'A3');
-        $pdf->setCompression(false);
-        $pdf->addPage();
-        $pdf->setDisplayMode('default', 'continuous');
-        $resultA3 = $pdf->output('S', 'a3.pdf');
+        $fpdf = self::createFPDF('P', 'mm', 'A3');
+        $fpdf->setCompression(false);
+        $fpdf->addPage();
+        $fpdf->setDisplayMode('default', 'continuous');
+        $resultA3 = $fpdf->output('S', 'a3.pdf');
 
         $this->assertStringContainsString('%PDF-', $resultA3);
 
@@ -389,17 +383,15 @@ final class GenerateAndParsePdfTest extends TestCase
      */
     public function test_generate_pdf_with_faker_multiple_pages(): void
     {
-        $faker = Factory::create();
-        $faker->seed(1234);
+        $generator = Factory::create();
+        $generator->seed(1234);
 
-        $pdf = self::createFPDF();
-        $pdf->setCompression(false);
+        $fpdf = self::createFPDF();
+        $fpdf->setCompression(false);
 
-        $ref = new ReflectionProperty($pdf, 'pdfStructure');
-        $ref->setAccessible(true);
-        $pdfStructure = $ref->getValue($pdf);
+        $ref          = new ReflectionProperty($fpdf, 'pdfStructure');
+        $pdfStructure = $ref->getValue($fpdf);
         $prop         = new ReflectionProperty($pdfStructure, 'compress');
-        $prop->setAccessible(true);
         $prop->setValue($pdfStructure, false);
 
         $tmpDir = self::getRootDir() . '/tmp_pf_' . uniqid();
@@ -407,33 +399,33 @@ final class GenerateAndParsePdfTest extends TestCase
         $fontFile = $tmpDir . '/testfont.php';
         file_put_contents($fontFile, '<?php $name="TestFont"; $type="Core"; $cw=[];');
 
-        $pdf->addFont('TestFont', '', 'testfont.php', $tmpDir);
-        $pdf->setFont('TestFont', '', 12);
+        $fpdf->addFont('TestFont', '', 'testfont.php', $tmpDir);
+        $fpdf->setFont('TestFont', '', 12);
 
         $pages  = 5;
         $sample = '';
 
         for ($p = 0; $p < $pages; $p++) {
-            $pdf->addPage();
+            $fpdf->addPage();
 
             for ($i = 0; $i < 3; $i++) {
-                $para = $faker->paragraph(3);
+                $para = $generator->paragraph(3);
 
                 if ($p === 0 && $i === 0) {
                     $sample = $para;
                 }
-                $pdf->multiCell(0, 6, $para);
-                $pdf->ln();
+                $fpdf->multiCell(0, 6, $para);
+                $fpdf->ln();
             }
 
-            $quote = $faker->sentence();
-            $pdf->cell(0, 6, '"' . $quote . '"', 0, 1);
+            $quote = $generator->sentence();
+            $fpdf->cell(0, 6, '"' . $quote . '"', 0, 1);
         }
 
-        $result = $pdf->output('S', 'faker.pdf');
+        $result = $fpdf->output('S', 'faker.pdf');
 
         $fakerOutputFile = $tmpDir . '/faker_output.pdf';
-        $pdf->output('F', $fakerOutputFile);
+        $fpdf->output('F', $fakerOutputFile);
         $this->assertTrue(
             file_exists($fakerOutputFile),
             'Failed to create PDF file for inspection.',
@@ -449,11 +441,9 @@ final class GenerateAndParsePdfTest extends TestCase
         // Create a reference PDF with the same first page content
         $referencePdf = self::createFPDF();
         $referencePdf->setCompression(false);
-        $ref4 = new ReflectionProperty($referencePdf, 'pdfStructure');
-        $ref4->setAccessible(true);
+        $ref4          = new ReflectionProperty($referencePdf, 'pdfStructure');
         $pdfStructure4 = $ref4->getValue($referencePdf);
         $prop4         = new ReflectionProperty($pdfStructure4, 'compress');
-        $prop4->setAccessible(true);
         $prop4->setValue($pdfStructure4, false);
         $referencePdf->addFont('TestFont', '', 'testfont.php', $tmpDir);
         $referencePdf->setFont('TestFont', '', 12);

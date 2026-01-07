@@ -28,8 +28,8 @@ final class PageDictionaryTest extends TestCase
 {
     public function testConstructorSetsType(): void
     {
-        $page = new PageDictionary;
-        $type = $page->getEntry('/Type');
+        $pageDictionary = new PageDictionary;
+        $type           = $pageDictionary->getEntry('/Type');
 
         $this->assertNotNull($type);
         $this->assertStringContainsString('Page', (string) $type);
@@ -37,91 +37,91 @@ final class PageDictionaryTest extends TestCase
 
     public function testSetParentWithObjectNode(): void
     {
-        $doc        = new PDFDocument;
-        $parentDict = new PDFDictionary;
-        $parentNode = $doc->addObject($parentDict, 1);
+        $pdfDocument   = new PDFDocument;
+        $pdfDictionary = new PDFDictionary;
+        $pdfObjectNode = $pdfDocument->addObject($pdfDictionary, 1);
 
-        $page = new PageDictionary;
-        $page->setParent($parentNode);
+        $pageDictionary = new PageDictionary;
+        $pageDictionary->setParent($pdfObjectNode);
 
-        $parent = $page->getEntry('/Parent');
+        $parent = $pageDictionary->getEntry('/Parent');
         $this->assertInstanceOf(PDFReference::class, $parent);
         $this->assertSame(1, $parent->getObjectNumber());
     }
 
     public function testSetParentWithReference(): void
     {
-        $page = new PageDictionary;
-        $page->setParent(new PDFReference(1));
+        $pageDictionary = new PageDictionary;
+        $pageDictionary->setParent(new PDFReference(1));
 
-        $parent = $page->getEntry('/Parent');
+        $parent = $pageDictionary->getEntry('/Parent');
         $this->assertInstanceOf(PDFReference::class, $parent);
     }
 
     public function testSetParentWithInteger(): void
     {
-        $page = new PageDictionary;
-        $page->setParent(1);
+        $pageDictionary = new PageDictionary;
+        $pageDictionary->setParent(1);
 
-        $parent = $page->getEntry('/Parent');
+        $parent = $pageDictionary->getEntry('/Parent');
         $this->assertInstanceOf(PDFReference::class, $parent);
     }
 
     public function testSetMediaBox(): void
     {
-        $page     = new PageDictionary;
-        $mediaBox = new MediaBoxArray([0, 0, 612, 792]);
-        $page->setMediaBox($mediaBox);
+        $pageDictionary = new PageDictionary;
+        $mediaBoxArray  = new MediaBoxArray([0, 0, 612, 792]);
+        $pageDictionary->setMediaBox($mediaBoxArray);
 
-        $mb = $page->getMediaBox();
+        $mb = $pageDictionary->getMediaBox();
         $this->assertInstanceOf(MediaBoxArray::class, $mb);
     }
 
     public function testSetMediaBoxWithArray(): void
     {
-        $page = new PageDictionary;
-        $page->setMediaBox([0, 0, 612, 792]);
+        $pageDictionary = new PageDictionary;
+        $pageDictionary->setMediaBox([0, 0, 612, 792]);
 
-        $mb = $page->getMediaBox();
+        $mb = $pageDictionary->getMediaBox();
         $this->assertInstanceOf(MediaBoxArray::class, $mb);
     }
 
     public function testSetResources(): void
     {
-        $page = new PageDictionary;
-        $page->setResources(2);
+        $pageDictionary = new PageDictionary;
+        $pageDictionary->setResources(2);
 
-        $resources = $page->getEntry('/Resources');
+        $resources = $pageDictionary->getEntry('/Resources');
         $this->assertInstanceOf(PDFReference::class, $resources);
         $this->assertSame(2, $resources->getObjectNumber());
     }
 
     public function testSetContents(): void
     {
-        $page = new PageDictionary;
-        $page->setContents(4);
+        $pageDictionary = new PageDictionary;
+        $pageDictionary->setContents(4);
 
-        $contents = $page->getEntry('/Contents');
+        $contents = $pageDictionary->getEntry('/Contents');
         $this->assertInstanceOf(PDFReference::class, $contents);
         $this->assertSame(4, $contents->getObjectNumber());
     }
 
     public function testSetRotate(): void
     {
-        $page = new PageDictionary;
-        $page->setRotate(90);
+        $pageDictionary = new PageDictionary;
+        $pageDictionary->setRotate(90);
 
-        $rotate = $page->getEntry('/Rotate');
+        $rotate = $pageDictionary->getEntry('/Rotate');
         $this->assertNotNull($rotate);
         $this->assertSame(90, $rotate->getValue());
     }
 
     public function testSetAnnots(): void
     {
-        $page = new PageDictionary;
-        $page->setAnnots([5, 6, 7]);
+        $pageDictionary = new PageDictionary;
+        $pageDictionary->setAnnots([5, 6, 7]);
 
-        $annots = $page->getEntry('/Annots');
+        $annots = $pageDictionary->getEntry('/Annots');
         $this->assertInstanceOf(PDFArray::class, $annots);
     }
 }

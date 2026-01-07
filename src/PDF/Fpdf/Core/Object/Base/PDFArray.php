@@ -47,11 +47,7 @@ class PDFArray extends PDFObject
         $parts = [];
 
         foreach ($this->items as $item) {
-            if ($item instanceof PDFObjectInterface) {
-                $parts[] = (string) $item;
-            } else {
-                $parts[] = (string) $item;
-            }
+            $parts[] = (string) $item;
         }
 
         return '[' . implode(' ', $parts) . ']';

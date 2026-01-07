@@ -20,7 +20,6 @@ use function file_exists;
 use function file_get_contents;
 use function fopen;
 use function glob;
-use function is_array;
 use function is_dir;
 use function memory_get_usage;
 use function preg_match;
@@ -65,24 +64,23 @@ final class CCITTFaxIntegrationTest extends TestCase
         $this->assertNotEmpty($binFiles, 'No .bin test files found');
 
         $successCount = 0;
-        $failureCount = 0;
         $decodedFiles = [];
 
-        foreach ($binFiles as $filePath) {
-            $filename = basename($filePath);
+        foreach ($binFiles as $binFile) {
+            $filename = basename($binFile);
 
             // Determine width from filename or use default
             $width = $this->guessWidthFromFilename($filename);
 
             try {
-                $compressedData = file_get_contents($filePath);
+                $compressedData = file_get_contents($binFile);
                 $this->assertNotFalse($compressedData, "Failed to read {$filename}");
 
                 $decoder = new CCITT4Decoder($width, $compressedData, false);
                 $lines   = $decoder->decode();
                 $this->assertIsArray($lines, "Decoded lines should be an array for {$filename}");
 
-                if (is_array($lines) && count($lines) > 0) {
+                if (count($lines) > 0) {
                     $successCount++;
                     $decodedFiles[] = $filename;
                 }
@@ -113,9 +111,9 @@ final class CCITTFaxIntegrationTest extends TestCase
         $memBeforeLegacy = memory_get_usage(true);
         $decoder1        = new CCITT4Decoder(18, $compressedData, false);
         $lines           = $decoder1->decode();
-        $packed          = BitmapPacker::packLines($lines, 18);
-        $memAfterLegacy  = memory_get_usage(true);
-        $legacyMemory    = $memAfterLegacy - $memBeforeLegacy;
+        BitmapPacker::packLines($lines, 18);
+        $memAfterLegacy = memory_get_usage(true);
+        $legacyMemory   = $memAfterLegacy - $memBeforeLegacy;
 
         // Test streaming mode
         $memBeforeStreaming = memory_get_usage(true);
@@ -195,8 +193,8 @@ final class CCITTFaxIntegrationTest extends TestCase
         $this->assertIsResource($outputStream);
 
         // Decode with full streaming
-        $decoder      = new CCITT4Decoder(18, $inputStream, false);
-        $bytesWritten = $decoder->decodeToStream($outputStream);
+        $ccitt4Decoder = new CCITT4Decoder(18, $inputStream, false);
+        $bytesWritten  = $ccitt4Decoder->decodeToStream($outputStream);
 
         $this->assertGreaterThan(0, $bytesWritten);
 
@@ -227,8 +225,8 @@ final class CCITTFaxIntegrationTest extends TestCase
             ['decoder' => 'group4', 'reverseColor' => true],
         ];
 
-        foreach ($parameterSets as $params) {
-            $decoder = new CCITT4Decoder(18, $compressedData, $params['reverseColor']);
+        foreach ($parameterSets as $parameterSet) {
+            $decoder = new CCITT4Decoder(18, $compressedData, $parameterSet['reverseColor']);
             $lines   = $decoder->decode();
 
             $this->assertIsArray($lines);
@@ -251,8 +249,8 @@ final class CCITTFaxIntegrationTest extends TestCase
         $params         = new Params(k: 0, columns: 18, rows: 18);
 
         try {
-            $decoder = new CCITT3Decoder($params, $compressedData);
-            $lines   = $decoder->decode();
+            $ccitt3Decoder = new CCITT3Decoder($params, $compressedData);
+            $lines         = $ccitt3Decoder->decode();
 
             $this->assertIsArray($lines);
         } catch (RuntimeException $e) {
@@ -268,10 +266,10 @@ final class CCITTFaxIntegrationTest extends TestCase
     {
         $invalidData = "\x00\x00\x00\x00";
 
-        $decoder = new CCITT4Decoder(18, $invalidData, false);
+        $ccitt4Decoder = new CCITT4Decoder(18, $invalidData, false);
 
         try {
-            $lines = $decoder->decode();
+            $lines = $ccitt4Decoder->decode();
             $this->assertIsArray($lines);
         } catch (RuntimeException $e) {
             // Expected behavior for invalid data

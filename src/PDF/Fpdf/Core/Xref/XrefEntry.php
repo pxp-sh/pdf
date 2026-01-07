@@ -14,11 +14,12 @@ declare(strict_types=1);
 namespace PXP\PDF\Fpdf\Core\Xref;
 
 use function sprintf;
+use Stringable;
 
 /**
  * Represents a single entry in the cross-reference table.
  */
-final class XrefEntry
+final class XrefEntry implements Stringable
 {
     private ?int $compressedObjectStream = null;
     private ?int $compressedIndex        = null;

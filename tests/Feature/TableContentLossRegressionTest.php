@@ -66,23 +66,23 @@ final class TableContentLossRegressionTest extends TestCase
             'INSTALAÇÕES',
         ];
 
-        foreach ($expectedColumns as $column) {
+        foreach ($expectedColumns as $expectedColumn) {
             // Remove spaces/newlines for comparison
-            $columnNoSpace      = str_replace([' ', "\n"], '', $column);
+            $columnNoSpace      = str_replace([' ', "\n"], '', $expectedColumn);
             $textCorrectNoSpace = str_replace([' ', "\n"], '', $textCorrect);
             $textBuggyNoSpace   = str_replace([' ', "\n"], '', $textBuggy);
 
             $this->assertStringContainsString(
                 $columnNoSpace,
                 $textCorrectNoSpace,
-                "Correct PDF should contain column: {$column}",
+                "Correct PDF should contain column: {$expectedColumn}",
             );
 
             // THIS SHOULD FAIL - the buggy file is missing these columns
             $this->assertStringContainsString(
                 $columnNoSpace,
                 $textBuggyNoSpace,
-                "Merged PDF should contain column: {$column} (BUG: This is missing!)",
+                "Merged PDF should contain column: {$expectedColumn} (BUG: This is missing!)",
             );
         }
     }

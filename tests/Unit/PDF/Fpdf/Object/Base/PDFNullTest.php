@@ -23,7 +23,7 @@ final class PDFNullTest extends TestCase
 {
     public function testToString(): void
     {
-        $null = new PDFNull;
-        $this->assertSame('null', (string) $null);
+        $pdfNull = new PDFNull;
+        $this->assertSame('null', (string) $pdfNull);
     }
 }

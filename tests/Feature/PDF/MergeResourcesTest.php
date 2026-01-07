@@ -45,24 +45,24 @@ final class MergeResourcesTest extends TestCase
         mkdir($tmpDir, 0o777, true);
         $out = $tmpDir . '/merged.pdf';
 
-        $fileIO = new FileIO(self::getLogger());
-        $merger = new PDFMerger($fileIO, self::getLogger(), self::getEventDispatcher(), self::getCache());
-        $merger->mergeIncremental([$srcPdf], $out);
+        $fileIO    = new FileIO(self::getLogger());
+        $pdfMerger = new PDFMerger($fileIO, self::getLogger(), self::getEventDispatcher(), self::getCache());
+        $pdfMerger->mergeIncremental([$srcPdf], $out);
         $this->assertFileExists($out);
 
         // Parse merged PDF and inspect first page resources using full parser
-        $parser = new PDFParser(self::getLogger(), self::getCache());
-        $doc    = $parser->parseDocumentFromFile($out, new FileIO(self::getLogger()));
-        $page   = $doc->getPage(1);
+        $pdfParser   = new PDFParser(self::getLogger(), self::getCache());
+        $pdfDocument = $pdfParser->parseDocumentFromFile($out, new FileIO(self::getLogger()));
+        $page        = $pdfDocument->getPage(1);
         $this->assertNotNull($page, 'Merged PDF should contain at least one page (parsed)');
 
-        $pageDict = $page->getValue();
-        $this->assertInstanceOf(PDFDictionary::class, $pageDict);
+        $pdfObject = $page->getValue();
+        $this->assertInstanceOf(PDFDictionary::class, $pdfObject);
 
-        $resources = $pageDict->getEntry('/Resources');
+        $resources = $pdfObject->getEntry('/Resources');
 
         if ($resources instanceof PDFReference) {
-            $resourcesNode = $doc->getObject($resources->getObjectNumber());
+            $resourcesNode = $pdfDocument->getObject($resources->getObjectNumber());
             $this->assertNotNull($resourcesNode, 'Resources reference must resolve');
             $resources = $resourcesNode->getValue();
         }
@@ -70,11 +70,11 @@ final class MergeResourcesTest extends TestCase
         $this->assertInstanceOf(PDFDictionary::class, $resources, 'Page resources should be a dictionary');
 
         // Extract content stream data
-        $contents = $pageDict->getEntry('/Contents');
+        $contents = $pdfObject->getEntry('/Contents');
         $data     = '';
 
         if ($contents instanceof PDFReference) {
-            $node = $doc->getObject($contents->getObjectNumber());
+            $node = $pdfDocument->getObject($contents->getObjectNumber());
             $this->assertNotNull($node);
             $obj = $node->getValue();
             $this->assertInstanceOf(PDFStream::class, $obj);
@@ -82,7 +82,7 @@ final class MergeResourcesTest extends TestCase
         } elseif ($contents instanceof PDFArray) {
             foreach ($contents->getAll() as $item) {
                 if ($item instanceof PDFReference) {
-                    $node = $doc->getObject($item->getObjectNumber());
+                    $node = $pdfDocument->getObject($item->getObjectNumber());
                     $this->assertNotNull($node);
                     $obj = $node->getValue();
 
@@ -92,12 +92,8 @@ final class MergeResourcesTest extends TestCase
                 }
             }
         }
-
-        // Find resource names used in the content (Tf for fonts, Do for XObjects).
-        // Use stricter patterns to avoid false matches (e.g. marked content tags like /Artifact ... BDC)
-        $matches = [];
-        preg_match_all('/\/([A-Za-z0-9_]+)(?:\s+\d+(?:\.\d+)?){1,3}\s+Tf/', $data, $mTf);
-        preg_match_all('/\/([A-Za-z0-9_]+)\s+Do\b/', $data, $mDo);
+        preg_match_all('/\/(\w+)(?:\s+\d+(?:\.\d+)?){1,3}\s+Tf/', $data, $mTf);
+        preg_match_all('/\/(\w+)\s+Do\b/', $data, $mDo);
 
         $names = array_merge($mTf[1] ?? [], $mDo[1] ?? []);
         $this->assertNotEmpty($names, 'No resource names found in page content');
@@ -107,18 +103,18 @@ final class MergeResourcesTest extends TestCase
         $fontTable = $resources->getEntry('/Font');
         $xobjTable = $resources->getEntry('/XObject');
 
-        foreach ($usedResources as $rname) {
+        foreach ($usedResources as $usedResource) {
             $found = false;
 
-            if ($fontTable instanceof PDFDictionary && $fontTable->hasEntry('/' . $rname)) {
+            if ($fontTable instanceof PDFDictionary && $fontTable->hasEntry('/' . $usedResource)) {
                 $found = true;
             }
 
-            if ($xobjTable instanceof PDFDictionary && $xobjTable->hasEntry('/' . $rname)) {
+            if ($xobjTable instanceof PDFDictionary && $xobjTable->hasEntry('/' . $usedResource)) {
                 $found = true;
             }
 
-            $this->assertTrue($found, sprintf('Resource "%s" used in content must be present in page /Resources', $rname));
+            $this->assertTrue($found, sprintf('Resource "%s" used in content must be present in page /Resources', $usedResource));
         }
 
         // Clean up
@@ -138,9 +134,9 @@ final class MergeResourcesTest extends TestCase
         mkdir($tmpDir, 0o777, true);
         $out = $tmpDir . '/merged.pdf';
 
-        $fileIO = new FileIO(self::getLogger());
-        $merger = new PDFMerger($fileIO, self::getLogger(), self::getEventDispatcher(), self::getCache());
-        $merger->mergeIncremental([$srcPdf], $out);
+        $fileIO    = new FileIO(self::getLogger());
+        $pdfMerger = new PDFMerger($fileIO, self::getLogger(), self::getEventDispatcher(), self::getCache());
+        $pdfMerger->mergeIncremental([$srcPdf], $out);
         $this->assertFileExists($out);
 
         $expected = self::getPdfPageCount($srcPdf);

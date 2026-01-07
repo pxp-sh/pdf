@@ -70,8 +70,8 @@ class ContentStreamValidationTest extends TestCase
         // Extract page 1
         $extractedPath = sys_get_temp_dir() . '/extracted_page_1.pdf';
         $fileIO        = new FileIO($this->logger);
-        $splitter      = new PDFSplitter($this->testPdfPath, $fileIO, $this->logger);
-        $splitter->extractPage(1, $extractedPath);
+        $pdfSplitter   = new PDFSplitter($this->testPdfPath, $fileIO, $this->logger);
+        $pdfSplitter->extractPage(1, $extractedPath);
 
         $this->assertFileExists($extractedPath);
 
@@ -104,23 +104,23 @@ class ContentStreamValidationTest extends TestCase
     public function test_compression_applied_correctly(): void
     {
         // Create test PDF with known content
-        $testPdf = new FPDF;
-        $testPdf->AddPage();
-        $testPdf->SetFont('Arial', '', 12);
+        $fpdf = new FPDF;
+        $fpdf->AddPage();
+        $fpdf->SetFont('Arial', '', 12);
 
         // Add repetitive content (compresses well)
         for ($i = 0; $i < 20; $i++) {
-            $testPdf->Cell(0, 10, str_repeat('Test content line ', 10), 0, 1);
+            $fpdf->Cell(0, 10, str_repeat('Test content line ', 10), 0, 1);
         }
 
         $sourcePath = sys_get_temp_dir() . '/compression_test_source.pdf';
-        $testPdf->Output('F', $sourcePath);
+        $fpdf->Output('F', $sourcePath);
 
         // Extract the page
         $extractedPath = sys_get_temp_dir() . '/compression_test_extracted.pdf';
         $fileIO        = new FileIO($this->logger);
-        $splitter      = new PDFSplitter($sourcePath, $fileIO, $this->logger);
-        $splitter->extractPage(1, $extractedPath);
+        $pdfSplitter   = new PDFSplitter($sourcePath, $fileIO, $this->logger);
+        $pdfSplitter->extractPage(1, $extractedPath);
 
         $sourceSize    = filesize($sourcePath);
         $extractedSize = filesize($extractedPath);
@@ -153,8 +153,8 @@ class ContentStreamValidationTest extends TestCase
 
         $extractedPath = sys_get_temp_dir() . '/multi_stream_test.pdf';
         $fileIO        = new FileIO($this->logger);
-        $splitter      = new PDFSplitter($this->testPdfPath, $fileIO, $this->logger);
-        $splitter->extractPage(1, $extractedPath);
+        $pdfSplitter   = new PDFSplitter($this->testPdfPath, $fileIO, $this->logger);
+        $pdfSplitter->extractPage(1, $extractedPath);
 
         // Verify the extracted PDF is valid
         $this->assertFileExists($extractedPath);
@@ -173,8 +173,8 @@ class ContentStreamValidationTest extends TestCase
     {
         $extractedPath = sys_get_temp_dir() . '/byte_count_test.pdf';
         $fileIO        = new FileIO($this->logger);
-        $splitter      = new PDFSplitter($this->testPdfPath, $fileIO, $this->logger);
-        $splitter->extractPage(1, $extractedPath);
+        $pdfSplitter   = new PDFSplitter($this->testPdfPath, $fileIO, $this->logger);
+        $pdfSplitter->extractPage(1, $extractedPath);
 
         $this->assertFileExists($extractedPath, 'Extracted PDF should be created');
 
@@ -202,27 +202,27 @@ class ContentStreamValidationTest extends TestCase
      */
     private function createTestPdfWithTable(): string
     {
-        $pdf = new FPDF;
-        $pdf->AddPage();
-        $pdf->SetFont('Arial', 'B', 14);
+        $fpdf = new FPDF;
+        $fpdf->AddPage();
+        $fpdf->SetFont('Arial', 'B', 14);
 
         // Create a simple table
-        $pdf->Cell(40, 10, 'Column 1', 1);
-        $pdf->Cell(40, 10, 'Column 2', 1);
-        $pdf->Cell(40, 10, 'Column 3', 1);
-        $pdf->Ln();
+        $fpdf->Cell(40, 10, 'Column 1', 1);
+        $fpdf->Cell(40, 10, 'Column 2', 1);
+        $fpdf->Cell(40, 10, 'Column 3', 1);
+        $fpdf->Ln();
 
-        $pdf->SetFont('Arial', '', 12);
+        $fpdf->SetFont('Arial', '', 12);
 
         for ($i = 1; $i <= 5; $i++) {
-            $pdf->Cell(40, 8, "Row {$i} - A", 1);
-            $pdf->Cell(40, 8, "Row {$i} - B", 1);
-            $pdf->Cell(40, 8, "Row {$i} - C", 1);
-            $pdf->Ln();
+            $fpdf->Cell(40, 8, "Row {$i} - A", 1);
+            $fpdf->Cell(40, 8, "Row {$i} - B", 1);
+            $fpdf->Cell(40, 8, "Row {$i} - C", 1);
+            $fpdf->Ln();
         }
 
         $testFile = sys_get_temp_dir() . '/test_table_' . uniqid() . '.pdf';
-        $pdf->Output('F', $testFile);
+        $fpdf->Output('F', $testFile);
 
         return $testFile;
     }

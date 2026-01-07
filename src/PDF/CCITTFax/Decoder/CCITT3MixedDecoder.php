@@ -22,6 +22,7 @@ use function sprintf;
 use PXP\PDF\CCITTFax\Constants\Codes;
 use PXP\PDF\CCITTFax\Constants\Modes;
 use PXP\PDF\CCITTFax\Interface\StreamDecoderInterface;
+use PXP\PDF\CCITTFax\Model\HorizontalCode;
 use PXP\PDF\CCITTFax\Model\Mode;
 use PXP\PDF\CCITTFax\Model\Params;
 use PXP\PDF\CCITTFax\Util\BitBuffer;
@@ -42,9 +43,9 @@ use RuntimeException;
  */
 final class CCITT3MixedDecoder implements StreamDecoderInterface
 {
-    private BitBuffer $bitBuffer;
-    private Params $params;
-    private Modes $modeTable;
+    private readonly BitBuffer $bitBuffer;
+    private readonly Params $params;
+    private readonly Modes $modes;
 
     /** @var array<int, int> Reference line for 2D decoding */
     private array $referenceLine = [];
@@ -67,7 +68,7 @@ final class CCITT3MixedDecoder implements StreamDecoderInterface
 
         $this->params    = $params;
         $this->bitBuffer = new BitBuffer($data);
-        $this->modeTable = new Modes;
+        $this->modes     = new Modes;
 
         // Initialize reference line (all white)
         $this->referenceLine = array_fill(0, $params->getColumns(), 0);
@@ -324,7 +325,7 @@ final class CCITT3MixedDecoder implements StreamDecoderInterface
         while ($a0 < $this->params->getColumns()) {
             // Get mode code
             [$modeData] = $this->bitBuffer->peak16();
-            $mode       = $this->modeTable->getMode($modeData);
+            $mode       = $this->modes->getMode($modeData);
 
             $this->bitBuffer->flushBits($mode->getBitsUsed());
 
@@ -412,7 +413,7 @@ final class CCITT3MixedDecoder implements StreamDecoderInterface
             [$data] = $this->bitBuffer->peak16();
             $code   = Codes::findCode($data, $isWhite, true);
 
-            if ($code === null) {
+            if (!$code instanceof HorizontalCode) {
                 break;
             }
 
@@ -428,14 +429,13 @@ final class CCITT3MixedDecoder implements StreamDecoderInterface
         [$data] = $this->bitBuffer->peak16();
         $code   = Codes::findCode($data, $isWhite, false);
 
-        if ($code === null) {
+        if (!$code instanceof HorizontalCode) {
             return -1;
         }
 
         $this->bitBuffer->flushBits($code->getBitsUsed());
-        $runLength += $code->getRunLength();
 
-        return $runLength;
+        return $runLength + $code->getRunLength();
     }
 
     /**
@@ -515,10 +515,6 @@ final class CCITT3MixedDecoder implements StreamDecoderInterface
 
         [$saved] = $this->bitBuffer->peak32();
 
-        if ($saved === 0x00000000) {
-            return true;
-        }
-
-        return false;
+        return $saved === 0x00000000;
     }
 }

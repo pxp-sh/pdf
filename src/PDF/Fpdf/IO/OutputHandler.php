@@ -24,7 +24,7 @@ use PXP\PDF\Fpdf\Exceptions\Exception\FpdfException;
 use PXP\PDF\Fpdf\Rendering\Text\TextRenderer;
 use PXP\PDF\Fpdf\Utils\Enum\OutputDestination;
 
-final class OutputHandler
+final readonly class OutputHandler
 {
     public function __construct(
         private TextRenderer $textRenderer,
@@ -32,11 +32,11 @@ final class OutputHandler
     ) {
     }
 
-    public function output(string $buffer, OutputDestination $dest, string $name, bool $isUTF8 = false): string
+    public function output(string $buffer, OutputDestination $outputDestination, string $name, bool $isUTF8 = false): string
     {
         $this->checkOutput();
 
-        return match ($dest) {
+        return match ($outputDestination) {
             OutputDestination::INLINE   => $this->outputInline($buffer, $name, $isUTF8),
             OutputDestination::DOWNLOAD => $this->outputDownload($buffer, $name, $isUTF8),
             OutputDestination::FILE     => $this->outputFile($buffer, $name),
@@ -78,10 +78,8 @@ final class OutputHandler
 
     private function checkOutput(): void
     {
-        if (PHP_SAPI !== 'cli') {
-            if (headers_sent($file, $line)) {
-                throw new FpdfException("Some data has already been output, can't send PDF file (output started at {$file}:{$line})");
-            }
+        if (PHP_SAPI !== 'cli' && headers_sent($file, $line)) {
+            throw new FpdfException("Some data has already been output, can't send PDF file (output started at {$file}:{$line})");
         }
 
         if (ob_get_length()) {

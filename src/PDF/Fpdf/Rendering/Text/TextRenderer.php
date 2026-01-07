@@ -33,6 +33,9 @@ final class TextRenderer
         return $s;
     }
 
+    /**
+     * @param array<string, mixed> $cw
+     */
     public function getStringWidth(string $s, array $cw, float $fontSize): float
     {
         $w = 0;

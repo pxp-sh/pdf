@@ -58,13 +58,13 @@ use Test\TestCase;
  */
 final class LargeFileTextExtractionTest extends TestCase
 {
-    private const TEST_PDF = 'tests/resources/PDF/input/23-grande.pdf';
+    private const string TEST_PDF = 'tests/resources/PDF/input/23-grande.pdf';
     private string $pdfPath;
 
     protected function setUp(): void
     {
         parent::setUp();
-        $this->pdfPath = self::getProjectRoot() . '/' . self::TEST_PDF;
+        $this->pdfPath = $this->getProjectRoot() . '/' . self::TEST_PDF;
 
         if (!file_exists($this->pdfPath)) {
             $this->markTestSkipped('Test PDF not available: ' . $this->pdfPath);
@@ -76,12 +76,12 @@ final class LargeFileTextExtractionTest extends TestCase
      */
     public function test_get_page_count_efficiently(): void
     {
-        $extractor = new Text;
+        $text = new Text;
 
         $startTime   = microtime(true);
         $startMemory = memory_get_usage(true);
 
-        $pageCount = $extractor->getPageCount($this->pdfPath);
+        $pageCount = $text->getPageCount($this->pdfPath);
 
         $duration     = microtime(true) - $startTime;
         $memoryUsed   = memory_get_usage(true) - $startMemory;
@@ -132,14 +132,14 @@ final class LargeFileTextExtractionTest extends TestCase
      */
     public function test_extract_page_range_efficiently(): void
     {
-        $extractor = new Text;
+        $text      = new Text;
         $startPage = 1;
         $endPage   = 5; // First 5 pages
 
         $startTime   = microtime(true);
         $startMemory = memory_get_usage(true);
 
-        $pages = $extractor->extractFromFilePages($this->pdfPath, $startPage, $endPage);
+        $pages = $text->extractFromFilePages($this->pdfPath, $startPage, $endPage);
 
         $duration     = microtime(true) - $startTime;
         $memoryUsed   = memory_get_usage(true) - $startMemory;
@@ -171,14 +171,14 @@ final class LargeFileTextExtractionTest extends TestCase
      */
     public function test_buffer_vs_file_extraction_performance(): void
     {
-        $extractor = new Text;
+        $text = new Text;
 
         // Test 1: Extract from file (single page)
         gc_collect_cycles();
         $fileStartTime   = microtime(true);
         $fileStartMemory = memory_get_usage(true);
 
-        $textFromFile = $extractor->extractFromFilePage($this->pdfPath, 1);
+        $textFromFile = $text->extractFromFilePage($this->pdfPath, 1);
 
         $fileDuration   = microtime(true) - $fileStartTime;
         $fileMemoryUsed = memory_get_usage(true) - $fileStartMemory;
@@ -188,20 +188,20 @@ final class LargeFileTextExtractionTest extends TestCase
         // Create a small PDF with just first 2 pages to use as buffer
         $tmpSmallPdf = self::getRootDir() . '/small_buffer_test_' . uniqid() . '.pdf';
 
-        $splitter = new PDFSplitter($this->pdfPath, self::createFileIO(), self::getLogger());
-        $merger   = new PDFMerger(self::createFileIO(), self::getLogger());
+        $pdfSplitter = new PDFSplitter($this->pdfPath, self::createFileIO(), self::getLogger());
+        $pdfMerger   = new PDFMerger(self::createFileIO(), self::getLogger());
 
         // Extract first 2 pages only (small buffer)
         $tmpPages = [];
 
         for ($i = 1; $i <= 2; $i++) {
             $tmpPage = self::getRootDir() . '/small_buf_pg_' . $i . '_' . uniqid() . '.pdf';
-            $splitter->extractPage($i, $tmpPage);
+            $pdfSplitter->extractPage($i, $tmpPage);
             $tmpPages[] = $tmpPage;
         }
 
         // Merge into small PDF
-        $merger->mergeIncremental($tmpPages, $tmpSmallPdf);
+        $pdfMerger->mergeIncremental($tmpPages, $tmpSmallPdf);
 
         // Cleanup temp pages
         foreach ($tmpPages as $tmpPage) {
@@ -219,7 +219,7 @@ final class LargeFileTextExtractionTest extends TestCase
         $bufferStartTime   = microtime(true);
         $bufferStartMemory = memory_get_usage(true);
 
-        $textFromBuffer = $extractor->extractFromStringPage($smallBuffer, 1);
+        $textFromBuffer = $text->extractFromStringPage($smallBuffer, 1);
 
         $bufferDuration   = microtime(true) - $bufferStartTime;
         $bufferMemoryUsed = memory_get_usage(true) - $bufferStartMemory;
@@ -253,14 +253,14 @@ final class LargeFileTextExtractionTest extends TestCase
      */
     public function test_full_document_extraction_with_memory_monitoring(): void
     {
-        $extractor = new Text;
+        $text = new Text;
 
         gc_collect_cycles();
         $startTime    = microtime(true);
         $startMemory  = memory_get_usage(true);
         $startPeakMem = memory_get_peak_usage(true);
 
-        $fullText = $extractor->extractFromFile($this->pdfPath);
+        $fullText = $text->extractFromFile($this->pdfPath);
 
         $duration       = microtime(true) - $startTime;
         $memoryUsed     = memory_get_usage(true) - $startMemory;
@@ -289,10 +289,10 @@ final class LargeFileTextExtractionTest extends TestCase
      */
     public function test_extract_last_pages_efficiently(): void
     {
-        $extractor = new Text;
+        $text = new Text;
 
         // Get total pages
-        $totalPages = $extractor->getPageCount($this->pdfPath);
+        $totalPages = $text->getPageCount($this->pdfPath);
         $this->assertGreaterThan(5, $totalPages, 'Should have more than 5 pages');
 
         // Extract last 3 pages
@@ -300,7 +300,7 @@ final class LargeFileTextExtractionTest extends TestCase
         $endPage   = $totalPages;
 
         $startTime = microtime(true);
-        $pages     = $extractor->extractFromFilePages($this->pdfPath, $startPage, $endPage);
+        $pages     = $text->extractFromFilePages($this->pdfPath, $startPage, $endPage);
         $duration  = microtime(true) - $startTime;
 
         $this->assertCount(3, $pages, 'Should extract last 3 pages');
@@ -343,20 +343,20 @@ final class LargeFileTextExtractionTest extends TestCase
         // Create a small complete PDF with first 3 pages for buffer testing
         $tmpSmallPdf = self::getRootDir() . '/small_multi_buffer_' . uniqid() . '.pdf';
 
-        $splitter = new PDFSplitter($this->pdfPath, self::createFileIO(), self::getLogger());
-        $merger   = new PDFMerger(self::createFileIO(), self::getLogger());
+        $pdfSplitter = new PDFSplitter($this->pdfPath, self::createFileIO(), self::getLogger());
+        $pdfMerger   = new PDFMerger(self::createFileIO(), self::getLogger());
 
         // Extract first 3 pages only
         $tmpPages = [];
 
         for ($i = 1; $i <= 3; $i++) {
             $tmpPage = self::getRootDir() . '/multi_buf_pg_' . $i . '_' . uniqid() . '.pdf';
-            $splitter->extractPage($i, $tmpPage);
+            $pdfSplitter->extractPage($i, $tmpPage);
             $tmpPages[] = $tmpPage;
         }
 
         // Merge into small PDF
-        $merger->mergeIncremental($tmpPages, $tmpSmallPdf);
+        $pdfMerger->mergeIncremental($tmpPages, $tmpSmallPdf);
 
         // Cleanup temp pages
         foreach ($tmpPages as $tmpPage) {
@@ -370,15 +370,15 @@ final class LargeFileTextExtractionTest extends TestCase
         fclose($handle);
         $bufferSizeMB = strlen($smallBuffer) / 1024 / 1024;
 
-        $extractor = new Text;
+        $text = new Text;
 
         // Extract different page ranges from the same small buffer
         // This simulates efficient reuse of loaded buffer
         $startTime = microtime(true);
 
-        $page1 = $extractor->extractFromStringPage($smallBuffer, 1);
-        $page2 = $extractor->extractFromStringPage($smallBuffer, 2);
-        $page3 = $extractor->extractFromStringPage($smallBuffer, 3);
+        $page1 = $text->extractFromStringPage($smallBuffer, 1);
+        $page2 = $text->extractFromStringPage($smallBuffer, 2);
+        $page3 = $text->extractFromStringPage($smallBuffer, 3);
 
         $duration = microtime(true) - $startTime;
 
@@ -404,7 +404,7 @@ final class LargeFileTextExtractionTest extends TestCase
     /**
      * Get project root directory.
      */
-    private static function getProjectRoot(): string
+    private function getProjectRoot(): string
     {
         return dirname(__DIR__, 3);
     }

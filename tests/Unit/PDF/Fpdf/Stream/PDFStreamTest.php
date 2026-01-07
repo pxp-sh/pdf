@@ -25,19 +25,19 @@ final class PDFStreamTest extends TestCase
 {
     public function testGetDecodedData(): void
     {
-        $dict   = new PDFDictionary;
-        $stream = new PDFStream($dict, 'test data', false);
+        $pdfDictionary = new PDFDictionary;
+        $pdfStream     = new PDFStream($pdfDictionary, 'test data', false);
 
-        $this->assertSame('test data', $stream->getDecodedData());
+        $this->assertSame('test data', $pdfStream->getDecodedData());
     }
 
     public function testSetData(): void
     {
-        $dict   = new PDFDictionary;
-        $stream = new PDFStream($dict, 'old data', false);
-        $stream->setData('new data');
+        $pdfDictionary = new PDFDictionary;
+        $pdfStream     = new PDFStream($pdfDictionary, 'old data', false);
+        $pdfStream->setData('new data');
 
-        $this->assertSame('new data', $stream->getDecodedData());
+        $this->assertSame('new data', $pdfStream->getDecodedData());
     }
 
     public function testAddFilter(): void
@@ -46,31 +46,31 @@ final class PDFStreamTest extends TestCase
             $this->markTestSkipped('zlib extension not available');
         }
 
-        $dict   = new PDFDictionary;
-        $stream = new PDFStream($dict, 'test data', false);
-        $stream->addFilter('FlateDecode');
+        $pdfDictionary = new PDFDictionary;
+        $pdfStream     = new PDFStream($pdfDictionary, 'test data', false);
+        $pdfStream->addFilter('FlateDecode');
 
-        $this->assertTrue($stream->hasFilter('FlateDecode'));
-        $encoded = $stream->getEncodedData();
+        $this->assertTrue($pdfStream->hasFilter('FlateDecode'));
+        $encoded = $pdfStream->getEncodedData();
         $this->assertNotSame('test data', $encoded);
     }
 
     public function testRemoveFilter(): void
     {
-        $dict   = new PDFDictionary;
-        $stream = new PDFStream($dict, 'test data', false);
-        $stream->addFilter('FlateDecode');
-        $stream->removeFilter('FlateDecode');
+        $pdfDictionary = new PDFDictionary;
+        $pdfStream     = new PDFStream($pdfDictionary, 'test data', false);
+        $pdfStream->addFilter('FlateDecode');
+        $pdfStream->removeFilter('FlateDecode');
 
-        $this->assertFalse($stream->hasFilter('FlateDecode'));
+        $this->assertFalse($pdfStream->hasFilter('FlateDecode'));
     }
 
     public function testToStringIncludesStream(): void
     {
-        $dict   = new PDFDictionary;
-        $stream = new PDFStream($dict, 'test data', false);
+        $pdfDictionary = new PDFDictionary;
+        $pdfStream     = new PDFStream($pdfDictionary, 'test data', false);
 
-        $result = (string) $stream;
+        $result = (string) $pdfStream;
         $this->assertStringContainsString('stream', $result);
         $this->assertStringContainsString('endstream', $result);
         $this->assertStringContainsString('test data', $result);
@@ -82,12 +82,12 @@ final class PDFStreamTest extends TestCase
             $this->markTestSkipped('zlib extension not available');
         }
 
-        $dict   = new PDFDictionary;
-        $stream = new PDFStream($dict, 'test data', false);
-        $stream->addFilter('FlateDecode');
+        $pdfDictionary = new PDFDictionary;
+        $pdfStream     = new PDFStream($pdfDictionary, 'test data', false);
+        $pdfStream->addFilter('FlateDecode');
 
-        $encoded1 = $stream->getEncodedData();
-        $encoded2 = $stream->getEncodedData();
+        $encoded1 = $pdfStream->getEncodedData();
+        $encoded2 = $pdfStream->getEncodedData();
 
         $this->assertSame($encoded1, $encoded2);
     }

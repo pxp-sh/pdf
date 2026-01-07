@@ -20,15 +20,15 @@ use RuntimeException;
 
 class Codes
 {
-    private const COLOR_BLACK = 0;
-    private const COLOR_WHITE = 255;
-    private const COLOR_BOTH  = 127;
+    private const int COLOR_BLACK = 0;
+    private const int COLOR_WHITE = 255;
+    private const int COLOR_BOTH  = 127;
 
     /** @var HorizontalCode[] */
-    private array $whiteCodes;
+    private readonly array $whiteCodes;
 
     /** @var HorizontalCode[] */
-    private array $blackCodes;
+    private readonly array $blackCodes;
 
     /**
      * Static helper for finding matches with optional type filtering (for Group 3 1D decoding).
@@ -362,7 +362,7 @@ class Codes
         }
 
         // Sort by bits used (descending)
-        usort($codes, static fn ($a, $b) => $b->bitsUsed <=> $a->bitsUsed);
+        usort($codes, static fn ($a, $b): int => $b->bitsUsed <=> $a->bitsUsed);
 
         return $codes;
     }
@@ -637,7 +637,7 @@ class Codes
         }
 
         // Sort by bits used (descending)
-        usort($codes, static fn ($a, $b) => $b->bitsUsed <=> $a->bitsUsed);
+        usort($codes, static fn ($a, $b): int => $b->bitsUsed <=> $a->bitsUsed);
 
         return $codes;
     }
