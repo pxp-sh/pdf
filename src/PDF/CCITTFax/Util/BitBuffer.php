@@ -11,7 +11,7 @@ declare(strict_types=1);
  * @see https://github.com/pxp-sh/pdf
  *
  */
-namespace PXP\PDF\CCITTFax;
+namespace PXP\PDF\CCITTFax\Util;
 
 use function feof;
 use function fread;
@@ -24,7 +24,8 @@ class BitBuffer
 {
     private int $buffer;
     private int $emptyBits;
-    private string $source = '';
+    /** @var string|false String data or false if invalid */
+    private string|false $source = '';
     private int $sourcePos;
     private int $bitsRead = 0;
 
@@ -45,6 +46,10 @@ class BitBuffer
      */
     public function __construct($source)
     {
+        if (!is_string($source) && !is_resource($source)) {
+            throw new InvalidArgumentException('Source must be a string or a resource');
+        }
+
         $this->buffer    = 0;
         $this->emptyBits = 32;
 

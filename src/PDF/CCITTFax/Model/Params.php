@@ -11,7 +11,7 @@ declare(strict_types=1);
  * @see https://github.com/pxp-sh/pdf
  *
  */
-namespace PXP\PDF\CCITTFax;
+namespace PXP\PDF\CCITTFax\Model;
 
 /**
  * CCITT Fax decoder parameters as defined in PDF 1.7 spec (Table 3.9).
@@ -26,7 +26,7 @@ namespace PXP\PDF\CCITTFax;
  * - BlackIs1: Whether 1 bits represent black pixels
  * - DamagedRowsBeforeError: Error tolerance for damaged rows
  */
-final class CCITTFaxParams
+final class Params
 {
     /**
      * Create from PDF DecodeParms dictionary values.

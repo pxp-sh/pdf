@@ -11,7 +11,7 @@ declare(strict_types=1);
  * @see https://github.com/pxp-sh/pdf
  *
  */
-namespace PXP\PDF\CCITTFax;
+namespace PXP\PDF\CCITTFax\Decoder;
 
 use const PHP_INT_MAX;
 use function array_fill;
@@ -20,6 +20,14 @@ use function is_resource;
 use function min;
 use function sprintf;
 use RuntimeException;
+
+use PXP\PDF\CCITTFax\Util\BitBuffer;
+use PXP\PDF\CCITTFax\Model\Params;
+use PXP\PDF\CCITTFax\Interface\StreamDecoderInterface;
+use PXP\PDF\CCITTFax\Model\Mode;
+use PXP\PDF\CCITTFax\Constants\Modes;
+use PXP\PDF\CCITTFax\Constants\Codes;
+use PXP\PDF\CCITTFax\Util\BitmapPacker;
 
 /**
  * CCITT Group 3 Mixed 1D/2D Fax Decoder (T.4 with 2D extensions, K>0).
@@ -36,8 +44,8 @@ use RuntimeException;
 final class CCITT3MixedDecoder implements StreamDecoderInterface
 {
     private BitBuffer $bitBuffer;
-    private CCITTFaxParams $params;
-    private CCITTFaxModes $modeTable;
+    private Params $params;
+    private Modes $modeTable;
 
     /** @var array<int, int> Reference line for 2D decoding */
     private array $referenceLine = [];
@@ -49,10 +57,10 @@ final class CCITT3MixedDecoder implements StreamDecoderInterface
     private int $linesDecoded = 0;
 
     /**
-     * @param CCITTFaxParams  $params CCITT Fax parameters (K must be > 0)
+     * @param Params  $params CCITT Fax parameters (K must be > 0)
      * @param resource|string $data   Compressed fax data (string or stream resource)
      */
-    public function __construct(CCITTFaxParams $params, $data)
+    public function __construct(Params $params, $data)
     {
         if ($params->getK() <= 0) {
             throw new RuntimeException('Mixed mode requires K > 0');
@@ -60,7 +68,7 @@ final class CCITT3MixedDecoder implements StreamDecoderInterface
 
         $this->params    = $params;
         $this->bitBuffer = new BitBuffer($data);
-        $this->modeTable = new CCITTFaxModes;
+        $this->modeTable = new Modes;
 
         // Initialize reference line (all white)
         $this->referenceLine = array_fill(0, $params->getColumns(), 0);
@@ -403,7 +411,7 @@ final class CCITT3MixedDecoder implements StreamDecoderInterface
         // Decode make-up codes
         while (true) {
             [$data] = $this->bitBuffer->peak16();
-            $code   = CCITTFaxCodes::findCode($data, $isWhite, true);
+            $code   = Codes::findCode($data, $isWhite, true);
 
             if ($code === null) {
                 break;
@@ -419,7 +427,7 @@ final class CCITT3MixedDecoder implements StreamDecoderInterface
 
         // Decode terminating code
         [$data] = $this->bitBuffer->peak16();
-        $code   = CCITTFaxCodes::findCode($data, $isWhite, false);
+        $code   = Codes::findCode($data, $isWhite, false);
 
         if ($code === null) {
             return -1;

@@ -22,8 +22,8 @@ use function memory_get_usage;
 use function str_repeat;
 use PHPUnit\Framework\Attributes\DataProvider;
 use PHPUnit\Framework\TestCase;
-use PXP\PDF\CCITTFax\CCITT3MixedDecoder;
-use PXP\PDF\CCITTFax\CCITTFaxParams;
+use PXP\PDF\CCITTFax\Decoder\CCITT3MixedDecoder;
+use PXP\PDF\CCITTFax\Model\Params;
 use RuntimeException;
 
 /**
@@ -53,7 +53,7 @@ final class CCITT3MixedDecoderTest extends TestCase
 
     public function test_constructor_requires_positive_k(): void
     {
-        $params = new CCITTFaxParams(k: 0);  // K must be > 0 for mixed mode
+        $params = new Params(k: 0);  // K must be > 0 for mixed mode
 
         $this->expectException(RuntimeException::class);
         $this->expectExceptionMessage('Mixed mode requires K > 0');
@@ -63,7 +63,7 @@ final class CCITT3MixedDecoderTest extends TestCase
 
     public function test_decode_with_k_equals_4(): void
     {
-        $params = new CCITTFaxParams(
+        $params = new Params(
             k: 4,  // Max 4 consecutive 2D lines
             columns: 1728,
             rows: 100,
@@ -83,7 +83,7 @@ final class CCITT3MixedDecoderTest extends TestCase
 
     public function test_decode_to_stream(): void
     {
-        $params = new CCITTFaxParams(
+        $params = new Params(
             k: 2,
             columns: 18,
             rows: 18,
@@ -113,7 +113,7 @@ final class CCITT3MixedDecoderTest extends TestCase
 
     public function test_decode_with_eol_and_tag_bits(): void
     {
-        $params = new CCITTFaxParams(
+        $params = new Params(
             k: 3,
             columns: 1728,
             rows: 10,
@@ -134,7 +134,7 @@ final class CCITT3MixedDecoderTest extends TestCase
 
     public function test_decode_alternating_1d_2d_lines(): void
     {
-        $params = new CCITTFaxParams(
+        $params = new Params(
             k: 1,  // Every other line must be 1D
             columns: 100,
             rows: 10,
@@ -155,7 +155,7 @@ final class CCITT3MixedDecoderTest extends TestCase
 
     public function test_decode_with_stream_input(): void
     {
-        $params   = new CCITTFaxParams(k: 2, columns: 18, rows: 18);
+        $params   = new Params(k: 2, columns: 18, rows: 18);
         $filePath = $this->testFilesDir . '/18x18.bin';
 
         if (!file_exists($filePath)) {
@@ -181,7 +181,7 @@ final class CCITT3MixedDecoderTest extends TestCase
 
     public function test_get_width_and_height(): void
     {
-        $params  = new CCITTFaxParams(k: 2, columns: 1728, rows: 2200);
+        $params  = new Params(k: 2, columns: 1728, rows: 2200);
         $decoder = new CCITT3MixedDecoder($params, "\x00");
 
         $this->assertEquals(1728, $decoder->getWidth());
@@ -190,7 +190,7 @@ final class CCITT3MixedDecoderTest extends TestCase
 
     public function test_invalid_stream_throws_exception(): void
     {
-        $params  = new CCITTFaxParams(k: 2, columns: 18);
+        $params  = new Params(k: 2, columns: 18);
         $decoder = new CCITT3MixedDecoder($params, "\x00");
 
         $this->expectException(RuntimeException::class);
@@ -201,7 +201,7 @@ final class CCITT3MixedDecoderTest extends TestCase
 
     public function test_decode_with_blackis1(): void
     {
-        $params = new CCITTFaxParams(
+        $params = new Params(
             k: 2,
             columns: 18,
             rows: 18,
@@ -227,7 +227,7 @@ final class CCITT3MixedDecoderTest extends TestCase
 
     public function test_streaming_memory_efficiency(): void
     {
-        $params   = new CCITTFaxParams(k: 2, columns: 18, rows: 18);
+        $params   = new Params(k: 2, columns: 18, rows: 18);
         $filePath = $this->testFilesDir . '/18x18.bin';
 
         if (!file_exists($filePath)) {
@@ -261,7 +261,7 @@ final class CCITT3MixedDecoderTest extends TestCase
     #[DataProvider('kParameterProvider')]
     public function test_various_k_values(int $k): void
     {
-        $params = new CCITTFaxParams(
+        $params = new Params(
             k: $k,
             columns: 100,
             rows: 50,
@@ -278,7 +278,7 @@ final class CCITT3MixedDecoderTest extends TestCase
     public function test_reference_line_usage(): void
     {
         // Test that 2D lines use reference line correctly
-        $params = new CCITTFaxParams(
+        $params = new Params(
             k: 10,  // Allow many 2D lines
             columns: 50,
             rows: 20,
@@ -304,7 +304,7 @@ final class CCITT3MixedDecoderTest extends TestCase
 
     public function test_decode_with_byte_alignment(): void
     {
-        $params = new CCITTFaxParams(
+        $params = new Params(
             k: 2,
             columns: 1728,
             rows: 10,

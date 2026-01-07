@@ -14,13 +14,13 @@ declare(strict_types=1);
 namespace Tests\Unit\PDF\CCITTFax;
 
 use PHPUnit\Framework\TestCase;
-use PXP\PDF\CCITTFax\CCITTFaxParams;
+use PXP\PDF\CCITTFax\Model\Params;
 
-final class CCITTFaxParamsTest extends TestCase
+final class ParamsTest extends TestCase
 {
     public function test_default_values(): void
     {
-        $params = new CCITTFaxParams;
+        $params = new Params;
 
         $this->assertSame(-1, $params->getK());
         $this->assertFalse($params->getEndOfLine());
@@ -34,7 +34,7 @@ final class CCITTFaxParamsTest extends TestCase
 
     public function test_from_array(): void
     {
-        $params = CCITTFaxParams::fromArray([
+        $params = Params::fromArray([
             'K'                      => 0,
             'EndOfLine'              => true,
             'EncodedByteAlign'       => true,
@@ -57,7 +57,7 @@ final class CCITTFaxParamsTest extends TestCase
 
     public function test_is_group4(): void
     {
-        $params = new CCITTFaxParams(k: -1);
+        $params = new Params(k: -1);
         $this->assertTrue($params->isGroup4());
         $this->assertFalse($params->isPure1D());
         $this->assertFalse($params->isMixed());
@@ -65,7 +65,7 @@ final class CCITTFaxParamsTest extends TestCase
 
     public function test_is_pure_1d(): void
     {
-        $params = new CCITTFaxParams(k: 0);
+        $params = new Params(k: 0);
         $this->assertFalse($params->isGroup4());
         $this->assertTrue($params->isPure1D());
         $this->assertFalse($params->isMixed());
@@ -73,7 +73,7 @@ final class CCITTFaxParamsTest extends TestCase
 
     public function test_is_mixed(): void
     {
-        $params = new CCITTFaxParams(k: 4);
+        $params = new Params(k: 4);
         $this->assertFalse($params->isGroup4());
         $this->assertFalse($params->isPure1D());
         $this->assertTrue($params->isMixed());
@@ -81,13 +81,13 @@ final class CCITTFaxParamsTest extends TestCase
 
     public function test_standard_fax_width(): void
     {
-        $params = new CCITTFaxParams;
+        $params = new Params;
         $this->assertSame(1728, $params->getColumns(), 'Standard fax width should be 1728 pixels');
     }
 
     public function test_partial_array(): void
     {
-        $params = CCITTFaxParams::fromArray([
+        $params = Params::fromArray([
             'K'       => -1,
             'Columns' => 1024,
         ]);

@@ -25,9 +25,9 @@ use function stream_get_contents;
 use function strlen;
 use PHPUnit\Framework\Attributes\DataProvider;
 use PHPUnit\Framework\TestCase;
-use PXP\PDF\CCITTFax\BitmapPacker;
-use PXP\PDF\CCITTFax\CCITT3FaxDecoder;
-use PXP\PDF\CCITTFax\CCITTFaxParams;
+use PXP\PDF\CCITTFax\Util\BitmapPacker;
+use PXP\PDF\CCITTFax\Decoder\CCITT3Decoder;
+use PXP\PDF\CCITTFax\Model\Params;
 use RuntimeException;
 
 /**
@@ -35,7 +35,7 @@ use RuntimeException;
  *
  * Tests Modified Huffman encoding (K=0) with both in-memory and streaming modes.
  */
-final class CCITT3FaxDecoderTest extends TestCase
+final class CCITT3DecoderTest extends TestCase
 {
     private string $testFilesDir;
 
@@ -51,12 +51,12 @@ final class CCITT3FaxDecoderTest extends TestCase
 
     protected function setUp(): void
     {
-        $this->testFilesDir = __DIR__ . '/../../../resources/CCITTFax/testfiles';
+        $this->testFilesDir = __DIR__ . '/../../../../resources/CCITTFax/testfiles';
     }
 
     public function test_decode_with_default_params(): void
     {
-        $params = new CCITTFaxParams(
+        $params = new Params(
             k: 0,  // Group 3 1D
             columns: 18,
             rows: 18,
@@ -69,7 +69,7 @@ final class CCITT3FaxDecoderTest extends TestCase
         }
 
         $compressedData = file_get_contents($filePath);
-        $decoder        = new CCITT3FaxDecoder($params, $compressedData);
+        $decoder        = new CCITT3Decoder($params, $compressedData);
 
         $lines = $decoder->decode();
         $this->assertIsArray($lines);
@@ -78,7 +78,7 @@ final class CCITT3FaxDecoderTest extends TestCase
 
     public function test_decode_to_stream(): void
     {
-        $params = new CCITTFaxParams(
+        $params = new Params(
             k: 0,
             columns: 18,
             rows: 18,
@@ -92,7 +92,7 @@ final class CCITT3FaxDecoderTest extends TestCase
         }
 
         $compressedData = file_get_contents($filePath);
-        $decoder        = new CCITT3FaxDecoder($params, $compressedData);
+        $decoder        = new CCITT3Decoder($params, $compressedData);
 
         $outputStream = fopen('php://temp', 'rb+');
         $bytesWritten = $decoder->decodeToStream($outputStream);
@@ -108,7 +108,7 @@ final class CCITT3FaxDecoderTest extends TestCase
 
     public function test_decode_and_stream_produce_same_output(): void
     {
-        $params = new CCITTFaxParams(
+        $params = new Params(
             k: 0,
             columns: 18,
             rows: 18,
@@ -123,12 +123,12 @@ final class CCITT3FaxDecoderTest extends TestCase
         $compressedData = file_get_contents($filePath);
 
         // Legacy decode
-        $decoder1     = new CCITT3FaxDecoder($params, $compressedData);
+        $decoder1     = new CCITT3Decoder($params, $compressedData);
         $lines        = $decoder1->decode();
         $legacyOutput = BitmapPacker::packLines($lines, $params->getColumns());
 
         // Streaming decode
-        $decoder2 = new CCITT3FaxDecoder($params, $compressedData);
+        $decoder2 = new CCITT3Decoder($params, $compressedData);
         $stream   = fopen('php://temp', 'rb+');
         $decoder2->decodeToStream($stream);
         rewind($stream);
@@ -140,7 +140,7 @@ final class CCITT3FaxDecoderTest extends TestCase
 
     public function test_decode_with_eol_markers(): void
     {
-        $params = new CCITTFaxParams(
+        $params = new Params(
             k: 0,
             columns: 1728,
             rows: 0,
@@ -150,7 +150,7 @@ final class CCITT3FaxDecoderTest extends TestCase
 
         // Create simple test data with EOL markers
         $testData = "\x00\x10" . str_repeat("\xFF", 100);
-        $decoder  = new CCITT3FaxDecoder($params, $testData);
+        $decoder  = new CCITT3Decoder($params, $testData);
 
         try {
             $lines = $decoder->decode();
@@ -163,7 +163,7 @@ final class CCITT3FaxDecoderTest extends TestCase
 
     public function test_decode_with_blackis1(): void
     {
-        $params = new CCITTFaxParams(
+        $params = new Params(
             k: 0,
             columns: 18,
             rows: 18,
@@ -177,7 +177,7 @@ final class CCITT3FaxDecoderTest extends TestCase
         }
 
         $compressedData = file_get_contents($filePath);
-        $decoder        = new CCITT3FaxDecoder($params, $compressedData);
+        $decoder        = new CCITT3Decoder($params, $compressedData);
 
         $lines = $decoder->decode();
         $this->assertIsArray($lines);
@@ -185,7 +185,7 @@ final class CCITT3FaxDecoderTest extends TestCase
 
     public function test_decode_with_stream_input(): void
     {
-        $params   = new CCITTFaxParams(k: 0, columns: 18, rows: 18);
+        $params   = new Params(k: 0, columns: 18, rows: 18);
         $filePath = $this->testFilesDir . '/18x18.bin';
 
         if (!file_exists($filePath)) {
@@ -195,7 +195,7 @@ final class CCITT3FaxDecoderTest extends TestCase
         $inputStream = fopen($filePath, 'rb');
         $this->assertIsResource($inputStream);
 
-        $decoder      = new CCITT3FaxDecoder($params, $inputStream);
+        $decoder      = new CCITT3Decoder($params, $inputStream);
         $outputStream = fopen('php://temp', 'rb+');
 
         $bytesWritten = $decoder->decodeToStream($outputStream);
@@ -207,8 +207,8 @@ final class CCITT3FaxDecoderTest extends TestCase
 
     public function test_get_width_and_height(): void
     {
-        $params  = new CCITTFaxParams(k: 0, columns: 1728, rows: 2200);
-        $decoder = new CCITT3FaxDecoder($params, "\x00");
+        $params  = new Params(k: 0, columns: 1728, rows: 2200);
+        $decoder = new CCITT3Decoder($params, "\x00");
 
         $this->assertEquals(1728, $decoder->getWidth());
         $this->assertEquals(2200, $decoder->getHeight());
@@ -216,8 +216,8 @@ final class CCITT3FaxDecoderTest extends TestCase
 
     public function test_invalid_stream_throws_exception(): void
     {
-        $params  = new CCITTFaxParams(k: 0, columns: 18);
-        $decoder = new CCITT3FaxDecoder($params, "\x00");
+        $params  = new Params(k: 0, columns: 18);
+        $decoder = new CCITT3Decoder($params, "\x00");
 
         $this->expectException(RuntimeException::class);
         $this->expectExceptionMessage('Output must be a valid stream resource');
@@ -227,8 +227,8 @@ final class CCITT3FaxDecoderTest extends TestCase
 
     public function test_decode_empty_data(): void
     {
-        $params  = new CCITTFaxParams(k: 0, columns: 18, rows: 1);
-        $decoder = new CCITT3FaxDecoder($params, "\x00\x00\x00\x00");
+        $params  = new Params(k: 0, columns: 18, rows: 1);
+        $decoder = new CCITT3Decoder($params, "\x00\x00\x00\x00");
 
         $lines = $decoder->decode();
         $this->assertIsArray($lines);
@@ -236,7 +236,7 @@ final class CCITT3FaxDecoderTest extends TestCase
 
     public function test_decode_with_damaged_rows_tolerance(): void
     {
-        $params = new CCITTFaxParams(
+        $params = new Params(
             k: 0,
             columns: 18,
             rows: 5,
@@ -245,7 +245,7 @@ final class CCITT3FaxDecoderTest extends TestCase
         );
 
         $testData = str_repeat("\xFF\xFF", 50);
-        $decoder  = new CCITT3FaxDecoder($params, $testData);
+        $decoder  = new CCITT3Decoder($params, $testData);
 
         try {
             $lines = $decoder->decode();
@@ -258,7 +258,7 @@ final class CCITT3FaxDecoderTest extends TestCase
 
     public function test_streaming_mode_memory_efficiency(): void
     {
-        $params   = new CCITTFaxParams(k: 0, columns: 18, rows: 18);
+        $params   = new Params(k: 0, columns: 18, rows: 18);
         $filePath = $this->testFilesDir . '/18x18.bin';
 
         if (!file_exists($filePath)) {
@@ -268,7 +268,7 @@ final class CCITT3FaxDecoderTest extends TestCase
         $compressedData = file_get_contents($filePath);
         $memBefore      = memory_get_usage(true);
 
-        $decoder = new CCITT3FaxDecoder($params, $compressedData);
+        $decoder = new CCITT3Decoder($params, $compressedData);
         $stream  = fopen('php://temp', 'rb+');
         $decoder->decodeToStream($stream);
         fclose($stream);
@@ -282,7 +282,7 @@ final class CCITT3FaxDecoderTest extends TestCase
 
     public function test_params_validation(): void
     {
-        $params = new CCITTFaxParams(k: 0, columns: 8);
+        $params = new Params(k: 0, columns: 8);
 
         $this->assertTrue($params->isPure1D());
         $this->assertSame(8, $params->getColumns());
@@ -290,10 +290,10 @@ final class CCITT3FaxDecoderTest extends TestCase
 
     public function test_decoder_instantiation(): void
     {
-        $params  = new CCITTFaxParams(k: 0, columns: 8);
-        $decoder = new CCITT3FaxDecoder($params, '');
+        $params  = new Params(k: 0, columns: 8);
+        $decoder = new CCITT3Decoder($params, '');
 
-        $this->assertInstanceOf(CCITT3FaxDecoder::class, $decoder);
+        $this->assertInstanceOf(CCITT3Decoder::class, $decoder);
     }
 
     /**
@@ -307,7 +307,7 @@ final class CCITT3FaxDecoderTest extends TestCase
         bool $endOfLine,
         bool $blackIs1
     ): void {
-        $params = new CCITTFaxParams(
+        $params = new Params(
             k: $k,
             columns: $columns,
             rows: $rows,

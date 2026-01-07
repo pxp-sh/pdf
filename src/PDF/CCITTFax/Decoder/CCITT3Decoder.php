@@ -11,7 +11,7 @@ declare(strict_types=1);
  * @see https://github.com/pxp-sh/pdf
  *
  */
-namespace PXP\PDF\CCITTFax;
+namespace PXP\PDF\CCITTFax\Decoder;
 
 use const PHP_INT_MAX;
 use function array_fill;
@@ -20,6 +20,12 @@ use function is_resource;
 use function min;
 use function sprintf;
 use RuntimeException;
+
+use PXP\PDF\CCITTFax\Util\BitBuffer;
+use PXP\PDF\CCITTFax\Model\Params;
+use PXP\PDF\CCITTFax\Interface\StreamDecoderInterface;
+use PXP\PDF\CCITTFax\Constants\Codes;
+use PXP\PDF\CCITTFax\Util\BitmapPacker;
 
 /**
  * CCITT Group 3 1D Fax Decoder (T.4 encoding, K=0).
@@ -34,10 +40,10 @@ use RuntimeException;
  *
  * @see https://www.itu.int/rec/T-REC-T.4/en ITU-T T.4 Recommendation
  */
-final class CCITT3FaxDecoder implements StreamDecoderInterface
+final class CCITT3Decoder implements StreamDecoderInterface
 {
     private BitBuffer $bitBuffer;
-    private CCITTFaxParams $params;
+    private Params $params;
 
     /** @var array<int, int> Current line being decoded */
     private array $currentLine = [];
@@ -55,10 +61,10 @@ final class CCITT3FaxDecoder implements StreamDecoderInterface
     private int $consecutiveDamagedRows = 0;
 
     /**
-     * @param CCITTFaxParams  $params CCITT Fax parameters
+     * @param Params  $params CCITT Fax parameters
      * @param resource|string $data   Compressed fax data (string or stream resource)
      */
-    public function __construct(CCITTFaxParams $params, $data)
+    public function __construct(Params $params, $data)
     {
         $this->params    = $params;
         $this->bitBuffer = new BitBuffer($data);
@@ -310,7 +316,7 @@ final class CCITT3FaxDecoder implements StreamDecoderInterface
         // Decode make-up codes (multiples of 64)
         while (true) {
             [$data] = $this->bitBuffer->peak16();
-            $code   = CCITTFaxCodes::findCode($data, $isWhite, true); // true = look for make-up codes
+            $code   = Codes::findCode($data, $isWhite, true); // true = look for make-up codes
 
             if ($code === null) {
                 // No make-up code, try terminating code
@@ -329,7 +335,7 @@ final class CCITT3FaxDecoder implements StreamDecoderInterface
 
         // Decode terminating code (0-63)
         [$data] = $this->bitBuffer->peak16();
-        $code   = CCITTFaxCodes::findCode($data, $isWhite, false); // false = look for terminating codes
+        $code   = Codes::findCode($data, $isWhite, false); // false = look for terminating codes
 
         if ($code === null) {
             return -1; // Invalid code

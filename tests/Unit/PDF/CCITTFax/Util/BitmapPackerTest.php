@@ -22,7 +22,7 @@ use function rewind;
 use function stream_get_contents;
 use function strlen;
 use PHPUnit\Framework\TestCase;
-use PXP\PDF\CCITTFax\BitmapPacker;
+use PXP\PDF\CCITTFax\Util\BitmapPacker;
 use RuntimeException;
 
 final class BitmapPackerTest extends TestCase

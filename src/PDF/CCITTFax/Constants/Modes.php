@@ -11,13 +11,15 @@ declare(strict_types=1);
  * @see https://github.com/pxp-sh/pdf
  *
  */
-namespace PXP\PDF\CCITTFax;
+namespace PXP\PDF\CCITTFax\Constants;
 
 use function count;
 use function sprintf;
 use RuntimeException;
+use PXP\PDF\CCITTFax\Model\Mode;
+use PXP\PDF\CCITTFax\Model\ModeCode;
 
-class CCITTFaxModes
+class Modes
 {
     /** @var ModeCode[] */
     private array $modes;

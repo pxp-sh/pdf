@@ -11,7 +11,7 @@ declare(strict_types=1);
  * @see https://github.com/pxp-sh/pdf
  *
  */
-namespace PXP\PDF\CCITTFax;
+namespace PXP\PDF\CCITTFax\Decoder;
 
 use function array_fill;
 use function count;
@@ -19,12 +19,20 @@ use function fwrite;
 use function is_resource;
 use RuntimeException;
 
-class CCITT4FaxDecoder implements StreamDecoderInterface
+use PXP\PDF\CCITTFax\Util\BitBuffer;
+use PXP\PDF\CCITTFax\Interface\StreamDecoderInterface;
+use PXP\PDF\CCITTFax\Constants\Modes;
+use PXP\PDF\CCITTFax\Constants\Codes;
+use PXP\PDF\CCITTFax\Model\Mode;
+use PXP\PDF\CCITTFax\Model\ModeCode;
+use PXP\PDF\CCITTFax\Util\BitmapPacker;
+
+class CCITT4Decoder implements StreamDecoderInterface
 {
     private int $width;
     private BitBuffer $buffer;
-    private CCITTFaxModes $modeCodes;
-    private CCITTFaxCodes $horizontalCodes;
+    private Modes $modeCodes;
+    private Codes $horizontalCodes;
     private bool $reverseColor;
 
     /**
@@ -36,8 +44,8 @@ class CCITT4FaxDecoder implements StreamDecoderInterface
     {
         $this->width           = $width;
         $this->buffer          = new BitBuffer($bytes);
-        $this->modeCodes       = new CCITTFaxModes;
-        $this->horizontalCodes = new CCITTFaxCodes;
+        $this->modeCodes       = new Modes;
+        $this->horizontalCodes = new Codes;
         $this->reverseColor    = $reverseColor;
 
         // Skip any leading fill bits (0x00 bytes) at the beginning

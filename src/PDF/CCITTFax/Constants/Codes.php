@@ -11,13 +11,15 @@ declare(strict_types=1);
  * @see https://github.com/pxp-sh/pdf
  *
  */
-namespace PXP\PDF\CCITTFax;
+namespace PXP\PDF\CCITTFax\Constants;
 
 use function count;
 use function usort;
 use RuntimeException;
 
-class CCITTFaxCodes
+use PXP\PDF\CCITTFax\Model\HorizontalCode;
+
+class Codes
 {
     private const COLOR_BLACK = 0;
     private const COLOR_WHITE = 255;
