@@ -30,9 +30,9 @@ use function round;
 use function strlen;
 use function uniqid;
 use function unlink;
-use PXP\PDF\Fpdf\Extractor\Text;
-use PXP\PDF\Fpdf\Splitter\PDFMerger;
-use PXP\PDF\Fpdf\Splitter\PDFSplitter;
+use PXP\PDF\Fpdf\Features\Extractor\Text;
+use PXP\PDF\Fpdf\Features\Splitter\PDFMerger;
+use PXP\PDF\Fpdf\Features\Splitter\PDFSplitter;
 use Test\TestCase;
 
 /**

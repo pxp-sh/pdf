@@ -21,13 +21,13 @@ use function mkdir;
 use function preg_match_all;
 use function sprintf;
 use function uniqid;
+use PXP\PDF\Fpdf\Core\Object\Base\PDFArray;
+use PXP\PDF\Fpdf\Core\Object\Base\PDFDictionary;
+use PXP\PDF\Fpdf\Core\Object\Base\PDFReference;
+use PXP\PDF\Fpdf\Core\Object\Parser\PDFParser;
+use PXP\PDF\Fpdf\Core\Stream\PDFStream;
+use PXP\PDF\Fpdf\Features\Splitter\PDFMerger;
 use PXP\PDF\Fpdf\IO\FileIO;
-use PXP\PDF\Fpdf\Object\Base\PDFArray;
-use PXP\PDF\Fpdf\Object\Base\PDFDictionary;
-use PXP\PDF\Fpdf\Object\Base\PDFReference;
-use PXP\PDF\Fpdf\Object\Parser\PDFParser;
-use PXP\PDF\Fpdf\Splitter\PDFMerger;
-use PXP\PDF\Fpdf\Stream\PDFStream;
 use Test\TestCase;
 
 final class MergeResourcesTest extends TestCase

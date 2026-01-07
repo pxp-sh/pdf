@@ -25,7 +25,7 @@ use function mkdir;
 use function sprintf;
 use function str_repeat;
 use function uniqid;
-use PXP\PDF\Fpdf\FPDF;
+use PXP\PDF\Fpdf\Core\FPDF;
 use Test\TestCase;
 
 /**

@@ -29,9 +29,9 @@ use function preg_match;
 use function range;
 use function sprintf;
 use function uniqid;
+use PXP\PDF\Fpdf\Features\Splitter\PDFMerger;
+use PXP\PDF\Fpdf\Features\Splitter\PDFSplitter;
 use PXP\PDF\Fpdf\IO\FileIO;
-use PXP\PDF\Fpdf\Splitter\PDFMerger;
-use PXP\PDF\Fpdf\Splitter\PDFSplitter;
 use Test\TestCase;
 
 /**

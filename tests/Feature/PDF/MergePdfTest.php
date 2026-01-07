@@ -28,8 +28,8 @@ use function sprintf;
 use function str_contains;
 use function uniqid;
 use InvalidArgumentException;
+use PXP\PDF\Fpdf\Features\Splitter\PDFMerger;
 use PXP\PDF\Fpdf\IO\FileIO;
-use PXP\PDF\Fpdf\Splitter\PDFMerger;
 use RuntimeException;
 use Test\TestCase;
 

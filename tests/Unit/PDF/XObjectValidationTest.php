@@ -34,9 +34,9 @@ use Exception;
 use Monolog\Handler\StreamHandler;
 use Monolog\Logger;
 use Psr\Log\LoggerInterface;
-use PXP\PDF\Fpdf\FPDF;
+use PXP\PDF\Fpdf\Core\FPDF;
+use PXP\PDF\Fpdf\Features\Splitter\PDFSplitter;
 use PXP\PDF\Fpdf\IO\FileIO;
-use PXP\PDF\Fpdf\Splitter\PDFSplitter;
 use Test\TestCase;
 
 /**

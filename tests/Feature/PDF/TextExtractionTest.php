@@ -22,7 +22,7 @@ use function sys_get_temp_dir;
 use function trim;
 use function uniqid;
 use function unlink;
-use PXP\PDF\Fpdf\Extractor\Text;
+use PXP\PDF\Fpdf\Features\Extractor\Text;
 use Test\TestCase;
 
 /**

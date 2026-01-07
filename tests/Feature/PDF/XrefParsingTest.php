@@ -18,10 +18,10 @@ use function dirname;
 use function glob;
 use function is_dir;
 use function str_contains;
-use PXP\PDF\Fpdf\Exception\FpdfException;
+use PXP\PDF\Fpdf\Core\Object\Parser\PDFParser;
+use PXP\PDF\Fpdf\Core\Xref\PDFXrefTable;
+use PXP\PDF\Fpdf\Exceptions\Exception\FpdfException;
 use PXP\PDF\Fpdf\IO\FileIO;
-use PXP\PDF\Fpdf\Object\Parser\PDFParser;
-use PXP\PDF\Fpdf\Xref\PDFXrefTable;
 use Test\TestCase;
 
 /**

@@ -17,7 +17,7 @@ use function file_get_contents;
 use function filesize;
 use function mkdir;
 use function uniqid;
-use PXP\PDF\Fpdf\FPDF;
+use PXP\PDF\Fpdf\Core\FPDF;
 use Test\TestCase;
 
 /**
