@@ -1,5 +1,0 @@
-* export-ignore
-!/src export-ignore
-!/composer.json export-ignore
-!/LICENSE export-ignore
-/examples export-ignore
