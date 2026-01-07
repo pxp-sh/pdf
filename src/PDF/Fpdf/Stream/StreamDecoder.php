@@ -25,10 +25,10 @@ use function str_pad;
 use function str_repeat;
 use function strlen;
 use function substr;
-use PXP\PDF\CCITTFax\CCITT3FaxDecoder;
-use PXP\PDF\CCITTFax\CCITT3MixedDecoder;
-use PXP\PDF\CCITTFax\CCITT4FaxDecoder;
-use PXP\PDF\CCITTFax\CCITTFaxParams;
+use PXP\PDF\CCITTFax\Decoder\CCITT3Decoder;
+use PXP\PDF\CCITTFax\Decoder\CCITT3MixedDecoder;
+use PXP\PDF\CCITTFax\Decoder\CCITT4Decoder;
+use PXP\PDF\CCITTFax\Model\Params;
 use PXP\PDF\Fpdf\Exception\FpdfException;
 use PXP\PDF\Fpdf\Object\Base\PDFArray;
 use PXP\PDF\Fpdf\Object\Base\PDFBoolean;
@@ -253,7 +253,7 @@ final class StreamDecoder
         }
 
         // Create params object with defaults
-        $ccittParams = CCITTFaxParams::fromArray($paramArray);
+        $ccittParams = Params::fromArray($paramArray);
 
         try {
             // Select decoder based on K parameter
@@ -299,18 +299,18 @@ final class StreamDecoder
     /**
      * Select appropriate CCITT decoder based on parameters.
      *
-     * @return CCITT3FaxDecoder|CCITT3MixedDecoder|CCITT4FaxDecoder
+     * @return CCITT3Decoder|CCITT3MixedDecoder|CCITT4Decoder
      */
-    private function selectCCITTDecoder(CCITTFaxParams $params, string $data): object
+    private function selectCCITTDecoder(Params $params, string $data): object
     {
         if ($params->isGroup4()) {
             // Group 4 (K < 0): Pure 2D encoding
-            return new CCITT4FaxDecoder($params->getColumns(), $data, $params->getBlackIs1());
+            return new CCITT4Decoder($params->getColumns(), $data, $params->getBlackIs1());
         }
 
         if ($params->isPure1D()) {
             // Group 3 1D (K = 0): Modified Huffman
-            return new CCITT3FaxDecoder($params, $data);
+            return new CCITT3Decoder($params, $data);
         }
 
         // Mixed mode (K > 0): Group 3 with 2D extensions
