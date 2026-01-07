@@ -27,7 +27,8 @@
         "fakerphp/faker": "^1.24",
         "symfony/cache": "^7.0",
         "symfony/event-dispatcher": "^7.0",
-        "bramus/monolog-colored-line-formatter": "^3.1"
+        "bramus/monolog-colored-line-formatter": "^3.1",
+        "rector/rector": "^2.3"
     },
     "minimum-stability": "dev",
     "prefer-stable": true,
@@ -48,6 +49,10 @@
         }
     },
     "scripts": {
+        "fix": [
+            "@cs:fix"
+        ],
+        "rector": "@php vendor/bin/rector process src tests",
         "cs:check": "@php vendor/bin/php-cs-fixer fix --dry-run --diff",
         "cs:fix": "@php vendor/bin/php-cs-fixer fix",
         "phpstan": "@php vendor/bin/phpstan analyse",
