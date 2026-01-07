@@ -22,8 +22,8 @@ use function rtrim;
 use function scandir;
 use function sys_get_temp_dir;
 use function uniqid;
-use PXP\PDF\Fpdf\Exception\FpdfException;
-use PXP\PDF\Fpdf\Font\FontManager;
+use PXP\PDF\Fpdf\Exceptions\Exception\FpdfException;
+use PXP\PDF\Fpdf\Rendering\Font\FontManager;
 use Test\TestCase;
 
 /**

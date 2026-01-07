@@ -28,8 +28,8 @@ use function sprintf;
 use function str_contains;
 use function uniqid;
 use InvalidArgumentException;
+use PXP\PDF\Fpdf\Features\Splitter\PDFMerger;
 use PXP\PDF\Fpdf\IO\FileIO;
-use PXP\PDF\Fpdf\Splitter\PDFMerger;
 use RuntimeException;
 use Test\TestCase;
 
@@ -51,7 +51,7 @@ final class MergePdfTest extends TestCase
         $pdfFilePaths = glob($inputDir . '/*.pdf') ?: [];
 
         // Skip if no PDF files are available
-        if (empty($pdfFilePaths)) {
+        if ($pdfFilePaths === []) {
             $this->markTestSkipped('No PDF files found in tests/resources/input directory');
         }
 
@@ -71,9 +71,9 @@ final class MergePdfTest extends TestCase
         $mergedPdfPath = $tmpDir . '/merged.pdf';
 
         // Create merger and use incremental merge
-        $fileIO = new FileIO(self::getLogger());
-        $merger = new PDFMerger($fileIO, self::getLogger(), self::getEventDispatcher(), self::getCache());
-        $merger->mergeIncremental($pdfFilePaths, $mergedPdfPath);
+        $fileIO    = new FileIO(self::getLogger());
+        $pdfMerger = new PDFMerger($fileIO, self::getLogger(), self::getEventDispatcher(), self::getCache());
+        $pdfMerger->mergeIncremental($pdfFilePaths, $mergedPdfPath);
 
         // Verify merged PDF exists
         $this->assertFileExists($mergedPdfPath, 'Merged PDF file was not created');
@@ -89,8 +89,8 @@ final class MergePdfTest extends TestCase
         // Calculate expected total page count using robust helper
         $expectedTotalPages = 0;
 
-        foreach ($pdfFilePaths as $pdfPath) {
-            $expectedTotalPages += self::getPdfPageCount($pdfPath);
+        foreach ($pdfFilePaths as $pdfFilePath) {
+            $expectedTotalPages += self::getPdfPageCount($pdfFilePath);
         }
 
         // Verify merged PDF has the expected number of pages
@@ -116,8 +116,7 @@ final class MergePdfTest extends TestCase
         $skippedReasons = [];
 
         // Number of pages in the merged PDF
-        $mergedPageCount = self::getPdfPageCount($mergedPdfPath);
-        $maxLookahead    = 5; // how many merged pages ahead we'll search for a match
+        $mergedPageCount = self::getPdfPageCount($mergedPdfPath); // how many merged pages ahead we'll search for a match
 
         try {
             foreach ($pdfFilePaths as $srcPdf) {
@@ -278,9 +277,9 @@ final class MergePdfTest extends TestCase
         mkdir($tmpDir, 0o777, true);
         $outputPath = $tmpDir . '/merged.pdf';
 
-        $fileIO = new FileIO(self::getLogger());
-        $merger = new PDFMerger($fileIO, self::getLogger());
-        $merger->mergeIncremental([], $outputPath);
+        $fileIO    = new FileIO(self::getLogger());
+        $pdfMerger = new PDFMerger($fileIO, self::getLogger());
+        $pdfMerger->mergeIncremental([], $outputPath);
     }
 
     public function test_merge_with_nonexistent_file_throws_exception(): void
@@ -293,8 +292,8 @@ final class MergePdfTest extends TestCase
         $outputPath      = $tmpDir . '/merged.pdf';
         $nonexistentFile = $tmpDir . '/nonexistent.pdf';
 
-        $fileIO = new FileIO(self::getLogger());
-        $merger = new PDFMerger($fileIO, self::getLogger());
-        $merger->mergeIncremental([$nonexistentFile], $outputPath);
+        $fileIO    = new FileIO(self::getLogger());
+        $pdfMerger = new PDFMerger($fileIO, self::getLogger());
+        $pdfMerger->mergeIncremental([$nonexistentFile], $outputPath);
     }
 }

@@ -30,15 +30,16 @@ use function rmdir;
 use function strlen;
 use function sys_get_temp_dir;
 use function uniqid;
-use PXP\PDF\Fpdf\FPDF;
+use PXP\PDF\Fpdf\Core\FPDF;
+use PXP\PDF\Fpdf\Core\Object\Base\PDFDictionary;
+use PXP\PDF\Fpdf\Core\Object\Base\PDFName;
+use PXP\PDF\Fpdf\Core\Object\Base\PDFReference;
+use PXP\PDF\Fpdf\Core\Object\Parser\PDFParser;
+use PXP\PDF\Fpdf\Core\Stream\PDFStream;
+use PXP\PDF\Fpdf\Core\Tree\PDFObjectNode;
+use PXP\PDF\Fpdf\Features\Splitter\PDFMerger;
+use PXP\PDF\Fpdf\Features\Splitter\PDFSplitter;
 use PXP\PDF\Fpdf\IO\FileIO;
-use PXP\PDF\Fpdf\Object\Base\PDFDictionary;
-use PXP\PDF\Fpdf\Object\Base\PDFName;
-use PXP\PDF\Fpdf\Object\Base\PDFReference;
-use PXP\PDF\Fpdf\Object\Parser\PDFParser;
-use PXP\PDF\Fpdf\Splitter\PDFMerger;
-use PXP\PDF\Fpdf\Splitter\PDFSplitter;
-use PXP\PDF\Fpdf\Stream\PDFStream;
 use Test\TestCase;
 
 /**
@@ -98,26 +99,26 @@ final class XObjectMappingTest extends TestCase
 
         // Merge the PDF (single file merge to test object mapping)
         $mergedPdf = $this->tempDir . '/merged.pdf';
-        $merger    = new PDFMerger($this->fileIO, self::getLogger(), self::getEventDispatcher(), self::getCache());
-        $merger->mergeIncremental([$sourcePdf], $mergedPdf);
+        $pdfMerger = new PDFMerger($this->fileIO, self::getLogger(), self::getEventDispatcher(), self::getCache());
+        $pdfMerger->mergeIncremental([$sourcePdf], $mergedPdf);
 
         $this->assertFileExists($mergedPdf);
 
         // Parse the merged PDF and validate XObject mappings
-        $parser = new PDFParser(self::getLogger(), self::getCache());
-        $doc    = $parser->parseDocumentFromFile($mergedPdf, $this->fileIO);
+        $pdfParser   = new PDFParser(self::getLogger(), self::getCache());
+        $pdfDocument = $pdfParser->parseDocumentFromFile($mergedPdf, $this->fileIO);
 
-        $page = $doc->getPage(1);
+        $page = $pdfDocument->getPage(1);
         $this->assertNotNull($page, 'Merged PDF should have at least one page');
 
-        $pageDict = $page->getValue();
-        $this->assertInstanceOf(PDFDictionary::class, $pageDict);
+        $pdfObject = $page->getValue();
+        $this->assertInstanceOf(PDFDictionary::class, $pdfObject);
 
         // Get page resources
-        $resources = $pageDict->getEntry('/Resources');
+        $resources = $pdfObject->getEntry('/Resources');
 
         if ($resources instanceof PDFReference) {
-            $resourcesNode = $doc->getObject($resources->getObjectNumber());
+            $resourcesNode = $pdfDocument->getObject($resources->getObjectNumber());
             $this->assertNotNull($resourcesNode, 'Resources reference must resolve');
             $resources = $resourcesNode->getValue();
         }
@@ -129,7 +130,7 @@ final class XObjectMappingTest extends TestCase
         $this->assertNotNull($xObjects, 'Resources must contain /XObject entry');
 
         if ($xObjects instanceof PDFReference) {
-            $xObjectsNode = $doc->getObject($xObjects->getObjectNumber());
+            $xObjectsNode = $pdfDocument->getObject($xObjects->getObjectNumber());
             $this->assertNotNull($xObjectsNode);
             $xObjects = $xObjectsNode->getValue();
         }
@@ -143,7 +144,7 @@ final class XObjectMappingTest extends TestCase
         foreach ($xObjects->getAllEntries() as $xobjName => $xobjRef) {
             $this->assertInstanceOf(PDFReference::class, $xobjRef, "XObject {$xobjName} must be a reference");
 
-            $xobjNode = $doc->getObject($xobjRef->getObjectNumber());
+            $xobjNode = $pdfDocument->getObject($xobjRef->getObjectNumber());
             $this->assertNotNull($xobjNode, "XObject {$xobjName} reference must resolve to an object");
 
             $xobjValue = $xobjNode->getValue();
@@ -225,25 +226,25 @@ final class XObjectMappingTest extends TestCase
 
         // Merge it
         $mergedPdf = $this->tempDir . '/merged.pdf';
-        $merger    = new PDFMerger($this->fileIO, self::getLogger(), self::getEventDispatcher(), self::getCache());
-        $merger->mergeIncremental([$sourcePdf], $mergedPdf);
+        $pdfMerger = new PDFMerger($this->fileIO, self::getLogger(), self::getEventDispatcher(), self::getCache());
+        $pdfMerger->mergeIncremental([$sourcePdf], $mergedPdf);
 
         // Parse merged PDF
-        $parser = new PDFParser(self::getLogger(), self::getCache());
-        $doc    = $parser->parseDocumentFromFile($mergedPdf, $this->fileIO);
+        $pdfParser   = new PDFParser(self::getLogger(), self::getCache());
+        $pdfDocument = $pdfParser->parseDocumentFromFile($mergedPdf, $this->fileIO);
 
-        $page = $doc->getPage(1);
+        $page = $pdfDocument->getPage(1);
         $this->assertNotNull($page);
 
-        $pageDict = $page->getValue();
-        $this->assertInstanceOf(PDFDictionary::class, $pageDict);
+        $pdfObject = $page->getValue();
+        $this->assertInstanceOf(PDFDictionary::class, $pdfObject);
 
         // Get content stream
-        $contents    = $pageDict->getEntry('/Contents');
+        $contents    = $pdfObject->getEntry('/Contents');
         $contentData = '';
 
         if ($contents instanceof PDFReference) {
-            $contentNode = $doc->getObject($contents->getObjectNumber());
+            $contentNode = $pdfDocument->getObject($contents->getObjectNumber());
             $this->assertNotNull($contentNode);
             $contentObj = $contentNode->getValue();
             $this->assertInstanceOf(PDFStream::class, $contentObj);
@@ -253,16 +254,16 @@ final class XObjectMappingTest extends TestCase
         $this->assertNotEmpty($contentData, 'Page must have content stream');
 
         // Extract XObject names from content stream (looking for /Name Do operators)
-        preg_match_all('/\/([A-Za-z0-9_]+)\s+Do\b/', $contentData, $matches);
+        preg_match_all('/\/(\w+)\s+Do\b/', $contentData, $matches);
         $xobjectNamesInContent = $matches[1] ?? [];
 
         $this->assertNotEmpty($xobjectNamesInContent, 'Content stream should invoke XObjects with Do operator');
 
         // Get resources
-        $resources = $pageDict->getEntry('/Resources');
+        $resources = $pdfObject->getEntry('/Resources');
 
         if ($resources instanceof PDFReference) {
-            $resourcesNode = $doc->getObject($resources->getObjectNumber());
+            $resourcesNode = $pdfDocument->getObject($resources->getObjectNumber());
             $this->assertNotNull($resourcesNode);
             $resources = $resourcesNode->getValue();
         }
@@ -270,7 +271,7 @@ final class XObjectMappingTest extends TestCase
         $xObjects = $resources->getEntry('/XObject');
 
         if ($xObjects instanceof PDFReference) {
-            $xObjectsNode = $doc->getObject($xObjects->getObjectNumber());
+            $xObjectsNode = $pdfDocument->getObject($xObjects->getObjectNumber());
             $this->assertNotNull($xObjectsNode);
             $xObjects = $xObjectsNode->getValue();
         }
@@ -278,11 +279,11 @@ final class XObjectMappingTest extends TestCase
         $this->assertInstanceOf(PDFDictionary::class, $xObjects);
 
         // Verify each XObject name in content exists in Resources
-        foreach ($xobjectNamesInContent as $xobjName) {
-            $hasEntry = $xObjects->hasEntry('/' . $xobjName);
+        foreach ($xobjectNamesInContent as $xobjectNameInContent) {
+            $hasEntry = $xObjects->hasEntry('/' . $xobjectNameInContent);
             $this->assertTrue(
                 $hasEntry,
-                "XObject /{$xobjName} used in content stream must exist in page Resources /XObject dictionary",
+                "XObject /{$xobjectNameInContent} used in content stream must exist in page Resources /XObject dictionary",
             );
         }
     }
@@ -301,33 +302,33 @@ final class XObjectMappingTest extends TestCase
 
         // Extract a page that likely has Form XObjects
         $extractedPath = $this->tempDir . '/extracted_page.pdf';
-        $splitter      = new PDFSplitter($testFile, $this->fileIO, self::getLogger());
+        $pdfSplitter   = new PDFSplitter($testFile, $this->fileIO, self::getLogger());
 
         // Extract page 530 (mentioned in bug report)
-        $splitter->extractPage(530, $extractedPath);
+        $pdfSplitter->extractPage(530, $extractedPath);
 
         // Merge the extracted page
         $mergedPath = $this->tempDir . '/merged_page.pdf';
-        $merger     = new PDFMerger($this->fileIO, self::getLogger(), self::getEventDispatcher(), self::getCache());
-        $merger->mergeIncremental([$extractedPath], $mergedPath);
+        $pdfMerger  = new PDFMerger($this->fileIO, self::getLogger(), self::getEventDispatcher(), self::getCache());
+        $pdfMerger->mergeIncremental([$extractedPath], $mergedPath);
 
         $this->assertFileExists($mergedPath);
 
         // Parse and validate
-        $parser = new PDFParser(self::getLogger(), self::getCache());
-        $doc    = $parser->parseDocumentFromFile($mergedPath, $this->fileIO);
+        $pdfParser   = new PDFParser(self::getLogger(), self::getCache());
+        $pdfDocument = $pdfParser->parseDocumentFromFile($mergedPath, $this->fileIO);
 
-        $page = $doc->getPage(1);
+        $page = $pdfDocument->getPage(1);
         $this->assertNotNull($page);
 
-        $pageDict = $page->getValue();
-        $this->assertInstanceOf(PDFDictionary::class, $pageDict);
+        $pdfObject = $page->getValue();
+        $this->assertInstanceOf(PDFDictionary::class, $pdfObject);
 
         // Get resources
-        $resources = $pageDict->getEntry('/Resources');
+        $resources = $pdfObject->getEntry('/Resources');
 
         if ($resources instanceof PDFReference) {
-            $resourcesNode = $doc->getObject($resources->getObjectNumber());
+            $resourcesNode = $pdfDocument->getObject($resources->getObjectNumber());
             $this->assertNotNull($resourcesNode);
             $resources = $resourcesNode->getValue();
         }
@@ -348,7 +349,7 @@ final class XObjectMappingTest extends TestCase
         }
 
         if ($xObjects instanceof PDFReference) {
-            $xObjectsNode = $doc->getObject($xObjects->getObjectNumber());
+            $xObjectsNode = $pdfDocument->getObject($xObjects->getObjectNumber());
             $this->assertNotNull($xObjectsNode, 'XObject reference must resolve');
             $xObjects = $xObjectsNode->getValue();
         }
@@ -359,7 +360,7 @@ final class XObjectMappingTest extends TestCase
         foreach ($xObjects->getAllEntries() as $xobjName => $xobjRef) {
             $this->assertInstanceOf(PDFReference::class, $xobjRef, "XObject {$xobjName} must be a reference");
 
-            $xobjNode = $doc->getObject($xobjRef->getObjectNumber());
+            $xobjNode = $pdfDocument->getObject($xobjRef->getObjectNumber());
             $this->assertNotNull($xobjNode, "XObject {$xobjName} reference must resolve");
 
             $xobjValue = $xobjNode->getValue();
@@ -413,33 +414,33 @@ final class XObjectMappingTest extends TestCase
 
         // Merge it
         $mergedPdf = $this->tempDir . '/merged_regression.pdf';
-        $merger    = new PDFMerger($this->fileIO, self::getLogger(), self::getEventDispatcher(), self::getCache());
-        $merger->mergeIncremental([$sourcePdf], $mergedPdf);
+        $pdfMerger = new PDFMerger($this->fileIO, self::getLogger(), self::getEventDispatcher(), self::getCache());
+        $pdfMerger->mergeIncremental([$sourcePdf], $mergedPdf);
 
         // Parse and validate that all XObject references resolve correctly
-        $parser = new PDFParser(self::getLogger(), self::getCache());
-        $doc    = $parser->parseDocumentFromFile($mergedPdf, $this->fileIO);
+        $pdfParser   = new PDFParser(self::getLogger(), self::getCache());
+        $pdfDocument = $pdfParser->parseDocumentFromFile($mergedPdf, $this->fileIO);
 
         // Get all objects in the document
         $allObjects = [];
 
         for ($i = 1; $i <= 20; $i++) {
-            $node = $doc->getObject($i);
+            $node = $pdfDocument->getObject($i);
 
-            if ($node !== null) {
+            if ($node instanceof PDFObjectNode) {
                 $allObjects[$i] = $node->getValue();
             }
         }
 
         // Find the page
-        $page = $doc->getPage(1);
+        $page = $pdfDocument->getPage(1);
         $this->assertNotNull($page);
 
-        $pageDict  = $page->getValue();
-        $resources = $pageDict->getEntry('/Resources');
+        $pdfObject = $page->getValue();
+        $resources = $pdfObject->getEntry('/Resources');
 
         if ($resources instanceof PDFReference) {
-            $resourcesNode = $doc->getObject($resources->getObjectNumber());
+            $resourcesNode = $pdfDocument->getObject($resources->getObjectNumber());
             $this->assertNotNull($resourcesNode);
             $resources = $resourcesNode->getValue();
         }
@@ -448,7 +449,7 @@ final class XObjectMappingTest extends TestCase
         $xObjects = $resources->getEntry('/XObject');
 
         if ($xObjects instanceof PDFReference) {
-            $xObjectsNode = $doc->getObject($xObjects->getObjectNumber());
+            $xObjectsNode = $pdfDocument->getObject($xObjects->getObjectNumber());
             $xObjects     = $xObjectsNode->getValue();
         }
 
@@ -511,27 +512,27 @@ final class XObjectMappingTest extends TestCase
      */
     private function createPdfWithFormAndImageXObjects(): string
     {
-        $pdf = new FPDF;
-        $pdf->AddPage();
-        $pdf->SetFont('Arial', 'B', 16);
+        $fpdf = new FPDF;
+        $fpdf->AddPage();
+        $fpdf->SetFont('Arial', 'B', 16);
 
         // Add text
-        $pdf->Cell(0, 10, 'Test PDF with XObjects', 0, 1);
+        $fpdf->Cell(0, 10, 'Test PDF with XObjects', 0, 1);
 
         // Create and add an image (Image XObject)
         $imagePath = $this->createTestImage();
-        $pdf->Image($imagePath, 50, 40, 80);
+        $fpdf->Image($imagePath, 50, 40, 80);
         self::unlink($imagePath);
 
         // Add more content to create a more complex page
-        $pdf->SetY(130);
-        $pdf->SetFont('Arial', '', 12);
-        $pdf->MultiCell(0, 5, 'This PDF contains both Image XObjects (the image above) and will have Form XObjects if using templates or imported pages.');
+        $fpdf->SetY(130);
+        $fpdf->SetFont('Arial', '', 12);
+        $fpdf->MultiCell(0, 5, 'This PDF contains both Image XObjects (the image above) and will have Form XObjects if using templates or imported pages.');
 
         // Use a template (Form XObject) - FPDF doesn't natively support this,
         // but we'll use the existing test PDF that has Form XObjects
         $outputPath = $this->tempDir . '/source.pdf';
-        $pdf->Output('F', $outputPath);
+        $fpdf->Output('F', $outputPath);
 
         return $outputPath;
     }

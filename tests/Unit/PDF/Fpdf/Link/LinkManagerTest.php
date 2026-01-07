@@ -13,7 +13,7 @@ declare(strict_types=1);
  */
 namespace Test\Unit\PDF\Fpdf\Link;
 
-use PXP\PDF\Fpdf\Link\LinkManager;
+use PXP\PDF\Fpdf\Features\Link\LinkManager;
 use Test\TestCase;
 
 /**

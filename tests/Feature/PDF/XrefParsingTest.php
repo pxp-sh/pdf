@@ -18,10 +18,10 @@ use function dirname;
 use function glob;
 use function is_dir;
 use function str_contains;
-use PXP\PDF\Fpdf\Exception\FpdfException;
+use PXP\PDF\Fpdf\Core\Object\Parser\PDFParser;
+use PXP\PDF\Fpdf\Core\Xref\PDFXrefTable;
+use PXP\PDF\Fpdf\Exceptions\Exception\FpdfException;
 use PXP\PDF\Fpdf\IO\FileIO;
-use PXP\PDF\Fpdf\Object\Parser\PDFParser;
-use PXP\PDF\Fpdf\Xref\PDFXrefTable;
 use Test\TestCase;
 
 /**
@@ -32,14 +32,14 @@ use Test\TestCase;
  */
 final class XrefParsingTest extends TestCase
 {
-    private PDFParser $parser;
+    private PDFParser $pdfParser;
     private FileIO $fileIO;
 
     protected function setUp(): void
     {
         parent::setUp();
-        $this->parser = new PDFParser(self::getLogger(), self::getCache());
-        $this->fileIO = self::createFileIO();
+        $this->pdfParser = new PDFParser(self::getLogger(), self::getCache());
+        $this->fileIO    = self::createFileIO();
     }
 
     public function testParseDocumentWithTraditionalXref(): void
@@ -52,14 +52,14 @@ final class XrefParsingTest extends TestCase
 
         $pdfFiles = glob($inputDir . '/*.pdf') ?: [];
 
-        if (empty($pdfFiles)) {
+        if ($pdfFiles === []) {
             $this->markTestSkipped('No PDF files found in test resources');
         }
 
         // Test with first available PDF
         $pdfPath = $pdfFiles[0];
 
-        $document = $this->parser->parseDocumentFromFile($pdfPath, $this->fileIO);
+        $document = $this->pdfParser->parseDocumentFromFile($pdfPath, $this->fileIO);
 
         $this->assertNotNull($document);
         $this->assertNotNull($document->getXrefTable());
@@ -81,7 +81,7 @@ final class XrefParsingTest extends TestCase
         $pdfContent .= "50\n";
         $pdfContent .= "%%EOF\n";
 
-        $document = $this->parser->parseDocument($pdfContent);
+        $document = $this->pdfParser->parseDocument($pdfContent);
 
         $this->assertNotNull($document);
         $xrefTable = $document->getXrefTable();
@@ -101,17 +101,17 @@ final class XrefParsingTest extends TestCase
         $xrefContent .= "0000000200 00000 n \n";
         $xrefContent .= "0000000300 00000 n \n";
 
-        $xrefTable = new PDFXrefTable;
-        $xrefTable->parseFromString($xrefContent);
+        $pdfXrefTable = new PDFXrefTable;
+        $pdfXrefTable->parseFromString($xrefContent);
 
-        $this->assertNotNull($xrefTable->getEntry(0));
-        $this->assertTrue($xrefTable->getEntry(0)->isFree());
-        $this->assertNotNull($xrefTable->getEntry(1));
-        $this->assertSame(100, $xrefTable->getEntry(1)->getOffset());
-        $this->assertNotNull($xrefTable->getEntry(5));
-        $this->assertSame(200, $xrefTable->getEntry(5)->getOffset());
-        $this->assertNotNull($xrefTable->getEntry(6));
-        $this->assertSame(300, $xrefTable->getEntry(6)->getOffset());
+        $this->assertNotNull($pdfXrefTable->getEntry(0));
+        $this->assertTrue($pdfXrefTable->getEntry(0)->isFree());
+        $this->assertNotNull($pdfXrefTable->getEntry(1));
+        $this->assertSame(100, $pdfXrefTable->getEntry(1)->getOffset());
+        $this->assertNotNull($pdfXrefTable->getEntry(5));
+        $this->assertSame(200, $pdfXrefTable->getEntry(5)->getOffset());
+        $this->assertNotNull($pdfXrefTable->getEntry(6));
+        $this->assertSame(300, $pdfXrefTable->getEntry(6)->getOffset());
     }
 
     public function testXrefParsingWithVariousWhitespace(): void
@@ -156,7 +156,7 @@ final class XrefParsingTest extends TestCase
 
         // The parseTrailer method returns the Prev offset, but we can't easily test it
         // without accessing private methods. Instead, we test that parsing works.
-        $document = $this->parser->parseDocument($pdfContent);
+        $document = $this->pdfParser->parseDocument($pdfContent);
         $this->assertNotNull($document);
     }
 
@@ -169,7 +169,7 @@ final class XrefParsingTest extends TestCase
         $this->expectException(FpdfException::class);
         $this->expectExceptionMessage('xref table not found');
 
-        $this->parser->parseDocument($pdfContent);
+        $this->pdfParser->parseDocument($pdfContent);
     }
 
     public function testErrorHandlingForInvalidXrefFormat(): void
@@ -184,7 +184,7 @@ final class XrefParsingTest extends TestCase
         $pdfContent .= "%%EOF\n";
 
         // Should not throw exception, but may have empty xref table
-        $document = $this->parser->parseDocument($pdfContent);
+        $document = $this->pdfParser->parseDocument($pdfContent);
         $this->assertNotNull($document);
     }
 
@@ -216,19 +216,19 @@ final class XrefParsingTest extends TestCase
 
         $pdfFiles = glob($inputDir . '/*.pdf') ?: [];
 
-        if (empty($pdfFiles)) {
+        if ($pdfFiles === []) {
             $this->markTestSkipped('No PDF files found in test resources');
         }
 
-        foreach ($pdfFiles as $pdfPath) {
+        foreach ($pdfFiles as $pdfFile) {
             try {
-                $document = $this->parser->parseDocumentFromFile($pdfPath, $this->fileIO);
+                $document = $this->pdfParser->parseDocumentFromFile($pdfFile, $this->fileIO);
 
-                $this->assertNotNull($document, "Failed to parse: {$pdfPath}");
-                $this->assertNotNull($document->getXrefTable(), "No xref table in: {$pdfPath}");
+                $this->assertNotNull($document, "Failed to parse: {$pdfFile}");
+                $this->assertNotNull($document->getXrefTable(), "No xref table in: {$pdfFile}");
 
                 $entries = $document->getXrefTable()->getAllEntries();
-                $this->assertGreaterThan(0, count($entries), "Empty xref table in: {$pdfPath}");
+                $this->assertGreaterThan(0, count($entries), "Empty xref table in: {$pdfFile}");
 
                 // If we got here, parsing was successful
                 break;

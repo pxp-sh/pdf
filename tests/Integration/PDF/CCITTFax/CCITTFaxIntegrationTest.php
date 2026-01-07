@@ -20,8 +20,6 @@ use function file_exists;
 use function file_get_contents;
 use function fopen;
 use function glob;
-use function implode;
-use function is_array;
 use function is_dir;
 use function memory_get_usage;
 use function preg_match;
@@ -31,12 +29,12 @@ use function str_starts_with;
 use function stream_get_contents;
 use function strlen;
 use Exception;
-use PHPUnit\Framework\TestCase;
-use PXP\PDF\CCITTFax\BitmapPacker;
-use PXP\PDF\CCITTFax\CCITT3FaxDecoder;
-use PXP\PDF\CCITTFax\CCITT4FaxDecoder;
-use PXP\PDF\CCITTFax\CCITTFaxParams;
+use PXP\PDF\CCITTFax\Decoder\CCITT3Decoder;
+use PXP\PDF\CCITTFax\Decoder\CCITT4Decoder;
+use PXP\PDF\CCITTFax\Model\Params;
+use PXP\PDF\CCITTFax\Util\BitmapPacker;
 use RuntimeException;
+use Test\TestCase;
 
 /**
  * Integration tests for CCITT Fax Decoders using real test files.
@@ -66,37 +64,34 @@ final class CCITTFaxIntegrationTest extends TestCase
         $this->assertNotEmpty($binFiles, 'No .bin test files found');
 
         $successCount = 0;
-        $failureCount = 0;
         $decodedFiles = [];
 
-        foreach ($binFiles as $filePath) {
-            $filename = basename($filePath);
+        foreach ($binFiles as $binFile) {
+            $filename = basename($binFile);
 
             // Determine width from filename or use default
             $width = $this->guessWidthFromFilename($filename);
 
             try {
-                $compressedData = file_get_contents($filePath);
+                $compressedData = file_get_contents($binFile);
                 $this->assertNotFalse($compressedData, "Failed to read {$filename}");
 
-                $decoder = new CCITT4FaxDecoder($width, $compressedData, false);
+                $decoder = new CCITT4Decoder($width, $compressedData, false);
                 $lines   = $decoder->decode();
+                $this->assertIsArray($lines, "Decoded lines should be an array for {$filename}");
 
-                if (is_array($lines) && count($lines) > 0) {
+                if (count($lines) > 0) {
                     $successCount++;
                     $decodedFiles[] = $filename;
                 }
             } catch (Exception $e) {
-                $failureCount++;
+                $this->fail("Decoding failed for {$filename}: " . $e->getMessage());
                 // Some files may not be Group 4 format, that's okay
             }
         }
 
         // We should successfully decode at least some files
         $this->assertGreaterThan(0, $successCount, 'Failed to decode any test files');
-
-        print "\nDecoded {$successCount} files successfully, {$failureCount} failures\n";
-        print 'Successfully decoded: ' . implode(', ', $decodedFiles) . "\n";
     }
 
     /**
@@ -114,15 +109,15 @@ final class CCITTFaxIntegrationTest extends TestCase
 
         // Test legacy mode
         $memBeforeLegacy = memory_get_usage(true);
-        $decoder1        = new CCITT4FaxDecoder(18, $compressedData, false);
+        $decoder1        = new CCITT4Decoder(18, $compressedData, false);
         $lines           = $decoder1->decode();
-        $packed          = BitmapPacker::packLines($lines, 18);
-        $memAfterLegacy  = memory_get_usage(true);
-        $legacyMemory    = $memAfterLegacy - $memBeforeLegacy;
+        BitmapPacker::packLines($lines, 18);
+        $memAfterLegacy = memory_get_usage(true);
+        $legacyMemory   = $memAfterLegacy - $memBeforeLegacy;
 
         // Test streaming mode
         $memBeforeStreaming = memory_get_usage(true);
-        $decoder2           = new CCITT4FaxDecoder(18, $compressedData, false);
+        $decoder2           = new CCITT4Decoder(18, $compressedData, false);
         $stream             = fopen('php://temp', 'rb+');
         $decoder2->decodeToStream($stream);
         fclose($stream);
@@ -158,12 +153,12 @@ final class CCITTFaxIntegrationTest extends TestCase
             $compressedData = file_get_contents($filePath);
 
             // Legacy decode
-            $decoder1     = new CCITT4FaxDecoder($width, $compressedData, false);
+            $decoder1     = new CCITT4Decoder($width, $compressedData, false);
             $lines        = $decoder1->decode();
             $legacyOutput = BitmapPacker::packLines($lines, $width);
 
             // Streaming decode
-            $decoder2 = new CCITT4FaxDecoder($width, $compressedData, false);
+            $decoder2 = new CCITT4Decoder($width, $compressedData, false);
             $stream   = fopen('php://temp', 'rb+');
             $decoder2->decodeToStream($stream);
             rewind($stream);
@@ -198,8 +193,8 @@ final class CCITTFaxIntegrationTest extends TestCase
         $this->assertIsResource($outputStream);
 
         // Decode with full streaming
-        $decoder      = new CCITT4FaxDecoder(18, $inputStream, false);
-        $bytesWritten = $decoder->decodeToStream($outputStream);
+        $ccitt4Decoder = new CCITT4Decoder(18, $inputStream, false);
+        $bytesWritten  = $ccitt4Decoder->decodeToStream($outputStream);
 
         $this->assertGreaterThan(0, $bytesWritten);
 
@@ -230,8 +225,8 @@ final class CCITTFaxIntegrationTest extends TestCase
             ['decoder' => 'group4', 'reverseColor' => true],
         ];
 
-        foreach ($parameterSets as $params) {
-            $decoder = new CCITT4FaxDecoder(18, $compressedData, $params['reverseColor']);
+        foreach ($parameterSets as $parameterSet) {
+            $decoder = new CCITT4Decoder(18, $compressedData, $parameterSet['reverseColor']);
             $lines   = $decoder->decode();
 
             $this->assertIsArray($lines);
@@ -251,11 +246,11 @@ final class CCITTFaxIntegrationTest extends TestCase
         }
 
         $compressedData = file_get_contents($testFile);
-        $params         = new CCITTFaxParams(k: 0, columns: 18, rows: 18);
+        $params         = new Params(k: 0, columns: 18, rows: 18);
 
         try {
-            $decoder = new CCITT3FaxDecoder($params, $compressedData);
-            $lines   = $decoder->decode();
+            $ccitt3Decoder = new CCITT3Decoder($params, $compressedData);
+            $lines         = $ccitt3Decoder->decode();
 
             $this->assertIsArray($lines);
         } catch (RuntimeException $e) {
@@ -271,10 +266,10 @@ final class CCITTFaxIntegrationTest extends TestCase
     {
         $invalidData = "\x00\x00\x00\x00";
 
-        $decoder = new CCITT4FaxDecoder(18, $invalidData, false);
+        $ccitt4Decoder = new CCITT4Decoder(18, $invalidData, false);
 
         try {
-            $lines = $decoder->decode();
+            $lines = $ccitt4Decoder->decode();
             $this->assertIsArray($lines);
         } catch (RuntimeException $e) {
             // Expected behavior for invalid data

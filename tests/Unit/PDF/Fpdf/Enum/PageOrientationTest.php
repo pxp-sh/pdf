@@ -14,7 +14,7 @@ declare(strict_types=1);
 namespace Test\Unit\PDF\Fpdf\Enum;
 
 use InvalidArgumentException;
-use PXP\PDF\Fpdf\Enum\PageOrientation;
+use PXP\PDF\Fpdf\Utils\Enum\PageOrientation;
 use Test\TestCase;
 
 /**

@@ -17,7 +17,7 @@ use function file_get_contents;
 use function filesize;
 use function mkdir;
 use function uniqid;
-use PXP\PDF\Fpdf\FPDF;
+use PXP\PDF\Fpdf\Core\FPDF;
 use Test\TestCase;
 
 /**
@@ -29,27 +29,27 @@ final class SplitPdfTest extends TestCase
     public function test_split_pdf_into_individual_pages(): void
     {
         // Create a multi-page PDF
-        $pdf = self::createFPDF();
-        $pdf->setCompression(false);
+        $fpdf = self::createFPDF();
+        $fpdf->setCompression(false);
 
         $tmpDir = self::getRootDir() . '/tmp_pf_' . uniqid();
         mkdir($tmpDir, 0o777, true);
         // Use built-in Helvetica font (standard PDF core font for image rendering)
-        $pdf->setFont('Helvetica', '', 12);
+        $fpdf->setFont('Helvetica', '', 12);
 
         // Add 3 pages with different content
-        $pdf->addPage();
-        $pdf->cell(0, 10, 'Page 1 Content');
+        $fpdf->addPage();
+        $fpdf->cell(0, 10, 'Page 1 Content');
 
-        $pdf->addPage();
-        $pdf->cell(0, 10, 'Page 2 Content');
+        $fpdf->addPage();
+        $fpdf->cell(0, 10, 'Page 2 Content');
 
-        $pdf->addPage();
-        $pdf->cell(0, 10, 'Page 3 Content');
+        $fpdf->addPage();
+        $fpdf->cell(0, 10, 'Page 3 Content');
 
         // Save the original PDF
         $originalPdf = $tmpDir . '/original.pdf';
-        $pdf->output('F', $originalPdf);
+        $fpdf->output('F', $originalPdf);
 
         $this->assertFileExists($originalPdf);
 
@@ -75,8 +75,8 @@ final class SplitPdfTest extends TestCase
         $this->assertSplitPdfPagesMatchOriginal($originalPdf, $splitFiles, 0.90);
 
         // Clean up
-        foreach ($splitFiles as $file) {
-            self::unlink($file);
+        foreach ($splitFiles as $splitFile) {
+            self::unlink($splitFile);
         }
         self::unlink($originalPdf);
     }
@@ -84,27 +84,27 @@ final class SplitPdfTest extends TestCase
     public function test_extract_single_page_from_pdf(): void
     {
         // Create a multi-page PDF
-        $pdf = self::createFPDF();
-        $pdf->setCompression(false);
+        $fpdf = self::createFPDF();
+        $fpdf->setCompression(false);
 
         $tmpDir = self::getRootDir() . '/tmp_pf_' . uniqid();
         mkdir($tmpDir, 0o777, true);
         // Use built-in Helvetica font (standard PDF core font for image rendering)
-        $pdf->setFont('Helvetica', '', 12);
+        $fpdf->setFont('Helvetica', '', 12);
 
         // Add 3 pages
-        $pdf->addPage();
-        $pdf->cell(0, 10, 'Page 1');
+        $fpdf->addPage();
+        $fpdf->cell(0, 10, 'Page 1');
 
-        $pdf->addPage();
-        $pdf->cell(0, 10, 'Page 2');
+        $fpdf->addPage();
+        $fpdf->cell(0, 10, 'Page 2');
 
-        $pdf->addPage();
-        $pdf->cell(0, 10, 'Page 3');
+        $fpdf->addPage();
+        $fpdf->cell(0, 10, 'Page 3');
 
         // Save the original PDF
         $originalPdf = $tmpDir . '/original.pdf';
-        $pdf->output('F', $originalPdf);
+        $fpdf->output('F', $originalPdf);
 
         // Extract page 2
         $extractedPage = $tmpDir . '/page2.pdf';
@@ -130,21 +130,21 @@ final class SplitPdfTest extends TestCase
     public function test_split_pdf_with_custom_filename_pattern(): void
     {
         // Create a multi-page PDF
-        $pdf = self::createFPDF();
-        $pdf->setCompression(false);
+        $fpdf = self::createFPDF();
+        $fpdf->setCompression(false);
 
         $tmpDir = self::getRootDir() . '/tmp_pf_' . uniqid();
         mkdir($tmpDir, 0o777, true);
         // Use built-in Helvetica font (standard PDF core font for image rendering)
-        $pdf->setFont('Helvetica', '', 12);
+        $fpdf->setFont('Helvetica', '', 12);
 
-        $pdf->addPage();
-        $pdf->cell(0, 10, 'Page 1');
-        $pdf->addPage();
-        $pdf->cell(0, 10, 'Page 2');
+        $fpdf->addPage();
+        $fpdf->cell(0, 10, 'Page 1');
+        $fpdf->addPage();
+        $fpdf->cell(0, 10, 'Page 2');
 
         $originalPdf = $tmpDir . '/original.pdf';
-        $pdf->output('F', $originalPdf);
+        $fpdf->output('F', $originalPdf);
 
         // Split with custom pattern
         $outputDir  = $tmpDir . '/split';
@@ -155,8 +155,8 @@ final class SplitPdfTest extends TestCase
         $this->assertStringContainsString('document_page_2.pdf', $splitFiles[1]);
 
         // Clean up
-        foreach ($splitFiles as $file) {
-            self::unlink($file);
+        foreach ($splitFiles as $splitFile) {
+            self::unlink($splitFile);
         }
         self::unlink($originalPdf);
     }

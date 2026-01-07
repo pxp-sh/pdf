@@ -14,7 +14,7 @@ declare(strict_types=1);
 namespace Test\Unit\PDF\Fpdf\ValueObject;
 
 use InvalidArgumentException;
-use PXP\PDF\Fpdf\ValueObject\PageSize;
+use PXP\PDF\Fpdf\Utils\ValueObject\PageSize;
 use ReflectionClass;
 use Test\TestCase;
 
@@ -27,8 +27,8 @@ final class PageSizeTest extends TestCase
 
     public function testPageSizeIsReadonly(): void
     {
-        $reflection = new ReflectionClass(PageSize::class);
-        $this->assertTrue($reflection->isReadOnly());
+        $reflectionClass = new ReflectionClass(PageSize::class);
+        $this->assertTrue($reflectionClass->isReadOnly());
     }
 
     public function testConstructorWithValidDimensions(): void

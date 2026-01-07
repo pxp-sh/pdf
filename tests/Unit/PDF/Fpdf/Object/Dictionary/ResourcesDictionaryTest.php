@@ -13,9 +13,9 @@ declare(strict_types=1);
  */
 namespace Test\Unit\PDF\Fpdf\Object\Dictionary;
 
-use PXP\PDF\Fpdf\Object\Base\PDFArray;
-use PXP\PDF\Fpdf\Object\Base\PDFReference;
-use PXP\PDF\Fpdf\Object\Dictionary\ResourcesDictionary;
+use PXP\PDF\Fpdf\Core\Object\Base\PDFArray;
+use PXP\PDF\Fpdf\Core\Object\Base\PDFReference;
+use PXP\PDF\Fpdf\Core\Object\Dictionary\ResourcesDictionary;
 use Test\TestCase;
 
 /**
@@ -25,8 +25,8 @@ final class ResourcesDictionaryTest extends TestCase
 {
     public function testConstructorSetsProcSet(): void
     {
-        $resources = new ResourcesDictionary;
-        $procSet   = $resources->getEntry('/ProcSet');
+        $resourcesDictionary = new ResourcesDictionary;
+        $procSet             = $resourcesDictionary->getEntry('/ProcSet');
 
         $this->assertNotNull($procSet);
         $this->assertInstanceOf(PDFArray::class, $procSet);
@@ -34,10 +34,10 @@ final class ResourcesDictionaryTest extends TestCase
 
     public function testAddFont(): void
     {
-        $resources = new ResourcesDictionary;
-        $resources->addFont('/F1', 5);
+        $resourcesDictionary = new ResourcesDictionary;
+        $resourcesDictionary->addFont('/F1', 5);
 
-        $fonts = $resources->getFonts();
+        $fonts = $resourcesDictionary->getFonts();
         $this->assertNotNull($fonts);
         $font1 = $fonts->getEntry('/F1');
         $this->assertInstanceOf(PDFReference::class, $font1);
@@ -46,19 +46,19 @@ final class ResourcesDictionaryTest extends TestCase
 
     public function testAddFontWithReference(): void
     {
-        $resources = new ResourcesDictionary;
-        $resources->addFont('/F1', new PDFReference(5));
+        $resourcesDictionary = new ResourcesDictionary;
+        $resourcesDictionary->addFont('/F1', new PDFReference(5));
 
-        $fonts = $resources->getFonts();
+        $fonts = $resourcesDictionary->getFonts();
         $this->assertNotNull($fonts);
     }
 
     public function testAddXObject(): void
     {
-        $resources = new ResourcesDictionary;
-        $resources->addXObject('/I1', 10);
+        $resourcesDictionary = new ResourcesDictionary;
+        $resourcesDictionary->addXObject('/I1', 10);
 
-        $xObjects = $resources->getXObjects();
+        $xObjects = $resourcesDictionary->getXObjects();
         $this->assertNotNull($xObjects);
         $i1 = $xObjects->getEntry('/I1');
         $this->assertInstanceOf(PDFReference::class, $i1);
@@ -67,10 +67,10 @@ final class ResourcesDictionaryTest extends TestCase
 
     public function testSetProcSet(): void
     {
-        $resources = new ResourcesDictionary;
-        $resources->setProcSet(['PDF', 'Text']);
+        $resourcesDictionary = new ResourcesDictionary;
+        $resourcesDictionary->setProcSet(['PDF', 'Text']);
 
-        $procSet = $resources->getEntry('/ProcSet');
+        $procSet = $resourcesDictionary->getEntry('/ProcSet');
         $this->assertInstanceOf(PDFArray::class, $procSet);
     }
 }

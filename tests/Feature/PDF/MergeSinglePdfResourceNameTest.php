@@ -19,8 +19,8 @@ use function mkdir;
 use function sprintf;
 use function str_contains;
 use function uniqid;
+use PXP\PDF\Fpdf\Features\Splitter\PDFMerger;
 use PXP\PDF\Fpdf\IO\FileIO;
-use PXP\PDF\Fpdf\Splitter\PDFMerger;
 use RuntimeException;
 use Test\TestCase;
 
@@ -38,9 +38,9 @@ final class MergeSinglePdfResourceNameTest extends TestCase
         mkdir($tmpDir, 0o777, true);
         $out = $tmpDir . '/merged.pdf';
 
-        $fileIO = new FileIO(self::getLogger());
-        $merger = new PDFMerger($fileIO, self::getLogger(), self::getEventDispatcher(), self::getCache());
-        $merger->mergeIncremental([$src], $out);
+        $fileIO    = new FileIO(self::getLogger());
+        $pdfMerger = new PDFMerger($fileIO, self::getLogger(), self::getEventDispatcher(), self::getCache());
+        $pdfMerger->mergeIncremental([$src], $out);
 
         $this->assertFileExists($out);
 

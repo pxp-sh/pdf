@@ -14,7 +14,7 @@ declare(strict_types=1);
 namespace Test\Unit\PDF\Fpdf\Metadata;
 
 use function time;
-use PXP\PDF\Fpdf\Metadata\Metadata;
+use PXP\PDF\Fpdf\Features\Metadata\Metadata;
 use Test\TestCase;
 
 /**

@@ -14,7 +14,7 @@ declare(strict_types=1);
 namespace Test\Unit\PDF\Fpdf\Exception;
 
 use Exception;
-use PXP\PDF\Fpdf\Exception\FpdfException;
+use PXP\PDF\Fpdf\Exceptions\Exception\FpdfException;
 use Test\TestCase;
 
 /**
@@ -24,30 +24,30 @@ final class FpdfExceptionTest extends TestCase
 {
     public function testExceptionExtendsException(): void
     {
-        $exception = new FpdfException;
-        $this->assertInstanceOf(Exception::class, $exception);
+        $fpdfException = new FpdfException;
+        $this->assertInstanceOf(Exception::class, $fpdfException);
     }
 
     public function testExceptionWithMessage(): void
     {
-        $message   = 'Test error message';
-        $exception = new FpdfException($message);
-        $this->assertSame($message, $exception->getMessage());
+        $message       = 'Test error message';
+        $fpdfException = new FpdfException($message);
+        $this->assertSame($message, $fpdfException->getMessage());
     }
 
     public function testExceptionWithMessageAndCode(): void
     {
-        $message   = 'Test error message';
-        $code      = 500;
-        $exception = new FpdfException($message, $code);
-        $this->assertSame($message, $exception->getMessage());
-        $this->assertSame($code, $exception->getCode());
+        $message       = 'Test error message';
+        $code          = 500;
+        $fpdfException = new FpdfException($message, $code);
+        $this->assertSame($message, $fpdfException->getMessage());
+        $this->assertSame($code, $fpdfException->getCode());
     }
 
     public function testExceptionWithPreviousException(): void
     {
-        $previous  = new Exception('Previous exception');
-        $exception = new FpdfException('Test error', 0, $previous);
-        $this->assertSame($previous, $exception->getPrevious());
+        $previous      = new Exception('Previous exception');
+        $fpdfException = new FpdfException('Test error', 0, $previous);
+        $this->assertSame($previous, $fpdfException->getPrevious());
     }
 }

@@ -13,10 +13,10 @@ declare(strict_types=1);
  */
 namespace Test\Unit\PDF\Fpdf\Tree;
 
-use PXP\PDF\Fpdf\Object\Base\PDFDictionary;
-use PXP\PDF\Fpdf\Object\Base\PDFReference;
-use PXP\PDF\Fpdf\Tree\PDFObjectNode;
-use PXP\PDF\Fpdf\Tree\PDFObjectRegistry;
+use PXP\PDF\Fpdf\Core\Object\Base\PDFDictionary;
+use PXP\PDF\Fpdf\Core\Object\Base\PDFReference;
+use PXP\PDF\Fpdf\Core\Tree\PDFObjectNode;
+use PXP\PDF\Fpdf\Core\Tree\PDFObjectRegistry;
 use Test\TestCase;
 
 /**
@@ -26,67 +26,67 @@ final class PDFObjectNodeTest extends TestCase
 {
     public function testGetObjectNumber(): void
     {
-        $dict = new PDFDictionary;
-        $node = new PDFObjectNode(5, $dict);
+        $pdfDictionary = new PDFDictionary;
+        $pdfObjectNode = new PDFObjectNode(5, $pdfDictionary);
 
-        $this->assertSame(5, $node->getObjectNumber());
+        $this->assertSame(5, $pdfObjectNode->getObjectNumber());
     }
 
     public function testSetObjectNumber(): void
     {
-        $dict = new PDFDictionary;
-        $node = new PDFObjectNode(5, $dict);
-        $node->setObjectNumber(10);
+        $pdfDictionary = new PDFDictionary;
+        $pdfObjectNode = new PDFObjectNode(5, $pdfDictionary);
+        $pdfObjectNode->setObjectNumber(10);
 
-        $this->assertSame(10, $node->getObjectNumber());
+        $this->assertSame(10, $pdfObjectNode->getObjectNumber());
     }
 
     public function testGetGenerationNumber(): void
     {
-        $dict = new PDFDictionary;
-        $node = new PDFObjectNode(5, $dict, 3);
+        $pdfDictionary = new PDFDictionary;
+        $pdfObjectNode = new PDFObjectNode(5, $pdfDictionary, 3);
 
-        $this->assertSame(3, $node->getGenerationNumber());
+        $this->assertSame(3, $pdfObjectNode->getGenerationNumber());
     }
 
     public function testGetValue(): void
     {
-        $dict = new PDFDictionary;
-        $node = new PDFObjectNode(1, $dict);
+        $pdfDictionary = new PDFDictionary;
+        $pdfObjectNode = new PDFObjectNode(1, $pdfDictionary);
 
-        $this->assertSame($dict, $node->getValue());
+        $this->assertSame($pdfDictionary, $pdfObjectNode->getValue());
     }
 
     public function testSetValue(): void
     {
-        $dict1 = new PDFDictionary;
-        $dict2 = new PDFDictionary;
-        $node  = new PDFObjectNode(1, $dict1);
-        $node->setValue($dict2);
+        $dict1         = new PDFDictionary;
+        $dict2         = new PDFDictionary;
+        $pdfObjectNode = new PDFObjectNode(1, $dict1);
+        $pdfObjectNode->setValue($dict2);
 
-        $this->assertSame($dict2, $node->getValue());
+        $this->assertSame($dict2, $pdfObjectNode->getValue());
     }
 
     public function testToString(): void
     {
-        $dict = new PDFDictionary;
-        $node = new PDFObjectNode(3, $dict, 0);
+        $pdfDictionary = new PDFDictionary;
+        $pdfObjectNode = new PDFObjectNode(3, $pdfDictionary, 0);
 
-        $result = (string) $node;
+        $result = (string) $pdfObjectNode;
         $this->assertStringContainsString('3 0 obj', $result);
         $this->assertStringContainsString('endobj', $result);
     }
 
     public function testResolveReference(): void
     {
-        $registry = new PDFObjectRegistry;
-        $dict     = new PDFDictionary;
-        $node     = new PDFObjectNode(5, $dict);
-        $registry->register($node);
+        $pdfObjectRegistry = new PDFObjectRegistry;
+        $pdfDictionary     = new PDFDictionary;
+        $pdfObjectNode     = new PDFObjectNode(5, $pdfDictionary);
+        $pdfObjectRegistry->register($pdfObjectNode);
 
-        $ref      = new PDFReference(5);
-        $resolved = $node->resolveReference($ref, $registry);
+        $pdfReference = new PDFReference(5);
+        $resolved     = $pdfObjectNode->resolveReference($pdfReference, $pdfObjectRegistry);
 
-        $this->assertSame($node, $resolved);
+        $this->assertSame($pdfObjectNode, $resolved);
     }
 }

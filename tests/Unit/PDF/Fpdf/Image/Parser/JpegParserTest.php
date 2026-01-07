@@ -17,8 +17,8 @@ use function file_exists;
 use function file_put_contents;
 use function sys_get_temp_dir;
 use function uniqid;
-use PXP\PDF\Fpdf\Exception\FpdfException;
-use PXP\PDF\Fpdf\Image\Parser\JpegParser;
+use PXP\PDF\Fpdf\Exceptions\Exception\FpdfException;
+use PXP\PDF\Fpdf\Rendering\Image\Parser\JpegParser;
 use Test\TestCase;
 
 /**
@@ -26,38 +26,38 @@ use Test\TestCase;
  */
 final class JpegParserTest extends TestCase
 {
-    private JpegParser $parser;
+    private JpegParser $jpegParser;
 
     protected function setUp(): void
     {
-        $this->parser = new JpegParser(self::createFileIO());
+        $this->jpegParser = new JpegParser(self::createFileIO());
     }
 
     public function testSupportsJpg(): void
     {
-        $this->assertTrue($this->parser->supports('jpg'));
-        $this->assertTrue($this->parser->supports('JPG'));
-        $this->assertTrue($this->parser->supports('JpG'));
+        $this->assertTrue($this->jpegParser->supports('jpg'));
+        $this->assertTrue($this->jpegParser->supports('JPG'));
+        $this->assertTrue($this->jpegParser->supports('JpG'));
     }
 
     public function testSupportsJpeg(): void
     {
-        $this->assertTrue($this->parser->supports('jpeg'));
-        $this->assertTrue($this->parser->supports('JPEG'));
+        $this->assertTrue($this->jpegParser->supports('jpeg'));
+        $this->assertTrue($this->jpegParser->supports('JPEG'));
     }
 
     public function testSupportsReturnsFalseForOtherTypes(): void
     {
-        $this->assertFalse($this->parser->supports('png'));
-        $this->assertFalse($this->parser->supports('gif'));
-        $this->assertFalse($this->parser->supports('bmp'));
+        $this->assertFalse($this->jpegParser->supports('png'));
+        $this->assertFalse($this->jpegParser->supports('gif'));
+        $this->assertFalse($this->jpegParser->supports('bmp'));
     }
 
     public function testParseThrowsExceptionForNonExistentFile(): void
     {
         $this->expectException(FpdfException::class);
         $this->expectExceptionMessage('Missing or incorrect image file:');
-        $this->parser->parse('/nonexistent/file.jpg');
+        $this->jpegParser->parse('/nonexistent/file.jpg');
     }
 
     public function testParseThrowsExceptionForNonJpegFile(): void
@@ -68,7 +68,7 @@ final class JpegParserTest extends TestCase
         try {
             $this->expectException(FpdfException::class);
             $this->expectExceptionMessage('Missing or incorrect image file:');
-            $this->parser->parse($tempFile);
+            $this->jpegParser->parse($tempFile);
         } finally {
             if (file_exists($tempFile)) {
                 self::unlink($tempFile);

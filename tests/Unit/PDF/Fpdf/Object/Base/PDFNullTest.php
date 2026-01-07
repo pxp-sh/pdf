@@ -13,7 +13,7 @@ declare(strict_types=1);
  */
 namespace Test\Unit\PDF\Fpdf\Object\Base;
 
-use PXP\PDF\Fpdf\Object\Base\PDFNull;
+use PXP\PDF\Fpdf\Core\Object\Base\PDFNull;
 use Test\TestCase;
 
 /**
@@ -23,7 +23,7 @@ final class PDFNullTest extends TestCase
 {
     public function testToString(): void
     {
-        $null = new PDFNull;
-        $this->assertSame('null', (string) $null);
+        $pdfNull = new PDFNull;
+        $this->assertSame('null', (string) $pdfNull);
     }
 }

@@ -13,7 +13,7 @@ declare(strict_types=1);
  */
 namespace Test\Unit\PDF\Fpdf\Text;
 
-use PXP\PDF\Fpdf\Text\TextRenderer;
+use PXP\PDF\Fpdf\Rendering\Text\TextRenderer;
 use Test\TestCase;
 
 /**
@@ -71,7 +71,7 @@ final class TextRendererTest extends TestCase
         $cw       = ['a' => 500];
         $fontSize = 12.0;
         $result   = $this->textRenderer->getStringWidth('ax', $cw, $fontSize);
-        $this->assertSame((500 + 0) * 12.0 / 1000, $result);
+        $this->assertSame((500) * 12.0 / 1000, $result);
     }
 
     public function testGetStringWidthWithEmptyString(): void

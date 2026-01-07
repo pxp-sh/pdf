@@ -13,7 +13,7 @@ declare(strict_types=1);
  */
 namespace PXP\PDF\Fpdf\IO;
 
-use PXP\PDF\Fpdf\Exception\FpdfException;
+use PXP\PDF\Fpdf\Exceptions\Exception\FpdfException;
 
 /**
  * Interface for file writing operations.

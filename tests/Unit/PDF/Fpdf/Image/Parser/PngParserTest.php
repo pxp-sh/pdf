@@ -21,8 +21,8 @@ use function fwrite;
 use function rewind;
 use function sys_get_temp_dir;
 use function uniqid;
-use PXP\PDF\Fpdf\Exception\FpdfException;
-use PXP\PDF\Fpdf\Image\Parser\PngParser;
+use PXP\PDF\Fpdf\Exceptions\Exception\FpdfException;
+use PXP\PDF\Fpdf\Rendering\Image\Parser\PngParser;
 use Test\TestCase;
 
 /**
@@ -30,33 +30,33 @@ use Test\TestCase;
  */
 final class PngParserTest extends TestCase
 {
-    private PngParser $parser;
+    private PngParser $pngParser;
 
     protected function setUp(): void
     {
-        $fileIO       = self::createFileIO();
-        $this->parser = new PngParser($fileIO, $fileIO);
+        $fileIO          = self::createFileIO();
+        $this->pngParser = new PngParser($fileIO, $fileIO);
     }
 
     public function testSupportsPng(): void
     {
-        $this->assertTrue($this->parser->supports('png'));
-        $this->assertTrue($this->parser->supports('PNG'));
-        $this->assertTrue($this->parser->supports('PnG'));
+        $this->assertTrue($this->pngParser->supports('png'));
+        $this->assertTrue($this->pngParser->supports('PNG'));
+        $this->assertTrue($this->pngParser->supports('PnG'));
     }
 
     public function testSupportsReturnsFalseForOtherTypes(): void
     {
-        $this->assertFalse($this->parser->supports('jpg'));
-        $this->assertFalse($this->parser->supports('gif'));
-        $this->assertFalse($this->parser->supports('bmp'));
+        $this->assertFalse($this->pngParser->supports('jpg'));
+        $this->assertFalse($this->pngParser->supports('gif'));
+        $this->assertFalse($this->pngParser->supports('bmp'));
     }
 
     public function testParseThrowsExceptionForNonExistentFile(): void
     {
         $this->expectException(FpdfException::class);
         $this->expectExceptionMessage('File not found or not readable:');
-        $this->parser->parse('/nonexistent/file.png');
+        $this->pngParser->parse('/nonexistent/file.png');
     }
 
     public function testParseThrowsExceptionForInvalidPngFile(): void
@@ -67,7 +67,7 @@ final class PngParserTest extends TestCase
         try {
             $this->expectException(FpdfException::class);
             $this->expectExceptionMessage('Not a PNG file:');
-            $this->parser->parse($tempFile);
+            $this->pngParser->parse($tempFile);
         } finally {
             if (file_exists($tempFile)) {
                 self::unlink($tempFile);
@@ -89,7 +89,7 @@ final class PngParserTest extends TestCase
         try {
             $this->expectException(FpdfException::class);
             $this->expectExceptionMessage('Not a PNG file:');
-            $this->parser->parseStream($stream, 'test.png');
+            $this->pngParser->parseStream($stream, 'test.png');
         } finally {
             fclose($stream);
         }

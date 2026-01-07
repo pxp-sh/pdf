@@ -13,7 +13,7 @@ declare(strict_types=1);
  */
 namespace Test\Unit\PDF\Fpdf\Tree;
 
-use PXP\PDF\Fpdf\Tree\PDFHeader;
+use PXP\PDF\Fpdf\Core\Tree\PDFHeader;
 use Test\TestCase;
 
 /**
@@ -23,27 +23,27 @@ final class PDFHeaderTest extends TestCase
 {
     public function testConstructorWithDefaultVersion(): void
     {
-        $header = new PDFHeader;
-        $this->assertSame('1.3', $header->getVersion());
+        $pdfHeader = new PDFHeader;
+        $this->assertSame('1.3', $pdfHeader->getVersion());
     }
 
     public function testConstructorWithCustomVersion(): void
     {
-        $header = new PDFHeader('1.4');
-        $this->assertSame('1.4', $header->getVersion());
+        $pdfHeader = new PDFHeader('1.4');
+        $this->assertSame('1.4', $pdfHeader->getVersion());
     }
 
     public function testSetVersion(): void
     {
-        $header = new PDFHeader;
-        $header->setVersion('1.5');
-        $this->assertSame('1.5', $header->getVersion());
+        $pdfHeader = new PDFHeader;
+        $pdfHeader->setVersion('1.5');
+        $this->assertSame('1.5', $pdfHeader->getVersion());
     }
 
     public function testToString(): void
     {
-        $header = new PDFHeader('1.4');
-        $result = (string) $header;
+        $pdfHeader = new PDFHeader('1.4');
+        $result    = (string) $pdfHeader;
         $this->assertStringStartsWith('%PDF-1.4', $result);
         $this->assertStringEndsWith("\n", $result);
     }

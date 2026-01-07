@@ -13,7 +13,7 @@ declare(strict_types=1);
  */
 namespace Test\Unit\PDF\Fpdf\Color;
 
-use PXP\PDF\Fpdf\Color\ColorManager;
+use PXP\PDF\Fpdf\Rendering\Color\ColorManager;
 use Test\TestCase;
 
 /**
@@ -137,19 +137,19 @@ final class ColorManagerTest extends TestCase
 
     public function testSetDrawColorWithNullG(): void
     {
-        $result = $this->colorManager->setDrawColor(100, null);
+        $result = $this->colorManager->setDrawColor(100);
         $this->assertSame('0.392 G', $result);
     }
 
     public function testSetFillColorWithNullG(): void
     {
-        $result = $this->colorManager->setFillColor(100, null);
+        $result = $this->colorManager->setFillColor(100);
         $this->assertSame('0.392 g', $result);
     }
 
     public function testSetTextColorWithNullG(): void
     {
-        $this->colorManager->setTextColor(100, null);
+        $this->colorManager->setTextColor(100);
         $this->assertSame('0.392 g', $this->colorManager->getTextColor());
     }
 

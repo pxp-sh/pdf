@@ -14,9 +14,9 @@ declare(strict_types=1);
 namespace Test\Unit\PDF\Fpdf\Image\Parser;
 
 use function function_exists;
-use PXP\PDF\Fpdf\Exception\FpdfException;
-use PXP\PDF\Fpdf\Image\Parser\GifParser;
-use PXP\PDF\Fpdf\Image\Parser\PngParser;
+use PXP\PDF\Fpdf\Exceptions\Exception\FpdfException;
+use PXP\PDF\Fpdf\Rendering\Image\Parser\GifParser;
+use PXP\PDF\Fpdf\Rendering\Image\Parser\PngParser;
 use Test\TestCase;
 
 /**
@@ -24,27 +24,27 @@ use Test\TestCase;
  */
 final class GifParserTest extends TestCase
 {
-    private GifParser $parser;
+    private GifParser $gifParser;
 
     protected function setUp(): void
     {
-        $fileIO       = self::createFileIO();
-        $pngParser    = new PngParser($fileIO, $fileIO);
-        $this->parser = new GifParser($pngParser, $fileIO);
+        $fileIO          = self::createFileIO();
+        $pngParser       = new PngParser($fileIO, $fileIO);
+        $this->gifParser = new GifParser($pngParser, $fileIO);
     }
 
     public function testSupportsGif(): void
     {
-        $this->assertTrue($this->parser->supports('gif'));
-        $this->assertTrue($this->parser->supports('GIF'));
-        $this->assertTrue($this->parser->supports('GiF'));
+        $this->assertTrue($this->gifParser->supports('gif'));
+        $this->assertTrue($this->gifParser->supports('GIF'));
+        $this->assertTrue($this->gifParser->supports('GiF'));
     }
 
     public function testSupportsReturnsFalseForOtherTypes(): void
     {
-        $this->assertFalse($this->parser->supports('jpg'));
-        $this->assertFalse($this->parser->supports('png'));
-        $this->assertFalse($this->parser->supports('bmp'));
+        $this->assertFalse($this->gifParser->supports('jpg'));
+        $this->assertFalse($this->gifParser->supports('png'));
+        $this->assertFalse($this->gifParser->supports('bmp'));
     }
 
     public function testParseThrowsExceptionWhenGdExtensionNotAvailable(): void
@@ -55,7 +55,7 @@ final class GifParserTest extends TestCase
 
         $this->expectException(FpdfException::class);
         $this->expectExceptionMessage('GD extension is required for GIF support');
-        $this->parser->parse('/nonexistent/file.gif');
+        $this->gifParser->parse('/nonexistent/file.gif');
     }
 
     public function testParseThrowsExceptionWhenGdHasNoGifSupport(): void
@@ -70,7 +70,7 @@ final class GifParserTest extends TestCase
 
         $this->expectException(FpdfException::class);
         $this->expectExceptionMessage('GD has no GIF read support');
-        $this->parser->parse('/nonexistent/file.gif');
+        $this->gifParser->parse('/nonexistent/file.gif');
     }
 
     public function testParseThrowsExceptionForNonExistentFile(): void
@@ -81,6 +81,6 @@ final class GifParserTest extends TestCase
 
         $this->expectException(FpdfException::class);
         $this->expectExceptionMessage('Missing or incorrect image file:');
-        $this->parser->parse('/nonexistent/file.gif');
+        $this->gifParser->parse('/nonexistent/file.gif');
     }
 }

@@ -13,8 +13,8 @@ declare(strict_types=1);
  */
 namespace Test\Unit\PDF\Fpdf\Image;
 
-use PXP\PDF\Fpdf\Exception\FpdfException;
-use PXP\PDF\Fpdf\Image\ImageHandler;
+use PXP\PDF\Fpdf\Exceptions\Exception\FpdfException;
+use PXP\PDF\Fpdf\Rendering\Image\ImageHandler;
 use Test\TestCase;
 
 /**

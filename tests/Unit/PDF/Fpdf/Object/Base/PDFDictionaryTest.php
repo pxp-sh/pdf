@@ -13,10 +13,10 @@ declare(strict_types=1);
  */
 namespace Test\Unit\PDF\Fpdf\Object\Base;
 
-use PXP\PDF\Fpdf\Object\Base\PDFDictionary;
-use PXP\PDF\Fpdf\Object\Base\PDFName;
-use PXP\PDF\Fpdf\Object\Base\PDFNumber;
-use PXP\PDF\Fpdf\Object\Base\PDFString;
+use PXP\PDF\Fpdf\Core\Object\Base\PDFDictionary;
+use PXP\PDF\Fpdf\Core\Object\Base\PDFName;
+use PXP\PDF\Fpdf\Core\Object\Base\PDFNumber;
+use PXP\PDF\Fpdf\Core\Object\Base\PDFString;
 use Test\TestCase;
 
 /**
@@ -26,77 +26,77 @@ final class PDFDictionaryTest extends TestCase
 {
     public function testToStringWithEmptyDictionary(): void
     {
-        $dict   = new PDFDictionary;
-        $result = (string) $dict;
+        $pdfDictionary = new PDFDictionary;
+        $result        = (string) $pdfDictionary;
         $this->assertStringStartsWith('<<', $result);
         $this->assertStringEndsWith('>>', $result);
     }
 
     public function testAddEntry(): void
     {
-        $dict = new PDFDictionary;
-        $dict->addEntry('/Type', new PDFName('Page'));
+        $pdfDictionary = new PDFDictionary;
+        $pdfDictionary->addEntry('/Type', new PDFName('Page'));
 
-        $this->assertTrue($dict->hasEntry('/Type'));
-        $entry = $dict->getEntry('/Type');
+        $this->assertTrue($pdfDictionary->hasEntry('/Type'));
+        $entry = $pdfDictionary->getEntry('/Type');
         $this->assertInstanceOf(PDFName::class, $entry);
     }
 
     public function testAddEntryWithStringKey(): void
     {
-        $dict = new PDFDictionary;
-        $dict->addEntry('Type', new PDFName('Page'));
+        $pdfDictionary = new PDFDictionary;
+        $pdfDictionary->addEntry('Type', new PDFName('Page'));
 
-        $this->assertTrue($dict->hasEntry('/Type'));
+        $this->assertTrue($pdfDictionary->hasEntry('/Type'));
     }
 
     public function testAddEntryAutoConvertsValues(): void
     {
-        $dict = new PDFDictionary;
-        $dict->addEntry('/Count', 42);
-        $dict->addEntry('/Title', 'Test');
+        $pdfDictionary = new PDFDictionary;
+        $pdfDictionary->addEntry('/Count', 42);
+        $pdfDictionary->addEntry('/Title', 'Test');
 
-        $count = $dict->getEntry('/Count');
+        $count = $pdfDictionary->getEntry('/Count');
         $this->assertInstanceOf(PDFNumber::class, $count);
         $this->assertSame(42, $count->getValue());
 
-        $title = $dict->getEntry('/Title');
+        $title = $pdfDictionary->getEntry('/Title');
         $this->assertInstanceOf(PDFString::class, $title);
     }
 
     public function testGetEntryReturnsNullForMissingKey(): void
     {
-        $dict = new PDFDictionary;
-        $this->assertNull($dict->getEntry('/Missing'));
+        $pdfDictionary = new PDFDictionary;
+        $this->assertNull($pdfDictionary->getEntry('/Missing'));
     }
 
     public function testRemoveEntry(): void
     {
-        $dict = new PDFDictionary;
-        $dict->addEntry('/Type', new PDFName('Page'));
-        $dict->removeEntry('/Type');
+        $pdfDictionary = new PDFDictionary;
+        $pdfDictionary->addEntry('/Type', new PDFName('Page'));
+        $pdfDictionary->removeEntry('/Type');
 
-        $this->assertFalse($dict->hasEntry('/Type'));
+        $this->assertFalse($pdfDictionary->hasEntry('/Type'));
     }
 
     public function testConstructorWithEntries(): void
     {
-        $dict = new PDFDictionary([
+        $pdfDictionary = new PDFDictionary([
             '/Type'  => new PDFName('Page'),
             '/Count' => new PDFNumber(1),
         ]);
 
-        $this->assertTrue($dict->hasEntry('/Type'));
-        $this->assertTrue($dict->hasEntry('/Count'));
+        $this->assertTrue($pdfDictionary->hasEntry('/Type'));
+        $this->assertTrue($pdfDictionary->hasEntry('/Count'));
     }
 
     public function testToStringWithMultipleEntries(): void
     {
-        $dict = new PDFDictionary;
-        $dict->addEntry('/Type', new PDFName('Page'));
-        $dict->addEntry('/Count', new PDFNumber(1));
+        $pdfDictionary = new PDFDictionary;
+        $pdfDictionary->addEntry('/Type', new PDFName('Page'));
+        $pdfDictionary->addEntry('/Count', new PDFNumber(1));
 
-        $result = (string) $dict;
+        $result = (string) $pdfDictionary;
         $this->assertStringContainsString('/Type', $result);
         $this->assertStringContainsString('/Count', $result);
         $this->assertStringContainsString('Page', $result);

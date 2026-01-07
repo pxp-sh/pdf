@@ -25,7 +25,7 @@ use function mkdir;
 use function sprintf;
 use function str_repeat;
 use function uniqid;
-use PXP\PDF\Fpdf\FPDF;
+use PXP\PDF\Fpdf\Core\FPDF;
 use Test\TestCase;
 
 /**
@@ -51,10 +51,10 @@ final class LargePdfMemoryTest extends TestCase
         $fontFile = $tmpDir . '/testfont.php';
         file_put_contents($fontFile, '<?php $name="TestFont"; $type="Core"; $cw=[];');
 
-        $pdf = self::createFPDF();
-        $pdf->setCompression(false);
-        $pdf->addFont('TestFont', '', 'testfont.php', $tmpDir);
-        $pdf->setFont('TestFont', '', 12);
+        $fpdf = self::createFPDF();
+        $fpdf->setCompression(false);
+        $fpdf->addFont('TestFont', '', 'testfont.php', $tmpDir);
+        $fpdf->setFont('TestFont', '', 12);
 
         // Ensure baseline memory snapshot
         gc_collect_cycles();
@@ -64,18 +64,18 @@ final class LargePdfMemoryTest extends TestCase
         $sampleLine = str_repeat('Lorem ipsum dolor sit amet, consectetur adipiscing elit. ', 12);
 
         for ($p = 0; $p < $pages; $p++) {
-            $pdf->addPage();
+            $fpdf->addPage();
 
             // Add enough lines to fill the page
             for ($i = 0; $i < 30; $i++) {
-                $pdf->multiCell(0, 6, $sampleLine);
+                $fpdf->multiCell(0, 6, $sampleLine);
             }
         }
 
         $tmpFile = self::getRootDir() . '/large_pdf_' . uniqid() . '.pdf';
 
         // Write out to file (streaming-friendly code should keep memory growth bounded)
-        $pdf->output('F', $tmpFile);
+        $fpdf->output('F', $tmpFile);
         // split first page
         FPDF::extractPage($tmpFile, 1, self::getRootDir() . '/large_pdf_split_1.pdf');
 
@@ -135,28 +135,28 @@ final class LargePdfMemoryTest extends TestCase
         $fontFile = $tmpDir . '/testfont.php';
         file_put_contents($fontFile, '<?php $name="TestFont"; $type="Core"; $cw=[];');
 
-        $pdf = self::createFPDF();
-        $pdf->setCompression(false);
-        $pdf->addFont('TestFont', '', 'testfont.php', $tmpDir);
-        $pdf->setFont('TestFont', '', 12);
+        $fpdf = self::createFPDF();
+        $fpdf->setCompression(false);
+        $fpdf->addFont('TestFont', '', 'testfont.php', $tmpDir);
+        $fpdf->setFont('TestFont', '', 12);
 
         // Generate pages with unique content on each page for validation
         $sampleLine = str_repeat('Lorem ipsum dolor sit amet, consectetur adipiscing elit. ', 12);
 
         for ($p = 1; $p <= $pages; $p++) {
-            $pdf->addPage();
+            $fpdf->addPage();
             // Add page number to make each page unique
-            $pdf->cell(0, 10, sprintf('Page %d of %d', $p, $pages));
-            $pdf->ln(10);
+            $fpdf->cell(0, 10, sprintf('Page %d of %d', $p, $pages));
+            $fpdf->ln(10);
 
             // Add enough lines to fill the page
             for ($i = 0; $i < 30; $i++) {
-                $pdf->multiCell(0, 6, $sampleLine);
+                $fpdf->multiCell(0, 6, $sampleLine);
             }
         }
 
         $originalPdf = $tmpDir . '/large_original.pdf';
-        $pdf->output('F', $originalPdf);
+        $fpdf->output('F', $originalPdf);
 
         // Validate the original PDF was created
         $this->assertFileExists($originalPdf);
@@ -190,8 +190,8 @@ final class LargePdfMemoryTest extends TestCase
         );
 
         // Clean up
-        foreach ($splitFiles as $file) {
-            self::unlink($file);
+        foreach ($splitFiles as $splitFile) {
+            self::unlink($splitFile);
         }
 
         if (file_exists($originalPdf)) {

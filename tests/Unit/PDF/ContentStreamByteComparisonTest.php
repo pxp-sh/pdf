@@ -31,9 +31,9 @@ use function uniqid;
 use Monolog\Handler\StreamHandler;
 use Monolog\Logger;
 use Psr\Log\LoggerInterface;
-use PXP\PDF\Fpdf\FPDF;
+use PXP\PDF\Fpdf\Core\FPDF;
+use PXP\PDF\Fpdf\Features\Splitter\PDFSplitter;
 use PXP\PDF\Fpdf\IO\FileIO;
-use PXP\PDF\Fpdf\Splitter\PDFSplitter;
 use RuntimeException;
 use Test\TestCase;
 
@@ -72,8 +72,8 @@ class ContentStreamByteComparisonTest extends TestCase
         // Extract page
         $extractedPath = sys_get_temp_dir() . '/byte_comparison_extracted.pdf';
         $fileIO        = new FileIO($this->logger);
-        $splitter      = new PDFSplitter($sourcePath, $fileIO, $this->logger);
-        $splitter->extractPage(1, $extractedPath);
+        $pdfSplitter   = new PDFSplitter($sourcePath, $fileIO, $this->logger);
+        $pdfSplitter->extractPage(1, $extractedPath);
 
         $sourceDecompressed    = sys_get_temp_dir() . '/source_decompressed.pdf';
         $extractedDecompressed = sys_get_temp_dir() . '/extracted_decompressed.pdf';
@@ -82,8 +82,8 @@ class ContentStreamByteComparisonTest extends TestCase
         $this->decompressPdfWithQpdf($extractedPath, $extractedDecompressed);
 
         // Extract content streams
-        $sourceContent    = $this->extractContentStream($sourceDecompressed, 1);
-        $extractedContent = $this->extractContentStream($extractedDecompressed, 1);
+        $sourceContent    = $this->extractContentStream($sourceDecompressed);
+        $extractedContent = $this->extractContentStream($extractedDecompressed);
 
         // Compare checksums
         $sourceChecksum    = md5($sourceContent);
@@ -123,8 +123,8 @@ class ContentStreamByteComparisonTest extends TestCase
         // Extract page
         $extractedPath = sys_get_temp_dir() . '/mutool_comparison_extracted.pdf';
         $fileIO        = new FileIO($this->logger);
-        $splitter      = new PDFSplitter($sourcePath, $fileIO, $this->logger);
-        $splitter->extractPage(1, $extractedPath);
+        $pdfSplitter   = new PDFSplitter($sourcePath, $fileIO, $this->logger);
+        $pdfSplitter->extractPage(1, $extractedPath);
         $extractedText = $this->extractTextWithMutool($extractedPath);
 
         // Skip comparison if mutool not available or returned null
@@ -155,8 +155,8 @@ class ContentStreamByteComparisonTest extends TestCase
         // Extract page
         $extractedPath = sys_get_temp_dir() . '/checksum_test_extracted.pdf';
         $fileIO        = new FileIO($this->logger);
-        $splitter      = new PDFSplitter($sourcePath, $fileIO, $this->logger);
-        $splitter->extractPage(1, $extractedPath);
+        $pdfSplitter   = new PDFSplitter($sourcePath, $fileIO, $this->logger);
+        $pdfSplitter->extractPage(1, $extractedPath);
 
         $this->assertFileExists($extractedPath);
 
@@ -168,7 +168,7 @@ class ContentStreamByteComparisonTest extends TestCase
         $this->assertLessThanOrEqual($sourceSize * 1.5, $extractedSize, 'Extracted should not be much larger');
 
         // Both should be valid PDFs
-        $sourceContent    = file_get_contents($sourcePath);
+        file_get_contents($sourcePath);
         $extractedContent = file_get_contents($extractedPath);
 
         $this->assertStringStartsWith('%PDF-', $extractedContent);
@@ -192,21 +192,21 @@ class ContentStreamByteComparisonTest extends TestCase
     public function test_whitespace_and_operators_preserved(): void
     {
         // Create PDF with specific text positioning
-        $pdf = new FPDF;
-        $pdf->AddPage();
-        $pdf->SetFont('Arial', 'B', 14);
-        $pdf->Cell(0, 10, 'Line 1 with spaces', 0, 1);
-        $pdf->Cell(0, 10, '    Indented line', 0, 1);
-        $pdf->Cell(0, 10, 'Line with    multiple    spaces', 0, 1);
+        $fpdf = new FPDF;
+        $fpdf->AddPage();
+        $fpdf->SetFont('Arial', 'B', 14);
+        $fpdf->Cell(0, 10, 'Line 1 with spaces', 0, 1);
+        $fpdf->Cell(0, 10, '    Indented line', 0, 1);
+        $fpdf->Cell(0, 10, 'Line with    multiple    spaces', 0, 1);
 
         $sourcePath = sys_get_temp_dir() . '/whitespace_test.pdf';
-        $pdf->Output('F', $sourcePath);
+        $fpdf->Output('F', $sourcePath);
 
         // Extract
         $extractedPath = sys_get_temp_dir() . '/whitespace_extracted.pdf';
         $fileIO        = new FileIO($this->logger);
-        $splitter      = new PDFSplitter($sourcePath, $fileIO, $this->logger);
-        $splitter->extractPage(1, $extractedPath);
+        $pdfSplitter   = new PDFSplitter($sourcePath, $fileIO, $this->logger);
+        $pdfSplitter->extractPage(1, $extractedPath);
 
         $this->assertFileExists($extractedPath);
 
@@ -237,15 +237,15 @@ class ContentStreamByteComparisonTest extends TestCase
 
     private function createSimpleTestPdf(): string
     {
-        $pdf = new FPDF;
-        $pdf->AddPage();
-        $pdf->SetFont('Arial', '', 12);
-        $pdf->Cell(0, 10, 'Test content for byte comparison', 0, 1);
-        $pdf->Cell(0, 10, 'This is line 2', 0, 1);
-        $pdf->Cell(0, 10, 'This is line 3', 0, 1);
+        $fpdf = new FPDF;
+        $fpdf->AddPage();
+        $fpdf->SetFont('Arial', '', 12);
+        $fpdf->Cell(0, 10, 'Test content for byte comparison', 0, 1);
+        $fpdf->Cell(0, 10, 'This is line 2', 0, 1);
+        $fpdf->Cell(0, 10, 'This is line 3', 0, 1);
 
         $path = sys_get_temp_dir() . '/byte_test_' . uniqid() . '.pdf';
-        $pdf->Output('F', $path);
+        $fpdf->Output('F', $path);
 
         return $path;
     }
@@ -278,7 +278,7 @@ class ContentStreamByteComparisonTest extends TestCase
         }
     }
 
-    private function extractContentStream(string $pdfPath, int $pageNum): string
+    private function extractContentStream(string $pdfPath): string
     {
         // Simple extraction - read PDF and find stream between 'stream' and 'endstream'
         $content = file_get_contents($pdfPath);

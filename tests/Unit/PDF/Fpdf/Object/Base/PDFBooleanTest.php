@@ -13,7 +13,7 @@ declare(strict_types=1);
  */
 namespace Test\Unit\PDF\Fpdf\Object\Base;
 
-use PXP\PDF\Fpdf\Object\Base\PDFBoolean;
+use PXP\PDF\Fpdf\Core\Object\Base\PDFBoolean;
 use Test\TestCase;
 
 /**
@@ -23,14 +23,14 @@ final class PDFBooleanTest extends TestCase
 {
     public function testToStringWithTrue(): void
     {
-        $bool = new PDFBoolean(true);
-        $this->assertSame('true', (string) $bool);
+        $pdfBoolean = new PDFBoolean(true);
+        $this->assertSame('true', (string) $pdfBoolean);
     }
 
     public function testToStringWithFalse(): void
     {
-        $bool = new PDFBoolean(false);
-        $this->assertSame('false', (string) $bool);
+        $pdfBoolean = new PDFBoolean(false);
+        $this->assertSame('false', (string) $pdfBoolean);
     }
 
     public function testGetValue(): void

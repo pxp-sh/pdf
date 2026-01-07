@@ -13,7 +13,7 @@ declare(strict_types=1);
  */
 namespace Test\Unit\PDF\Fpdf\Object\Base;
 
-use PXP\PDF\Fpdf\Object\Base\PDFString;
+use PXP\PDF\Fpdf\Core\Object\Base\PDFString;
 use Test\TestCase;
 
 /**
@@ -23,8 +23,8 @@ final class PDFStringTest extends TestCase
 {
     public function testToStringWithLiteralString(): void
     {
-        $string = new PDFString('test');
-        $result = (string) $string;
+        $pdfString = new PDFString('test');
+        $result    = (string) $pdfString;
         $this->assertStringStartsWith('(', $result);
         $this->assertStringEndsWith(')', $result);
         $this->assertStringContainsString('test', $result);
@@ -32,24 +32,24 @@ final class PDFStringTest extends TestCase
 
     public function testToStringWithHexString(): void
     {
-        $string = new PDFString('test', true);
-        $result = (string) $string;
+        $pdfString = new PDFString('test', true);
+        $result    = (string) $pdfString;
         $this->assertStringStartsWith('<', $result);
         $this->assertStringEndsWith('>', $result);
     }
 
     public function testEscapesSpecialCharacters(): void
     {
-        $string = new PDFString('test(ing)');
-        $result = (string) $string;
+        $pdfString = new PDFString('test(ing)');
+        $result    = (string) $pdfString;
         $this->assertStringContainsString('\\(', $result);
         $this->assertStringContainsString('\\)', $result);
     }
 
     public function testGetValue(): void
     {
-        $string = new PDFString('test');
-        $this->assertSame('test', $string->getValue());
+        $pdfString = new PDFString('test');
+        $this->assertSame('test', $pdfString->getValue());
     }
 
     public function testIsHex(): void
@@ -63,22 +63,22 @@ final class PDFStringTest extends TestCase
 
     public function testFromPDFStringWithLiteralString(): void
     {
-        $string = PDFString::fromPDFString('(test)');
-        $this->assertSame('test', $string->getValue());
-        $this->assertFalse($string->isHex());
+        $pdfString = PDFString::fromPDFString('(test)');
+        $this->assertSame('test', $pdfString->getValue());
+        $this->assertFalse($pdfString->isHex());
     }
 
     public function testFromPDFStringWithHexString(): void
     {
-        $string = PDFString::fromPDFString('<74657374>');
-        $this->assertSame('test', $string->getValue());
-        $this->assertTrue($string->isHex());
+        $pdfString = PDFString::fromPDFString('<74657374>');
+        $this->assertSame('test', $pdfString->getValue());
+        $this->assertTrue($pdfString->isHex());
     }
 
     public function testSetValue(): void
     {
-        $string = new PDFString('old');
-        $string->setValue('new', 'UTF-8');
-        $this->assertSame('new', $string->getValue());
+        $pdfString = new PDFString('old');
+        $pdfString->setValue('new', 'UTF-8');
+        $this->assertSame('new', $pdfString->getValue());
     }
 }

@@ -13,7 +13,7 @@ declare(strict_types=1);
  */
 namespace Test\Unit\PDF\Fpdf\Font;
 
-use PXP\PDF\Fpdf\Font\FontInfo;
+use PXP\PDF\Fpdf\Rendering\Font\FontInfo;
 use ReflectionClass;
 use Test\TestCase;
 
@@ -24,8 +24,8 @@ final class FontInfoTest extends TestCase
 {
     public function testFontInfoIsReadonly(): void
     {
-        $reflection = new ReflectionClass(FontInfo::class);
-        $this->assertTrue($reflection->isReadOnly());
+        $reflectionClass = new ReflectionClass(FontInfo::class);
+        $this->assertTrue($reflectionClass->isReadOnly());
     }
 
     public function testFontInfoWithRequiredProperties(): void

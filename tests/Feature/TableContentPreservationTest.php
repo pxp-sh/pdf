@@ -32,10 +32,11 @@ use function substr;
 use function sys_get_temp_dir;
 use function uniqid;
 use function unlink;
+use PXP\PDF\Fpdf\Core\Object\Parser\PDFParser;
+use PXP\PDF\Fpdf\Core\Tree\PDFObjectNode;
+use PXP\PDF\Fpdf\Features\Splitter\PDFMerger;
+use PXP\PDF\Fpdf\Features\Splitter\PDFSplitter;
 use PXP\PDF\Fpdf\IO\FileIO;
-use PXP\PDF\Fpdf\Object\Parser\PDFParser;
-use PXP\PDF\Fpdf\Splitter\PDFMerger;
-use PXP\PDF\Fpdf\Splitter\PDFSplitter;
 use PXP\PDF\PDFDictionary;
 use PXP\PDF\PDFReference;
 use PXP\PDF\PDFStream;
@@ -103,8 +104,8 @@ final class TableContentPreservationTest extends TestCase
     {
         // Step 1: Extract page 533 as reference (this is known to work correctly)
         $page533Path = $this->tempDir . '/page_533_reference.pdf';
-        $splitter    = new PDFSplitter($this->sourcePdf, $this->fileIO, self::getLogger());
-        $splitter->extractPage(533, $page533Path);
+        $pdfSplitter = new PDFSplitter($this->sourcePdf, $this->fileIO, self::getLogger());
+        $pdfSplitter->extractPage(533, $page533Path);
 
         $this->assertFileExists($page533Path);
 
@@ -113,20 +114,20 @@ final class TableContentPreservationTest extends TestCase
 
         for ($pageNum = 530; $pageNum <= 534; $pageNum++) {
             $pagePath = $this->tempDir . "/page_{$pageNum}.pdf";
-            $splitter->extractPage($pageNum, $pagePath);
+            $pdfSplitter->extractPage($pageNum, $pagePath);
             $this->assertFileExists($pagePath);
             $extractedPages[] = $pagePath;
         }
 
         // Step 3: Merge the extracted pages
         $mergedPath = $this->tempDir . '/merged_pages_530_534.pdf';
-        $merger     = new PDFMerger(
+        $pdfMerger  = new PDFMerger(
             $this->fileIO,
             self::getLogger(),
             self::getEventDispatcher(),
             self::getCache(),
         );
-        $merger->mergeIncremental($extractedPages, $mergedPath);
+        $pdfMerger->mergeIncremental($extractedPages, $mergedPath);
 
         $this->assertFileExists($mergedPath);
 
@@ -181,10 +182,10 @@ final class TableContentPreservationTest extends TestCase
         );
 
         // Step 5: Compare Form XObject stream sizes
-        $parser = new PDFParser(self::getLogger(), self::getCache());
+        $pdfParser = new PDFParser(self::getLogger(), self::getCache());
 
-        $formXObjSize533    = $this->getFormXObjectStreamSize($page533Path, $parser);
-        $formXObjSizeMerged = $this->getFormXObjectStreamSize($mergedPath, $parser);
+        $formXObjSize533    = $this->getFormXObjectStreamSize($page533Path, $pdfParser);
+        $formXObjSizeMerged = $this->getFormXObjectStreamSize($mergedPath, $pdfParser);
 
         self::getLogger()->info('Form XObject stream sizes:', [
             'reference_page_533' => $formXObjSize533,
@@ -242,24 +243,24 @@ final class TableContentPreservationTest extends TestCase
      *
      * Returns the decoded stream length of the first Form XObject found (TPL*).
      */
-    private function getFormXObjectStreamSize(string $pdfPath, PDFParser $parser): int
+    private function getFormXObjectStreamSize(string $pdfPath, PDFParser $pdfParser): int
     {
-        $doc  = $parser->parseDocumentFromFile($pdfPath, $this->fileIO);
-        $page = $doc->getPage(1);
+        $pdfDocument = $pdfParser->parseDocumentFromFile($pdfPath, $this->fileIO);
+        $page        = $pdfDocument->getPage(1);
 
-        if ($page === null) {
+        if (!$page instanceof PDFObjectNode) {
             return 0;
         }
 
-        $pageDict     = $page->getValue();
-        $resourcesRef = $pageDict->getEntry('/Resources');
+        $pdfObject    = $page->getValue();
+        $resourcesRef = $pdfObject->getEntry('/Resources');
 
         $resources = $resourcesRef;
 
         if ($resourcesRef instanceof PDFReference) {
-            $resourcesNode = $doc->getObject($resourcesRef->getObjectNumber());
+            $resourcesNode = $pdfDocument->getObject($resourcesRef->getObjectNumber());
 
-            if ($resourcesNode !== null) {
+            if ($resourcesNode instanceof PDFObjectNode) {
                 $resources = $resourcesNode->getValue();
             }
         }
@@ -271,9 +272,9 @@ final class TableContentPreservationTest extends TestCase
         $xobjects = $resources->getEntry('/XObject');
 
         if ($xobjects instanceof PDFReference) {
-            $xobjNode = $doc->getObject($xobjects->getObjectNumber());
+            $xobjNode = $pdfDocument->getObject($xobjects->getObjectNumber());
 
-            if ($xobjNode !== null) {
+            if ($xobjNode instanceof PDFObjectNode) {
                 $xobjects = $xobjNode->getValue();
             }
         }
@@ -283,20 +284,18 @@ final class TableContentPreservationTest extends TestCase
         }
 
         // Find the Form XObject (TPL*)
-        foreach ($xobjects->getAllEntries() as $name => $ref) {
-            if (str_starts_with($name, '/TPL')) {
-                if ($ref instanceof PDFReference) {
-                    $xobjNode = $doc->getObject($ref->getObjectNumber());
+        foreach ($xobjects->getAllEntries() as $name => $allEntry) {
+            if (str_starts_with($name, '/TPL') && $allEntry instanceof PDFReference) {
+                $xobjNode = $pdfDocument->getObject($allEntry->getObjectNumber());
 
-                    if ($xobjNode !== null) {
-                        $xobj = $xobjNode->getValue();
+                if ($xobjNode instanceof PDFObjectNode) {
+                    $xobj = $xobjNode->getValue();
 
-                        if ($xobj instanceof PDFStream) {
-                            $subtype = $xobj->getEntry('/Subtype');
+                    if ($xobj instanceof PDFStream) {
+                        $subtype = $xobj->getEntry('/Subtype');
 
-                            if ((string) $subtype === '/Form') {
-                                return strlen($xobj->getDecodedData());
-                            }
+                        if ((string) $subtype === '/Form') {
+                            return strlen($xobj->getDecodedData());
                         }
                     }
                 }

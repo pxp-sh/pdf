@@ -13,9 +13,9 @@ declare(strict_types=1);
  */
 namespace Test\Unit\PDF\Fpdf\Tree;
 
-use PXP\PDF\Fpdf\Object\Base\PDFDictionary;
-use PXP\PDF\Fpdf\Tree\PDFObjectNode;
-use PXP\PDF\Fpdf\Tree\PDFObjectRegistry;
+use PXP\PDF\Fpdf\Core\Object\Base\PDFDictionary;
+use PXP\PDF\Fpdf\Core\Tree\PDFObjectNode;
+use PXP\PDF\Fpdf\Core\Tree\PDFObjectRegistry;
 use Test\TestCase;
 
 /**
@@ -25,71 +25,71 @@ final class PDFObjectRegistryTest extends TestCase
 {
     public function testRegister(): void
     {
-        $registry = new PDFObjectRegistry;
-        $dict     = new PDFDictionary;
-        $node     = new PDFObjectNode(1, $dict);
+        $pdfObjectRegistry = new PDFObjectRegistry;
+        $pdfDictionary     = new PDFDictionary;
+        $pdfObjectNode     = new PDFObjectNode(1, $pdfDictionary);
 
-        $registry->register($node);
-        $this->assertSame($node, $registry->get(1));
+        $pdfObjectRegistry->register($pdfObjectNode);
+        $this->assertSame($pdfObjectNode, $pdfObjectRegistry->get(1));
     }
 
     public function testGetReturnsNullForMissing(): void
     {
-        $registry = new PDFObjectRegistry;
-        $this->assertNull($registry->get(999));
+        $pdfObjectRegistry = new PDFObjectRegistry;
+        $this->assertNull($pdfObjectRegistry->get(999));
     }
 
     public function testHas(): void
     {
-        $registry = new PDFObjectRegistry;
-        $dict     = new PDFDictionary;
-        $node     = new PDFObjectNode(1, $dict);
+        $pdfObjectRegistry = new PDFObjectRegistry;
+        $pdfDictionary     = new PDFDictionary;
+        $pdfObjectNode     = new PDFObjectNode(1, $pdfDictionary);
 
-        $registry->register($node);
-        $this->assertTrue($registry->has(1));
-        $this->assertFalse($registry->has(999));
+        $pdfObjectRegistry->register($pdfObjectNode);
+        $this->assertTrue($pdfObjectRegistry->has(1));
+        $this->assertFalse($pdfObjectRegistry->has(999));
     }
 
     public function testRemove(): void
     {
-        $registry = new PDFObjectRegistry;
-        $dict     = new PDFDictionary;
-        $node     = new PDFObjectNode(1, $dict);
+        $pdfObjectRegistry = new PDFObjectRegistry;
+        $pdfDictionary     = new PDFDictionary;
+        $pdfObjectNode     = new PDFObjectNode(1, $pdfDictionary);
 
-        $registry->register($node);
-        $registry->remove(1);
-        $this->assertFalse($registry->has(1));
+        $pdfObjectRegistry->register($pdfObjectNode);
+        $pdfObjectRegistry->remove(1);
+        $this->assertFalse($pdfObjectRegistry->has(1));
     }
 
     public function testGetNextObjectNumber(): void
     {
-        $registry = new PDFObjectRegistry;
-        $this->assertSame(1, $registry->getNextObjectNumber());
-        $this->assertSame(2, $registry->getNextObjectNumber());
+        $pdfObjectRegistry = new PDFObjectRegistry;
+        $this->assertSame(1, $pdfObjectRegistry->getNextObjectNumber());
+        $this->assertSame(2, $pdfObjectRegistry->getNextObjectNumber());
     }
 
     public function testGetNextObjectNumberUpdatesAfterRegister(): void
     {
-        $registry = new PDFObjectRegistry;
-        $dict     = new PDFDictionary;
-        $node     = new PDFObjectNode(5, $dict);
-        $registry->register($node);
+        $pdfObjectRegistry = new PDFObjectRegistry;
+        $pdfDictionary     = new PDFDictionary;
+        $pdfObjectNode     = new PDFObjectNode(5, $pdfDictionary);
+        $pdfObjectRegistry->register($pdfObjectNode);
 
-        $this->assertSame(6, $registry->getNextObjectNumber());
+        $this->assertSame(6, $pdfObjectRegistry->getNextObjectNumber());
     }
 
     public function testRebuildObjectNumbers(): void
     {
-        $registry = new PDFObjectRegistry;
-        $dict1    = new PDFDictionary;
-        $dict2    = new PDFDictionary;
-        $node1    = new PDFObjectNode(10, $dict1);
-        $node2    = new PDFObjectNode(20, $dict2);
+        $pdfObjectRegistry = new PDFObjectRegistry;
+        $dict1             = new PDFDictionary;
+        $dict2             = new PDFDictionary;
+        $node1             = new PDFObjectNode(10, $dict1);
+        $node2             = new PDFObjectNode(20, $dict2);
 
-        $registry->register($node1);
-        $registry->register($node2);
+        $pdfObjectRegistry->register($node1);
+        $pdfObjectRegistry->register($node2);
 
-        $registry->rebuildObjectNumbers();
+        $pdfObjectRegistry->rebuildObjectNumbers();
 
         $this->assertSame(1, $node1->getObjectNumber());
         $this->assertSame(2, $node2->getObjectNumber());
@@ -97,13 +97,13 @@ final class PDFObjectRegistryTest extends TestCase
 
     public function testGetMaxObjectNumber(): void
     {
-        $registry = new PDFObjectRegistry;
-        $this->assertSame(0, $registry->getMaxObjectNumber());
+        $pdfObjectRegistry = new PDFObjectRegistry;
+        $this->assertSame(0, $pdfObjectRegistry->getMaxObjectNumber());
 
-        $dict = new PDFDictionary;
-        $node = new PDFObjectNode(5, $dict);
-        $registry->register($node);
+        $pdfDictionary = new PDFDictionary;
+        $pdfObjectNode = new PDFObjectNode(5, $pdfDictionary);
+        $pdfObjectRegistry->register($pdfObjectNode);
 
-        $this->assertSame(5, $registry->getMaxObjectNumber());
+        $this->assertSame(5, $pdfObjectRegistry->getMaxObjectNumber());
     }
 }

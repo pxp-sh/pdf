@@ -13,7 +13,7 @@ declare(strict_types=1);
  */
 namespace Test\Unit\PDF\Fpdf\Xref;
 
-use PXP\PDF\Fpdf\Xref\XrefEntry;
+use PXP\PDF\Fpdf\Core\Xref\XrefEntry;
 use Test\TestCase;
 
 /**
@@ -23,21 +23,21 @@ final class XrefEntryTest extends TestCase
 {
     public function testGetOffset(): void
     {
-        $entry = new XrefEntry(100, 0, false);
-        $this->assertSame(100, $entry->getOffset());
+        $xrefEntry = new XrefEntry(100, 0, false);
+        $this->assertSame(100, $xrefEntry->getOffset());
     }
 
     public function testSetOffset(): void
     {
-        $entry = new XrefEntry(100);
-        $entry->setOffset(200);
-        $this->assertSame(200, $entry->getOffset());
+        $xrefEntry = new XrefEntry(100);
+        $xrefEntry->setOffset(200);
+        $this->assertSame(200, $xrefEntry->getOffset());
     }
 
     public function testGetGeneration(): void
     {
-        $entry = new XrefEntry(100, 5, false);
-        $this->assertSame(5, $entry->getGeneration());
+        $xrefEntry = new XrefEntry(100, 5, false);
+        $this->assertSame(5, $xrefEntry->getGeneration());
     }
 
     public function testIsFree(): void
@@ -51,16 +51,16 @@ final class XrefEntryTest extends TestCase
 
     public function testToStringForNormalEntry(): void
     {
-        $entry  = new XrefEntry(100, 0, false);
-        $result = (string) $entry;
+        $xrefEntry = new XrefEntry(100, 0, false);
+        $result    = (string) $xrefEntry;
         $this->assertStringContainsString('100', $result);
         $this->assertStringContainsString('n', $result);
     }
 
     public function testToStringForFreeEntry(): void
     {
-        $entry  = new XrefEntry(100, 0, true);
-        $result = (string) $entry;
+        $xrefEntry = new XrefEntry(100, 0, true);
+        $result    = (string) $xrefEntry;
         $this->assertStringContainsString('f', $result);
     }
 }

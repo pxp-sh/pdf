@@ -53,12 +53,12 @@ final class ImageWithAlphaTest extends TestCase
         imagepng($im, $file);
         imagedestroy($im);
 
-        $pdf = self::createFPDF();
-        $pdf->setCompression(false);
-        $pdf->addPage();
-        $pdf->image($file, 10, 10, 10, 10, 'png');
+        $fpdf = self::createFPDF();
+        $fpdf->setCompression(false);
+        $fpdf->addPage();
+        $fpdf->image($file, 10, 10, 10, 10, 'png');
 
-        $result = $pdf->output('S', 'alpha.pdf');
+        $result = $fpdf->output('S', 'alpha.pdf');
 
         $this->assertStringContainsString('/SMask ', $result);
 

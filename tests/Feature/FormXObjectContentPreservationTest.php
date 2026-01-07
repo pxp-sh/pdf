@@ -18,12 +18,11 @@ use function dirname;
 use function escapeshellarg;
 use function exec;
 use function file_exists;
-use function gettype;
+use function get_debug_type;
 use function glob;
 use function implode;
 use function is_dir;
 use function is_file;
-use function is_object;
 use function mkdir;
 use function preg_replace;
 use function rmdir;
@@ -33,9 +32,11 @@ use function strlen;
 use function sys_get_temp_dir;
 use function uniqid;
 use function unlink;
+use PXP\PDF\Fpdf\Core\Object\Parser\PDFParser;
+use PXP\PDF\Fpdf\Core\Tree\PDFDocument;
+use PXP\PDF\Fpdf\Core\Tree\PDFObjectNode;
+use PXP\PDF\Fpdf\Features\Splitter\PDFSplitter;
 use PXP\PDF\Fpdf\IO\FileIO;
-use PXP\PDF\Fpdf\Object\Parser\PDFParser;
-use PXP\PDF\Fpdf\Splitter\PDFSplitter;
 use PXP\PDF\PDFDictionary;
 use PXP\PDF\PDFReference;
 use PXP\PDF\PDFStream;
@@ -104,15 +105,15 @@ final class FormXObjectContentPreservationTest extends TestCase
      */
     public function test_form_xobject_stream_preserved_during_extraction(): void
     {
-        $parser = new PDFParser(self::getLogger(), self::getCache());
+        $pdfParser = new PDFParser(self::getLogger(), self::getCache());
 
         // Step 1: Get Form XObject size from original PDF (page 533)
-        $originalDoc  = $parser->parseDocumentFromFile($this->sourcePdf, $this->fileIO);
-        $originalPage = $originalDoc->getPage(533);
+        $pdfDocument  = $pdfParser->parseDocumentFromFile($this->sourcePdf, $this->fileIO);
+        $originalPage = $pdfDocument->getPage(533);
 
         $this->assertNotNull($originalPage, 'Page 533 must exist in source PDF');
 
-        $originalFormXObjSize = $this->getFormXObjectStreamSize($originalPage, $originalDoc);
+        $originalFormXObjSize = $this->getFormXObjectStreamSize($originalPage, $pdfDocument);
 
         self::getLogger()->info('Original Form XObject stream size', [
             'page'       => 533,
@@ -127,13 +128,13 @@ final class FormXObjectContentPreservationTest extends TestCase
 
         // Step 2: Extract page 533
         $extractedPath = $this->tempDir . '/page_533_extracted.pdf';
-        $splitter      = new PDFSplitter($this->sourcePdf, $this->fileIO, self::getLogger());
-        $splitter->extractPage(533, $extractedPath);
+        $pdfSplitter   = new PDFSplitter($this->sourcePdf, $this->fileIO, self::getLogger());
+        $pdfSplitter->extractPage(533, $extractedPath);
 
         $this->assertFileExists($extractedPath);
 
         // Step 3: Get Form XObject size from extracted PDF
-        $extractedDoc  = $parser->parseDocumentFromFile($extractedPath, $this->fileIO);
+        $extractedDoc  = $pdfParser->parseDocumentFromFile($extractedPath, $this->fileIO);
         $extractedPage = $extractedDoc->getPage(1);
 
         $this->assertNotNull($extractedPage, 'Extracted PDF should have page 1');
@@ -186,17 +187,17 @@ final class FormXObjectContentPreservationTest extends TestCase
     /**
      * Get the decoded stream size of the first Form XObject in a page.
      */
-    private function getFormXObjectStreamSize($page, $doc): int
+    private function getFormXObjectStreamSize(PDFObjectNode $pdfObjectNode, PDFDocument $pdfDocument): int
     {
-        $pageDict = $page->getValue();
+        $pdfObject = $pdfObjectNode->getValue();
 
-        if (!$pageDict instanceof PDFDictionary) {
-            self::getLogger()->warning('Page is not a dictionary', ['type' => $pageDict::class]);
+        if (!$pdfObject instanceof PDFDictionary) {
+            self::getLogger()->warning('Page is not a dictionary', ['type' => $pdfObject::class]);
 
             return 0;
         }
 
-        $resourcesRef = $pageDict->getEntry('/Resources');
+        $resourcesRef = $pdfObject->getEntry('/Resources');
 
         if ($resourcesRef === null) {
             self::getLogger()->warning('No /Resources entry in page');
@@ -207,9 +208,9 @@ final class FormXObjectContentPreservationTest extends TestCase
         $resources = $resourcesRef;
 
         if ($resourcesRef instanceof PDFReference) {
-            $resourcesNode = $doc->getObject($resourcesRef->getObjectNumber());
+            $resourcesNode = $pdfDocument->getObject($resourcesRef->getObjectNumber());
 
-            if ($resourcesNode !== null) {
+            if ($resourcesNode instanceof PDFObjectNode) {
                 $resources = $resourcesNode->getValue();
             }
         }
@@ -229,32 +230,32 @@ final class FormXObjectContentPreservationTest extends TestCase
         }
 
         if ($xobjects instanceof PDFReference) {
-            $xobjNode = $doc->getObject($xobjects->getObjectNumber());
+            $xobjNode = $pdfDocument->getObject($xobjects->getObjectNumber());
 
-            if ($xobjNode !== null) {
+            if ($xobjNode instanceof PDFObjectNode) {
                 $xobjects = $xobjNode->getValue();
             }
         }
 
         if (!$xobjects instanceof PDFDictionary) {
-            self::getLogger()->warning('XObjects is not a dictionary', ['type' => is_object($xobjects) ? $xobjects::class : gettype($xobjects)]);
+            self::getLogger()->warning('XObjects is not a dictionary', ['type' => get_debug_type($xobjects)]);
 
             return 0;
         }
 
         // Find Form XObjects (TPL* naming convention or any with /Subtype /Form)
-        foreach ($xobjects->getAllEntries() as $name => $ref) {
-            self::getLogger()->debug('Checking XObject', ['name' => $name, 'type' => $ref::class]);
+        foreach ($xobjects->getAllEntries() as $name => $allEntry) {
+            self::getLogger()->debug('Checking XObject', ['name' => $name, 'type' => $allEntry::class]);
 
-            $xobj = $ref;
+            $xobj = $allEntry;
 
-            if ($ref instanceof PDFReference) {
-                $xobjNode = $doc->getObject($ref->getObjectNumber());
+            if ($allEntry instanceof PDFReference) {
+                $xobjNode = $pdfDocument->getObject($allEntry->getObjectNumber());
 
-                if ($xobjNode !== null) {
+                if ($xobjNode instanceof PDFObjectNode) {
                     $xobj = $xobjNode->getValue();
                 } else {
-                    self::getLogger()->warning('Could not dereference XObject', ['name' => $name, 'obj_num' => $ref->getObjectNumber()]);
+                    self::getLogger()->warning('Could not dereference XObject', ['name' => $name, 'obj_num' => $allEntry->getObjectNumber()]);
 
                     continue;
                 }
@@ -309,11 +310,11 @@ final class FormXObjectContentPreservationTest extends TestCase
             'INSTALAÇÕES',
         ];
 
-        foreach ($expectedColumns as $column) {
+        foreach ($expectedColumns as $expectedColumn) {
             $this->assertStringContainsString(
-                $column,
+                $expectedColumn,
                 $textNormalized,
-                "Extracted PDF should contain column header: {$column}",
+                "Extracted PDF should contain column header: {$expectedColumn}",
             );
         }
     }

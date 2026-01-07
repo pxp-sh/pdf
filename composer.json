@@ -10,7 +10,10 @@
         }
     ],
     "require": {
-        "php": "^8.4"
+        "php": "^8.4",
+        "psr/log": "^3.0",
+        "psr/cache": "^3.0",
+        "psr/event-dispatcher": "^1.0"
     },
     "require-dev": {
         "ergebnis/composer-normalize": "^2.48",
@@ -23,7 +26,11 @@
         "phpunit/phpunit": "^12.5",
         "fakerphp/faker": "^1.24",
         "symfony/cache": "^7.0",
-        "symfony/event-dispatcher": "^7.0"
+        "symfony/event-dispatcher": "^7.0",
+        "bramus/monolog-colored-line-formatter": "^3.1",
+        "rector/rector": "^2.3",
+        "brianium/paratest": "^7.16",
+        "ergebnis/phpunit-slow-test-detector": "^2.20"
     },
     "minimum-stability": "dev",
     "prefer-stable": true,
@@ -44,15 +51,19 @@
         }
     },
     "scripts": {
+        "fix": [
+            "@cs:fix"
+        ],
+        "rector": "@php vendor/bin/rector process src tests",
         "cs:check": "@php vendor/bin/php-cs-fixer fix --dry-run --diff",
         "cs:fix": "@php vendor/bin/php-cs-fixer fix",
         "phpstan": "@php vendor/bin/phpstan analyse",
-        "test": "@php vendor/bin/phpunit --testdox --colors=always",
-        "test:all": "@php vendor/bin/phpunit --testdox --colors=always",
-        "test:coverage": "@php vendor/bin/phpunit --testdox --colors=always --coverage-text",
-        "test:feature": "@php vendor/bin/phpunit --testdox --colors=always --testsuite Feature",
-        "test:integration": "@php vendor/bin/phpunit --testdox --colors=always --testsuite Integration",
-        "test:unit": "@php vendor/bin/phpunit --testdox --colors=always --testsuite Unit"
+        "test": "@php vendor/bin/paratest --testdox --colors=always",
+        "test:all": "@php vendor/bin/paratest --testdox --colors=always",
+        "test:coverage": "@php vendor/bin/paratest --testdox --colors=always --coverage-text",
+        "test:feature": "@php vendor/bin/paratest --testdox --colors=always --testsuite Feature",
+        "test:integration": "@php vendor/bin/paratest --testdox --colors=always --testsuite Integration",
+        "test:unit": "@php vendor/bin/paratest --testdox --colors=always --testsuite Unit"
     },
     "scripts-descriptions": {
         "cs:check": "Check the code style",
