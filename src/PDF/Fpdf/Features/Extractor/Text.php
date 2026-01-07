@@ -112,7 +112,7 @@ class Text
         // 4. Extracting all pages
 
         $smallFileThreshold = 5 * 1024 * 1024; // 5MB
-        $pagePercentage     = $totalPages > 0 ? ($pagesNeeded / $totalPages) : 0;
+        $pagePercentage = $totalPages > 0 ? ($pagesNeeded / $totalPages) : 0;
 
         return
             $fileSize < $smallFileThreshold ||
@@ -166,6 +166,46 @@ class Text
 
         // For full extraction, use the standard method
         return $this->extractFromFile($filePath);
+    }
+
+    /**
+     * Extract text from a PDF file using a streaming approach.
+     * This method processes pages one by one and calls the callback for each page,
+     * allowing for memory-efficient processing of large PDFs.
+     *
+     * @param callable $callback  Function to call for each page: function(string $text, int $pageNumber): void
+     * @param string   $filePath  Path to the PDF file
+     *
+     * @throws FpdfException If the PDF cannot be parsed or pages cannot be retrieved
+     */
+    public function extractFromFileStreaming(callable $callback, string $filePath): void
+    {
+        // Parse document once
+        $document = $this->pdfParser->parseDocumentFromFile($filePath, $this->fileReader);
+
+        // Get all pages
+        try {
+            $pages = $document->getAllPages();
+        } catch (Exception) {
+            return;
+        }
+
+        if ($pages === []) {
+            return;
+        }
+
+        // Process each page and call the callback
+        foreach ($pages as $pageIndex => $page) {
+            if ($page === null) {
+                continue;
+            }
+
+            $pageNumber = $pageIndex + 1;
+            $pageText = $this->extractTextFromPage($page, $document);
+
+            // Call the callback with the page text and page number
+            $callback($pageText, $pageNumber);
+        }
     }
 
     /**
@@ -288,13 +328,13 @@ class Text
     {
         // Use file-based parsing for better handling of complex PDFs (same approach as PDFSplitter)
         $document = $this->pdfParser->parseDocumentFromFile($filePath, $this->fileReader);
-        $text     = $this->extractTextFromDocumentPages($document, $startPage, $endPage);
+        $text = $this->extractTextFromDocumentPages($document, $startPage, $endPage);
 
         // Get file size for buffer info
         $bufferSize = filesize($filePath) ?: 0;
 
         return [
-            'text'        => $text,
+            'text' => $text,
             'buffer_size' => $bufferSize,
         ];
     }
@@ -407,8 +447,8 @@ class Text
         }
 
         $totalPages = count($pages);
-        $startPage  = max(1, $startPage);
-        $endPage    = min($totalPages, $endPage);
+        $startPage = max(1, $startPage);
+        $endPage = min($totalPages, $endPage);
 
         for ($pageNum = $startPage; $pageNum <= $endPage; $pageNum++) {
             $page = $pages[$pageNum - 1];
@@ -528,15 +568,14 @@ class Text
         if (preg_match_all('/\/([A-Za-z0-9]+)\s+[\d.]+\s+Tf/', $content, $fontMatches, PREG_OFFSET_CAPTURE)) {
             foreach ($fontMatches[0] as $idx => $match) {
                 $fontSelections[] = [
-                    'pos'  => $match[1],
+                    'pos' => $match[1],
                     'font' => $fontMatches[1][$idx][0],
                 ];
             }
         }
 
         // Helper function to get active font at a given position
-        $getActiveFont = static function ($position) use ($fontSelections): ?string
-        {
+        $getActiveFont = static function ($position) use ($fontSelections): ?string {
             $activeFont = null;
 
             foreach ($fontSelections as $selection) {
@@ -568,7 +607,7 @@ class Text
                 }
 
                 $textElements[] = [
-                    'pos'  => $match[1],
+                    'pos' => $match[1],
                     'text' => $decodedText,
                     'type' => 'Tj',
                 ];
@@ -579,9 +618,9 @@ class Text
         // In TJ arrays, numbers represent kerning/spacing. Negative numbers < -100 often indicate word spacing
         if (preg_match_all('/\[((?:[^\[\]\\\\]|\\\\.|\\\\(?:\r\n|\r|\n))*)\]\s*TJ/', $content, $matches, PREG_OFFSET_CAPTURE)) {
             foreach ($matches[0] as $idx => $match) {
-                $currentFont  = $getActiveFont($match[1]);
+                $currentFont = $getActiveFont($match[1]);
                 $arrayContent = $matches[1][$idx][0];
-                $text_parts   = [];
+                $text_parts = [];
 
                 // Parse the array content: mix of strings (literal or hex), and numbers
                 // Match: (literal string) or <hex string> or number
@@ -606,7 +645,7 @@ class Text
                 }
 
                 $textElements[] = [
-                    'pos'  => $match[1],
+                    'pos' => $match[1],
                     'text' => implode('', $text_parts),
                     'type' => 'TJ',
                 ];
@@ -628,7 +667,7 @@ class Text
                 }
 
                 $textElements[] = [
-                    'pos'  => $match[1],
+                    'pos' => $match[1],
                     'text' => $decodedText,
                     'type' => '\'',
                 ];
@@ -650,7 +689,7 @@ class Text
                 }
 
                 $textElements[] = [
-                    'pos'  => $match[1],
+                    'pos' => $match[1],
                     'text' => $decodedText,
                     'type' => '"',
                 ];
@@ -658,7 +697,7 @@ class Text
         }
 
         // Sort by position to maintain order
-        usort($textElements, static fn ($a, $b) => $a['pos'] <=> $b['pos']);
+        usort($textElements, static fn($a, $b) => $a['pos'] <=> $b['pos']);
 
         // Look for line break operators between text elements to add proper spacing
         $previousPos = 0;
@@ -730,11 +769,11 @@ class Text
         // Check if we have a font mapping for the current font
         if ($currentFont !== null && isset($fontMappings[$currentFont])) {
             $mapping = $fontMappings[$currentFont];
-            $result  = '';
+            $result = '';
 
             // Decode using font mapping (usually 2-byte or 4-byte character codes)
             // Try 4-byte codes first (common for CID fonts), then 2-byte
-            for ($i = 0; $i < strlen($hexStr);) {
+            for ($i = 0; $i < strlen($hexStr); ) {
                 $matched = false;
 
                 // Try 4-byte (8 hex digits)
@@ -981,7 +1020,7 @@ class Text
                         $dstCode = $pairs[2][$i];
 
                         // Convert destination hex to UTF-8
-                        $unicodeChar       = $this->hexToUTF8($dstCode);
+                        $unicodeChar = $this->hexToUTF8($dstCode);
                         $mapping[$srcCode] = $unicodeChar;
                     }
                 }
@@ -995,16 +1034,16 @@ class Text
                 if (preg_match_all('/<([0-9A-Fa-f]+)>\s*<([0-9A-Fa-f]+)>\s*(?:<([0-9A-Fa-f]+)>|\[(.*?)\])/s', $bfrangeSection, $ranges, PREG_SET_ORDER)) {
                     foreach ($ranges as $range) {
                         $start = hexdec($range[1]);
-                        $end   = hexdec($range[2]);
+                        $end = hexdec($range[2]);
 
                         if (isset($range[3]) && $range[3] !== '') {
                             // Single base code, increment for range
                             $baseCode = $range[3];
-                            $baseNum  = hexdec($baseCode);
+                            $baseNum = hexdec($baseCode);
 
                             for ($code = $start; $code <= $end; $code++) {
-                                $unicodeValue   = $baseNum + ($code - $start);
-                                $hexValue       = str_pad(dechex($unicodeValue), strlen($baseCode), '0', STR_PAD_LEFT);
+                                $unicodeValue = $baseNum + ($code - $start);
+                                $hexValue = str_pad(dechex($unicodeValue), strlen($baseCode), '0', STR_PAD_LEFT);
                                 $mapping[$code] = $this->hexToUTF8($hexValue);
                             }
                         } elseif (isset($range[4])) {
@@ -1050,7 +1089,7 @@ class Text
 
             if (strlen($hexPair) < 4) {
                 // Single byte, treat as-is
-                $hexPair   = substr($hexStr, $i, 2);
+                $hexPair = substr($hexStr, $i, 2);
                 $codepoint = hexdec($hexPair);
             } else {
                 // Two bytes (UTF-16 code unit)
