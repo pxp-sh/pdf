@@ -13,9 +13,9 @@ declare(strict_types=1);
  */
 namespace Test\Unit\PDF\Fpdf\Tree;
 
-use PXP\PDF\Fpdf\Object\Base\PDFDictionary;
-use PXP\PDF\Fpdf\Tree\PDFObjectNode;
-use PXP\PDF\Fpdf\Tree\PDFObjectRegistry;
+use PXP\PDF\Fpdf\Core\Object\Base\PDFDictionary;
+use PXP\PDF\Fpdf\Core\Tree\PDFObjectNode;
+use PXP\PDF\Fpdf\Core\Tree\PDFObjectRegistry;
 use Test\TestCase;
 
 /**

@@ -14,8 +14,8 @@ declare(strict_types=1);
 namespace Test\Unit\PDF\Fpdf\Charset;
 
 use function iconv;
-use PXP\PDF\Fpdf\Charset\CharsetHandler;
-use PXP\PDF\Fpdf\Exception\FpdfException;
+use PXP\PDF\Fpdf\Exceptions\Exception\FpdfException;
+use PXP\PDF\Fpdf\Utils\Charset\CharsetHandler;
 use Test\TestCase;
 
 /**

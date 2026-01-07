@@ -13,7 +13,7 @@ declare(strict_types=1);
  */
 namespace Test\Unit\PDF\Fpdf\Object\Base;
 
-use PXP\PDF\Fpdf\Object\Base\PDFBoolean;
+use PXP\PDF\Fpdf\Core\Object\Base\PDFBoolean;
 use Test\TestCase;
 
 /**

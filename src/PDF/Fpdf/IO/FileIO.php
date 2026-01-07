@@ -30,8 +30,8 @@ use function round;
 use function stream_get_contents;
 use function strlen;
 use Psr\Log\LoggerInterface;
-use PXP\PDF\Fpdf\Exception\FpdfException;
-use PXP\PDF\Fpdf\Log\NullLogger;
+use PXP\PDF\Fpdf\Events\Log\NullLogger;
+use PXP\PDF\Fpdf\Exceptions\Exception\FpdfException;
 
 /**
  * Default implementation of FileIOInterface.

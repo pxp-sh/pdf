@@ -27,8 +27,8 @@ use function shell_exec;
 use function sprintf;
 use function sys_get_temp_dir;
 use function uniqid;
+use PXP\PDF\Fpdf\Features\Splitter\PDFSplitter;
 use PXP\PDF\Fpdf\IO\FileIO;
-use PXP\PDF\Fpdf\Splitter\PDFSplitter;
 use Test\TestCase;
 
 /**

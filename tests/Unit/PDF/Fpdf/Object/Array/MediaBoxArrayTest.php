@@ -13,7 +13,7 @@ declare(strict_types=1);
  */
 namespace Test\Unit\PDF\Fpdf\Object\Array;
 
-use PXP\PDF\Fpdf\Object\Array\MediaBoxArray;
+use PXP\PDF\Fpdf\Core\Object\Array\MediaBoxArray;
 use Test\TestCase;
 
 /**

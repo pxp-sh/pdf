@@ -14,17 +14,17 @@ declare(strict_types=1);
 namespace Test\Unit\PDF\Fpdf\Structure;
 
 use function sys_get_temp_dir;
-use PXP\PDF\Fpdf\Buffer\Buffer;
-use PXP\PDF\Fpdf\Enum\LayoutMode;
-use PXP\PDF\Fpdf\Enum\PageOrientation;
-use PXP\PDF\Fpdf\Font\FontManager;
-use PXP\PDF\Fpdf\Image\ImageHandler;
-use PXP\PDF\Fpdf\Link\LinkManager;
-use PXP\PDF\Fpdf\Metadata\Metadata;
-use PXP\PDF\Fpdf\Page\PageManager;
-use PXP\PDF\Fpdf\Structure\PDFStructure;
-use PXP\PDF\Fpdf\Text\TextRenderer;
-use PXP\PDF\Fpdf\ValueObject\PageSize;
+use PXP\PDF\Fpdf\Core\Structure\PDFStructure;
+use PXP\PDF\Fpdf\Features\Link\LinkManager;
+use PXP\PDF\Fpdf\Features\Metadata\Metadata;
+use PXP\PDF\Fpdf\Rendering\Font\FontManager;
+use PXP\PDF\Fpdf\Rendering\Image\ImageHandler;
+use PXP\PDF\Fpdf\Rendering\Page\PageManager;
+use PXP\PDF\Fpdf\Rendering\Text\TextRenderer;
+use PXP\PDF\Fpdf\Utils\Buffer\Buffer;
+use PXP\PDF\Fpdf\Utils\Enum\LayoutMode;
+use PXP\PDF\Fpdf\Utils\Enum\PageOrientation;
+use PXP\PDF\Fpdf\Utils\ValueObject\PageSize;
 use Test\TestCase;
 
 /**

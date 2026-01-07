@@ -31,8 +31,8 @@ use function print_r;
 use function strlen;
 use function sys_get_temp_dir;
 use function uniqid;
-use PXP\PDF\Fpdf\Exception\FpdfException;
-use PXP\PDF\Fpdf\Image\Parser\PngParser;
+use PXP\PDF\Fpdf\Exceptions\Exception\FpdfException;
+use PXP\PDF\Fpdf\Rendering\Image\Parser\PngParser;
 use Test\TestCase;
 
 /**

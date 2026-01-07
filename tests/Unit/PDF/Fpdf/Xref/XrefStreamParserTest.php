@@ -13,9 +13,9 @@ declare(strict_types=1);
  */
 namespace Test\Unit\PDF\Fpdf\Xref;
 
-use PXP\PDF\Fpdf\Exception\FpdfException;
-use PXP\PDF\Fpdf\Xref\PDFXrefTable;
-use PXP\PDF\Fpdf\Xref\XrefStreamParser;
+use PXP\PDF\Fpdf\Core\Xref\PDFXrefTable;
+use PXP\PDF\Fpdf\Core\Xref\XrefStreamParser;
+use PXP\PDF\Fpdf\Exceptions\Exception\FpdfException;
 use Test\TestCase;
 
 /**

@@ -24,13 +24,13 @@ use function rmdir;
 use function strlen;
 use function sys_get_temp_dir;
 use function uniqid;
+use PXP\PDF\Fpdf\Core\Object\Base\PDFDictionary;
+use PXP\PDF\Fpdf\Core\Object\Base\PDFName;
+use PXP\PDF\Fpdf\Core\Object\Base\PDFReference;
+use PXP\PDF\Fpdf\Core\Object\Parser\PDFParser;
+use PXP\PDF\Fpdf\Core\Stream\PDFStream;
+use PXP\PDF\Fpdf\Features\Splitter\PDFMerger;
 use PXP\PDF\Fpdf\IO\FileIO;
-use PXP\PDF\Fpdf\Object\Base\PDFDictionary;
-use PXP\PDF\Fpdf\Object\Base\PDFName;
-use PXP\PDF\Fpdf\Object\Base\PDFReference;
-use PXP\PDF\Fpdf\Object\Parser\PDFParser;
-use PXP\PDF\Fpdf\Splitter\PDFMerger;
-use PXP\PDF\Fpdf\Stream\PDFStream;
 use Test\TestCase;
 
 /**

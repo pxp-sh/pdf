@@ -13,7 +13,7 @@ declare(strict_types=1);
  */
 namespace Test\Unit\PDF\Fpdf\Xref;
 
-use PXP\PDF\Fpdf\Xref\XrefEntry;
+use PXP\PDF\Fpdf\Core\Xref\XrefEntry;
 use Test\TestCase;
 
 /**

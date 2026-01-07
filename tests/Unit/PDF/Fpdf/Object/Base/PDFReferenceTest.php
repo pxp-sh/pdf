@@ -13,7 +13,7 @@ declare(strict_types=1);
  */
 namespace Test\Unit\PDF\Fpdf\Object\Base;
 
-use PXP\PDF\Fpdf\Object\Base\PDFReference;
+use PXP\PDF\Fpdf\Core\Object\Base\PDFReference;
 use Test\TestCase;
 
 /**

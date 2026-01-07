@@ -13,7 +13,7 @@ declare(strict_types=1);
  */
 namespace Test\Unit\PDF\Fpdf\Buffer;
 
-use PXP\PDF\Fpdf\Buffer\Buffer;
+use PXP\PDF\Fpdf\Utils\Buffer\Buffer;
 use Test\TestCase;
 
 /**

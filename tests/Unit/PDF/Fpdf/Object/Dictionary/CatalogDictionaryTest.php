@@ -13,11 +13,11 @@ declare(strict_types=1);
  */
 namespace Test\Unit\PDF\Fpdf\Object\Dictionary;
 
-use PXP\PDF\Fpdf\Object\Base\PDFArray;
-use PXP\PDF\Fpdf\Object\Base\PDFDictionary;
-use PXP\PDF\Fpdf\Object\Base\PDFReference;
-use PXP\PDF\Fpdf\Object\Dictionary\CatalogDictionary;
-use PXP\PDF\Fpdf\Tree\PDFDocument;
+use PXP\PDF\Fpdf\Core\Object\Base\PDFArray;
+use PXP\PDF\Fpdf\Core\Object\Base\PDFDictionary;
+use PXP\PDF\Fpdf\Core\Object\Base\PDFReference;
+use PXP\PDF\Fpdf\Core\Object\Dictionary\CatalogDictionary;
+use PXP\PDF\Fpdf\Core\Tree\PDFDocument;
 use Test\TestCase;
 
 /**

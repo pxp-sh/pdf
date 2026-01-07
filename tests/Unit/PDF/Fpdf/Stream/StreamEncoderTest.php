@@ -14,8 +14,8 @@ declare(strict_types=1);
 namespace Test\Unit\PDF\Fpdf\Stream;
 
 use function function_exists;
-use PXP\PDF\Fpdf\Exception\FpdfException;
-use PXP\PDF\Fpdf\Stream\StreamEncoder;
+use PXP\PDF\Fpdf\Core\Stream\StreamEncoder;
+use PXP\PDF\Fpdf\Exceptions\Exception\FpdfException;
 use Test\TestCase;
 
 /**

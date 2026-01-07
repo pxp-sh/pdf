@@ -14,7 +14,7 @@ declare(strict_types=1);
 namespace Test\Unit\PDF\Fpdf\ValueObject;
 
 use InvalidArgumentException;
-use PXP\PDF\Fpdf\ValueObject\PageSize;
+use PXP\PDF\Fpdf\Utils\ValueObject\PageSize;
 use ReflectionClass;
 use Test\TestCase;
 

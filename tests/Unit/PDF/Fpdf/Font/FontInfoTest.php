@@ -13,7 +13,7 @@ declare(strict_types=1);
  */
 namespace Test\Unit\PDF\Fpdf\Font;
 
-use PXP\PDF\Fpdf\Font\FontInfo;
+use PXP\PDF\Fpdf\Rendering\Font\FontInfo;
 use ReflectionClass;
 use Test\TestCase;
 

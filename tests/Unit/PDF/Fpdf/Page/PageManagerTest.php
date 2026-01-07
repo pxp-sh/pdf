@@ -13,7 +13,7 @@ declare(strict_types=1);
  */
 namespace Test\Unit\PDF\Fpdf\Page;
 
-use PXP\PDF\Fpdf\Page\PageManager;
+use PXP\PDF\Fpdf\Rendering\Page\PageManager;
 use Test\TestCase;
 
 /**

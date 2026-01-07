@@ -14,7 +14,7 @@ declare(strict_types=1);
 namespace Test\Unit\PDF\Fpdf\Enum;
 
 use InvalidArgumentException;
-use PXP\PDF\Fpdf\Enum\ZoomMode;
+use PXP\PDF\Fpdf\Utils\Enum\ZoomMode;
 use Test\TestCase;
 
 /**

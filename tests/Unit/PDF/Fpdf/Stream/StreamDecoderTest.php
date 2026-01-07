@@ -15,10 +15,10 @@ namespace Test\Unit\PDF\Fpdf\Stream;
 
 use function function_exists;
 use function gzcompress;
-use PXP\PDF\Fpdf\Exception\FpdfException;
-use PXP\PDF\Fpdf\Object\Base\PDFDictionary;
-use PXP\PDF\Fpdf\Object\Base\PDFName;
-use PXP\PDF\Fpdf\Stream\StreamDecoder;
+use PXP\PDF\Fpdf\Core\Object\Base\PDFDictionary;
+use PXP\PDF\Fpdf\Core\Object\Base\PDFName;
+use PXP\PDF\Fpdf\Core\Stream\StreamDecoder;
+use PXP\PDF\Fpdf\Exceptions\Exception\FpdfException;
 use Test\TestCase;
 
 /**

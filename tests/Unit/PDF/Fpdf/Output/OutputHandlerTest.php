@@ -21,10 +21,10 @@ use function ob_get_clean;
 use function ob_start;
 use function sys_get_temp_dir;
 use function uniqid;
-use PXP\PDF\Fpdf\Enum\OutputDestination;
-use PXP\PDF\Fpdf\Exception\FpdfException;
-use PXP\PDF\Fpdf\Output\OutputHandler;
-use PXP\PDF\Fpdf\Text\TextRenderer;
+use PXP\PDF\Fpdf\Exceptions\Exception\FpdfException;
+use PXP\PDF\Fpdf\IO\OutputHandler;
+use PXP\PDF\Fpdf\Rendering\Text\TextRenderer;
+use PXP\PDF\Fpdf\Utils\Enum\OutputDestination;
 use Test\TestCase;
 
 /**

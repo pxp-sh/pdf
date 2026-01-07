@@ -14,9 +14,9 @@ declare(strict_types=1);
 namespace Test\Unit\PDF\Fpdf\Image\Parser;
 
 use function function_exists;
-use PXP\PDF\Fpdf\Exception\FpdfException;
-use PXP\PDF\Fpdf\Image\Parser\GifParser;
-use PXP\PDF\Fpdf\Image\Parser\PngParser;
+use PXP\PDF\Fpdf\Exceptions\Exception\FpdfException;
+use PXP\PDF\Fpdf\Rendering\Image\Parser\GifParser;
+use PXP\PDF\Fpdf\Rendering\Image\Parser\PngParser;
 use Test\TestCase;
 
 /**

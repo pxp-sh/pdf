@@ -13,7 +13,7 @@ declare(strict_types=1);
  */
 namespace Test\Unit\PDF\Fpdf\Color;
 
-use PXP\PDF\Fpdf\Color\ColorManager;
+use PXP\PDF\Fpdf\Rendering\Color\ColorManager;
 use Test\TestCase;
 
 /**

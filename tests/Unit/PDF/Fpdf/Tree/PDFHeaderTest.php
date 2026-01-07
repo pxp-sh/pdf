@@ -13,7 +13,7 @@ declare(strict_types=1);
  */
 namespace Test\Unit\PDF\Fpdf\Tree;
 
-use PXP\PDF\Fpdf\Tree\PDFHeader;
+use PXP\PDF\Fpdf\Core\Tree\PDFHeader;
 use Test\TestCase;
 
 /**

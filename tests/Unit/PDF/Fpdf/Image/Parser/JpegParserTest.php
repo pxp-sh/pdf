@@ -17,8 +17,8 @@ use function file_exists;
 use function file_put_contents;
 use function sys_get_temp_dir;
 use function uniqid;
-use PXP\PDF\Fpdf\Exception\FpdfException;
-use PXP\PDF\Fpdf\Image\Parser\JpegParser;
+use PXP\PDF\Fpdf\Exceptions\Exception\FpdfException;
+use PXP\PDF\Fpdf\Rendering\Image\Parser\JpegParser;
 use Test\TestCase;
 
 /**
