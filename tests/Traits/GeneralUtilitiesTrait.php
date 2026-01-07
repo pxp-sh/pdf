@@ -11,7 +11,7 @@ declare(strict_types=1);
  * @see https://github.com/pxp-sh/pdf
  *
  */
-namespace Test;
+namespace Test\Traits;
 
 use const PHP_OS;
 use function escapeshellarg;
@@ -178,7 +178,7 @@ trait GeneralUtilitiesTrait
     /**
      * Check if a command exists in PATH.
      */
-    private static function commandExists(string $command): bool
+    protected static function commandExists(string $command): bool
     {
         $whereIsCommand = (PHP_OS === 'WINNT') ? 'where' : 'which';
 

@@ -11,7 +11,7 @@ declare(strict_types=1);
  * @see https://github.com/pxp-sh/pdf
  *
  */
-namespace Test;
+namespace Test\Traits;
 
 use function dirname;
 use function file_exists;

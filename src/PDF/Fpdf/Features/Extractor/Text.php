@@ -13,16 +13,20 @@ declare(strict_types=1);
  */
 namespace PXP\PDF\Fpdf\Features\Extractor;
 
+use const PREG_OFFSET_CAPTURE;
+use const PREG_SET_ORDER;
 use function count;
 use function filesize;
 use function implode;
 use function max;
 use function min;
+use function preg_match;
 use function preg_match_all;
 use function preg_replace;
 use function str_replace;
-use function strlen;
+use function substr;
 use function trim;
+use function usort;
 use Exception;
 use InvalidArgumentException;
 use PXP\PDF\Fpdf\Core\Object\Base\PDFArray;
@@ -32,6 +36,7 @@ use PXP\PDF\Fpdf\Core\Object\Parser\PDFParser;
 use PXP\PDF\Fpdf\Core\Stream\PDFStream;
 use PXP\PDF\Fpdf\Core\Tree\PDFDocument;
 use PXP\PDF\Fpdf\Core\Tree\PDFObjectNode;
+use PXP\PDF\Fpdf\Exception\FpdfException;
 use PXP\PDF\Fpdf\IO\FileIO;
 use PXP\PDF\Fpdf\IO\FileReaderInterface;
 use RuntimeException;
@@ -50,13 +55,16 @@ class Text
      *
      * @param string $filePath Path to the PDF file
      *
+     * @throws FpdfException If the PDF cannot be parsed or pages cannot be retrieved
+     *
      * @return string Extracted text
      */
     public function extractFromFile(string $filePath): string
     {
-        $content = $this->fileReader->readFile($filePath);
+        // Use file-based parsing for better handling of complex PDFs (same approach as PDFSplitter)
+        $document = $this->pdfParser->parseDocumentFromFile($filePath, $this->fileReader);
 
-        return $this->extractFromString($content);
+        return $this->extractTextFromDocument($document);
     }
 
     /**
@@ -112,12 +120,14 @@ class Text
      * @param string $filePath   Path to the PDF file
      * @param int    $pageNumber Page number (1-based)
      *
+     * @throws FpdfException If the PDF cannot be parsed or pages cannot be retrieved
+     *
      * @return string Extracted text from the specified page
      */
     public function extractFromFilePage(string $filePath, int $pageNumber): string
     {
-        $content  = $this->fileReader->readFile($filePath);
-        $document = $this->pdfParser->parseDocument($content);
+        // Use file-based parsing for better handling of complex PDFs (same approach as PDFSplitter)
+        $document = $this->pdfParser->parseDocumentFromFile($filePath, $this->fileReader);
 
         return $this->extractTextFromDocumentPage($document, $pageNumber);
     }
@@ -173,12 +183,14 @@ class Text
      * @param int    $startPage Start page number (1-based, inclusive)
      * @param int    $endPage   End page number (1-based, inclusive)
      *
+     * @throws FpdfException If the PDF cannot be parsed or pages cannot be retrieved
+     *
      * @return array<int, string> Array of page numbers => extracted text
      */
     public function extractFromFilePages(string $filePath, int $startPage, int $endPage): array
     {
-        $content  = $this->fileReader->readFile($filePath);
-        $document = $this->pdfParser->parseDocument($content);
+        // Use file-based parsing for better handling of complex PDFs (same approach as PDFSplitter)
+        $document = $this->pdfParser->parseDocumentFromFile($filePath, $this->fileReader);
 
         return $this->extractTextFromDocumentPages($document, $startPage, $endPage);
     }
@@ -208,8 +220,8 @@ class Text
      */
     public function getPageCount(string $filePath): int
     {
-        $content  = $this->fileReader->readFile($filePath);
-        $document = $this->pdfParser->parseDocument($content);
+        // Use file-based parsing for better handling of complex PDFs (same approach as PDFSplitter)
+        $document = $this->pdfParser->parseDocumentFromFile($filePath, $this->fileReader);
 
         try {
             $pages = $document->getAllPages();
@@ -261,15 +273,18 @@ class Text
      * @param int    $startPage Start page number (1-based, inclusive)
      * @param int    $endPage   End page number (1-based, inclusive)
      *
+     * @throws FpdfException If the PDF cannot be parsed or pages cannot be retrieved
+     *
      * @return array{text: array<int, string>, buffer_size: int} Extracted text and buffer size
      */
     public function extractFromFileWithBufferInfo(string $filePath, int $startPage, int $endPage): array
     {
-        $content    = $this->fileReader->readFile($filePath);
-        $bufferSize = strlen($content);
-
-        $document = $this->pdfParser->parseDocument($content);
+        // Use file-based parsing for better handling of complex PDFs (same approach as PDFSplitter)
+        $document = $this->pdfParser->parseDocumentFromFile($filePath, $this->fileReader);
         $text     = $this->extractTextFromDocumentPages($document, $startPage, $endPage);
+
+        // Get file size for buffer info
+        $bufferSize = filesize($filePath) ?: 0;
 
         return [
             'text'        => $text,
@@ -495,44 +510,98 @@ class Text
     {
         $text = '';
 
-        // Extract text from Tj operator: (text) Tj
-        // Match: (text content) Tj
-        $matches = [];
+        // Build an array of all text operators with their positions
+        $textElements = [];
 
-        if (preg_match_all('/\(((?:[^()\\\\]|\\\\.|\\\\(?:\r\n|\r|\n))*)\)\s*Tj/', $content, $matches)) {
-            foreach ($matches[1] as $match) {
-                $text .= $this->decodeTextString($match) . ' ';
+        // Extract text from Tj operator: (text) Tj
+        if (preg_match_all('/\(((?:[^()\\\\]|\\\\.|\\\\(?:\r\n|\r|\n))*)\)\s*Tj/', $content, $matches, PREG_OFFSET_CAPTURE)) {
+            foreach ($matches[0] as $idx => $match) {
+                $textElements[] = [
+                    'pos'  => $match[1],
+                    'text' => $this->decodeTextString($matches[1][$idx][0]),
+                    'type' => 'Tj',
+                ];
             }
         }
 
         // Extract text from TJ operator: [(text1) num (text2)] TJ
-        // Match arrays like: [(Hello) -250 (World)]
-        if (preg_match_all('/\[((?:[^\[\]\\\\]|\\\\.|\\\\(?:\r\n|\r|\n))*)\]\s*TJ/', $content, $matches)) {
-            foreach ($matches[1] as $match) {
-                // Extract strings from the array
-                $strings = [];
+        // In TJ arrays, numbers represent kerning/spacing. Negative numbers < -100 often indicate word spacing
+        if (preg_match_all('/\[((?:[^\[\]\\\\]|\\\\.|\\\\(?:\r\n|\r|\n))*)\]\s*TJ/', $content, $matches, PREG_OFFSET_CAPTURE)) {
+            foreach ($matches[0] as $idx => $match) {
+                $arrayContent = $matches[1][$idx][0];
+                $text_parts   = [];
 
-                if (preg_match_all('/\(((?:[^()\\\\]|\\\\.|\\\\(?:\r\n|\r|\n))*)\)/', $match, $stringMatches)) {
-                    foreach ($stringMatches[1] as $str) {
-                        $strings[] = $this->decodeTextString($str);
+                // Parse the array content: mix of strings and numbers
+                preg_match_all('/\(((?:[^()\\\\]|\\\\.|\\\\(?:\r\n|\r|\n))*)\)|(-?\d+(?:\.\d+)?)/', $arrayContent, $arrayMatches, PREG_SET_ORDER);
+
+                foreach ($arrayMatches as $element) {
+                    if (isset($element[1]) && $element[1] !== '') {
+                        // It's a string
+                        $text_parts[] = $this->decodeTextString($element[1]);
+                    } elseif (isset($element[2])) {
+                        // It's a number (kerning value)
+                        // Negative values < -100 often indicate word spacing
+                        $num = (float) $element[2];
+
+                        if ($num < -100) {
+                            $text_parts[] = ' ';
+                        }
                     }
                 }
-                $text .= implode('', $strings) . ' ';
+
+                $textElements[] = [
+                    'pos'  => $match[1],
+                    'text' => implode('', $text_parts),
+                    'type' => 'TJ',
+                ];
             }
         }
 
         // Extract text from ' (single quote) operator: (text) '
-        if (preg_match_all('/\(((?:[^()\\\\]|\\\\.|\\\\(?:\r\n|\r|\n))*)\)\s*\'/', $content, $matches)) {
-            foreach ($matches[1] as $match) {
-                $text .= $this->decodeTextString($match) . ' ';
+        if (preg_match_all('/\(((?:[^()\\\\]|\\\\.|\\\\(?:\r\n|\r|\n))*)\)\s*\'/', $content, $matches, PREG_OFFSET_CAPTURE)) {
+            foreach ($matches[0] as $idx => $match) {
+                $textElements[] = [
+                    'pos'  => $match[1],
+                    'text' => $this->decodeTextString($matches[1][$idx][0]),
+                    'type' => '\'',
+                ];
             }
         }
 
         // Extract text from " (double quote) operator
-        if (preg_match_all('/\(((?:[^()\\\\]|\\\\.|\\\\(?:\r\n|\r|\n))*)\)\s*"/', $content, $matches)) {
-            foreach ($matches[1] as $match) {
-                $text .= $this->decodeTextString($match) . ' ';
+        if (preg_match_all('/\(((?:[^()\\\\]|\\\\.|\\\\(?:\r\n|\r|\n))*)\)\s*"/', $content, $matches, PREG_OFFSET_CAPTURE)) {
+            foreach ($matches[0] as $idx => $match) {
+                $textElements[] = [
+                    'pos'  => $match[1],
+                    'text' => $this->decodeTextString($matches[1][$idx][0]),
+                    'type' => '"',
+                ];
             }
+        }
+
+        // Sort by position to maintain order
+        usort($textElements, static fn ($a, $b) => $a['pos'] <=> $b['pos']);
+
+        // Look for line break operators between text elements to add proper spacing
+        $previousPos = 0;
+
+        foreach ($textElements as $element) {
+            // Check for positioning operators between previous and current text
+            if ($previousPos > 0) {
+                $between = substr($content, $previousPos, $element['pos'] - $previousPos);
+
+                // Look for text positioning operators that indicate new lines or spacing
+                // T* = move to next line, Td/TD = move text position, Tm = set text matrix
+                if (preg_match('/(T\*|Td|TD|Tm)/', $between)) {
+                    $text .= "\n";
+                } else {
+                    // Add space between text elements if no explicit positioning
+                    $text .= ' ';
+                }
+            }
+
+            $text .= $element['text'];
+            $previousPos = $element['pos'] + 50; // Approximate, just need a position after this element
         }
 
         return trim($text);

@@ -130,6 +130,7 @@ class FPDF
         ?CacheItemPoolInterface $cacheItemPool = null,
         ?EventDispatcherInterface $eventDispatcher = null,
     ): array {
+        $logger      = $logger ?? new NullLogger;
         $fileIO      = new FileIO($logger);
         $pdfSplitter = new PDFSplitter($pdfFilePath, $fileIO, $logger, $eventDispatcher, $cacheItemPool);
 
@@ -156,6 +157,7 @@ class FPDF
         ?CacheItemPoolInterface $cacheItemPool = null,
         ?EventDispatcherInterface $eventDispatcher = null,
     ): void {
+        $logger      = $logger ?? new NullLogger;
         $fileIO      = new FileIO($logger);
         $pdfSplitter = new PDFSplitter($pdfFilePath, $fileIO, $logger, $eventDispatcher, $cacheItemPool);
         $pdfSplitter->extractPage($pageNumber, $outputPath);
@@ -179,6 +181,7 @@ class FPDF
         ?CacheItemPoolInterface $cacheItemPool = null,
         ?EventDispatcherInterface $eventDispatcher = null,
     ): void {
+        $logger    = $logger ?? new NullLogger;
         $fileIO    = new FileIO($logger);
         $pdfMerger = new PDFMerger($fileIO, $logger, $eventDispatcher, $cacheItemPool);
         $pdfMerger->merge($pdfFilePaths, $outputPath);

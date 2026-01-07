@@ -13,6 +13,14 @@ declare(strict_types=1);
  */
 namespace Test;
 
+use Test\Traits\FileUtilitiesTrait;
+use Test\Traits\FpdfCreationTrait;
+use Test\Traits\GeneralUtilitiesTrait;
+use Test\Traits\ImageComparisonTrait;
+use Test\Traits\PdfAssertionsTrait;
+use Test\Traits\PdfToImageTrait;
+use Test\Traits\PsrServicesTrait;
+
 class TestCase extends \PHPUnit\Framework\TestCase
 {
     use FileUtilitiesTrait;
