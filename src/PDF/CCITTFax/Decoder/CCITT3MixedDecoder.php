@@ -19,15 +19,14 @@ use function fwrite;
 use function is_resource;
 use function min;
 use function sprintf;
-use RuntimeException;
-
-use PXP\PDF\CCITTFax\Util\BitBuffer;
-use PXP\PDF\CCITTFax\Model\Params;
+use PXP\PDF\CCITTFax\Constants\Codes;
+use PXP\PDF\CCITTFax\Constants\Modes;
 use PXP\PDF\CCITTFax\Interface\StreamDecoderInterface;
 use PXP\PDF\CCITTFax\Model\Mode;
-use PXP\PDF\CCITTFax\Constants\Modes;
-use PXP\PDF\CCITTFax\Constants\Codes;
+use PXP\PDF\CCITTFax\Model\Params;
+use PXP\PDF\CCITTFax\Util\BitBuffer;
 use PXP\PDF\CCITTFax\Util\BitmapPacker;
+use RuntimeException;
 
 /**
  * CCITT Group 3 Mixed 1D/2D Fax Decoder (T.4 with 2D extensions, K>0).
@@ -57,7 +56,7 @@ final class CCITT3MixedDecoder implements StreamDecoderInterface
     private int $linesDecoded = 0;
 
     /**
-     * @param Params  $params CCITT Fax parameters (K must be > 0)
+     * @param Params          $params CCITT Fax parameters (K must be > 0)
      * @param resource|string $data   Compressed fax data (string or stream resource)
      */
     public function __construct(Params $params, $data)

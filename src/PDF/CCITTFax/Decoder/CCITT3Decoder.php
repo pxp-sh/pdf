@@ -19,13 +19,12 @@ use function fwrite;
 use function is_resource;
 use function min;
 use function sprintf;
-use RuntimeException;
-
-use PXP\PDF\CCITTFax\Util\BitBuffer;
-use PXP\PDF\CCITTFax\Model\Params;
-use PXP\PDF\CCITTFax\Interface\StreamDecoderInterface;
 use PXP\PDF\CCITTFax\Constants\Codes;
+use PXP\PDF\CCITTFax\Interface\StreamDecoderInterface;
+use PXP\PDF\CCITTFax\Model\Params;
+use PXP\PDF\CCITTFax\Util\BitBuffer;
 use PXP\PDF\CCITTFax\Util\BitmapPacker;
+use RuntimeException;
 
 /**
  * CCITT Group 3 1D Fax Decoder (T.4 encoding, K=0).
@@ -61,7 +60,7 @@ final class CCITT3Decoder implements StreamDecoderInterface
     private int $consecutiveDamagedRows = 0;
 
     /**
-     * @param Params  $params CCITT Fax parameters
+     * @param Params          $params CCITT Fax parameters
      * @param resource|string $data   Compressed fax data (string or stream resource)
      */
     public function __construct(Params $params, $data)

@@ -17,15 +17,14 @@ use function array_fill;
 use function count;
 use function fwrite;
 use function is_resource;
-use RuntimeException;
-
-use PXP\PDF\CCITTFax\Util\BitBuffer;
-use PXP\PDF\CCITTFax\Interface\StreamDecoderInterface;
-use PXP\PDF\CCITTFax\Constants\Modes;
 use PXP\PDF\CCITTFax\Constants\Codes;
+use PXP\PDF\CCITTFax\Constants\Modes;
+use PXP\PDF\CCITTFax\Interface\StreamDecoderInterface;
 use PXP\PDF\CCITTFax\Model\Mode;
 use PXP\PDF\CCITTFax\Model\ModeCode;
+use PXP\PDF\CCITTFax\Util\BitBuffer;
 use PXP\PDF\CCITTFax\Util\BitmapPacker;
+use RuntimeException;
 
 class CCITT4Decoder implements StreamDecoderInterface
 {

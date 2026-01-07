@@ -15,9 +15,8 @@ namespace PXP\PDF\CCITTFax\Constants;
 
 use function count;
 use function usort;
-use RuntimeException;
-
 use PXP\PDF\CCITTFax\Model\HorizontalCode;
+use RuntimeException;
 
 class Codes
 {

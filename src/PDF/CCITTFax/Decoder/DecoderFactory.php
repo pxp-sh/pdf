@@ -13,8 +13,8 @@ declare(strict_types=1);
  */
 namespace PXP\PDF\CCITTFax\Decoder;
 
-use PXP\PDF\CCITTFax\Model\Params;
 use PXP\PDF\CCITTFax\Interface\StreamDecoderInterface;
+use PXP\PDF\CCITTFax\Model\Params;
 use RuntimeException;
 
 final class DecoderFactory

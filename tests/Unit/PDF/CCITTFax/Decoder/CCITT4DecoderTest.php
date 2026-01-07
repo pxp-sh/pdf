@@ -24,8 +24,8 @@ use function stream_get_contents;
 use function strlen;
 use PHPUnit\Framework\Attributes\DataProvider;
 use PHPUnit\Framework\TestCase;
-use PXP\PDF\CCITTFax\Util\BitmapPacker;
 use PXP\PDF\CCITTFax\Decoder\CCITT4Decoder;
+use PXP\PDF\CCITTFax\Util\BitmapPacker;
 use RuntimeException;
 
 /**

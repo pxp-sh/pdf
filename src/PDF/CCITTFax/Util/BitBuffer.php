@@ -16,6 +16,7 @@ namespace PXP\PDF\CCITTFax\Util;
 use function feof;
 use function fread;
 use function is_resource;
+use function is_string;
 use function ord;
 use function strlen;
 use InvalidArgumentException;
@@ -24,8 +25,9 @@ class BitBuffer
 {
     private int $buffer;
     private int $emptyBits;
-    /** @var string|false String data or false if invalid */
-    private string|false $source = '';
+
+    /** @var false|string String data or false if invalid */
+    private false|string $source = '';
     private int $sourcePos;
     private int $bitsRead = 0;
 

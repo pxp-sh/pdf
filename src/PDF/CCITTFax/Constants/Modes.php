@@ -15,9 +15,9 @@ namespace PXP\PDF\CCITTFax\Constants;
 
 use function count;
 use function sprintf;
-use RuntimeException;
 use PXP\PDF\CCITTFax\Model\Mode;
 use PXP\PDF\CCITTFax\Model\ModeCode;
+use RuntimeException;
 
 class Modes
 {
